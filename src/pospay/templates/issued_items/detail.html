@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Issued Item {{ item.check_number }} — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Issued item #{{ item.check_number }}</h1>
+  <p>Amount: {{ item.amount }}</p>
+  <p>Payee: {{ item.payee_name }}</p>
+  <p>Issue date: {{ item.issue_date }}</p>
+  <p>Status: <span class="badge">{{ item.status.value }}</span></p>
+  {% if item.void_reason %}<p>Void reason: {{ item.void_reason }}</p>{% endif %}
+
+  {% if item.status.value == "outstanding" and can(ctx.role, "issued_item:write") %}
+  <form method="post" action="/ui/issued-items/{{ item.id }}/void" data-confirm="Void this issued item?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Reason <input type="text" name="reason" required></label>
+    <button type="submit" class="danger">Void</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

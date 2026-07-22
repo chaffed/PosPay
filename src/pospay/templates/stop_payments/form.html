@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}New Stop Payment — PosPay{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>New stop payment</h1>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/ui/stop-payments">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Account
+      <select name="account_id" required>
+        {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }} ({{ a.account_number }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Check number <input type="text" name="check_number" required></label>
+    <label>Amount (optional — leave blank to match any amount) <input type="text" name="amount" placeholder="0.00"></label>
+    <label>Effective date <input type="date" name="effective_date" required></label>
+    <label>Expiration date (optional) <input type="date" name="expiration_date"></label>
+    <label>Reason <input type="text" name="reason"></label>
+    <button type="submit">Create</button>
+  </form>
+</div>
+{% endblock %}

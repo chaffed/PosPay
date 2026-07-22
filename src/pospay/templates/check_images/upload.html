@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Upload Check Image — PosPay{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Upload check image</h1>
+  <form method="post" action="/ui/check-images" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Front image <input type="file" name="front_image" accept="image/*" required></label>
+    <label>Link to paid item (optional)
+      <select name="paid_item_id">
+        <option value="">— none —</option>
+        {% for p in paid_items %}
+        <option value="{{ p.id }}" {{ "selected" if selected_paid_item_id and selected_paid_item_id == p.id else "" }}>{{ p.check_number }} — {{ p.presented_amount }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+{% endblock %}

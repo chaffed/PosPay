@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Check Images — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Check Images</h1>
+    {% if can(ctx.role, "paid_item:write") %}<a href="/ui/check-images/upload" class="button">Upload check image</a>{% endif %}
+  </div>
+  {% if images %}
+  <table>
+    <thead><tr><th>Uploaded</th><th>OCR status</th><th>Extracted payee</th><th>Extracted amount</th></tr></thead>
+    <tbody>
+      {% for image in images %}
+      <tr>
+        <td><a href="/ui/check-images/{{ image.id }}">{{ image.created_at.strftime("%Y-%m-%d %H:%M") }}</a></td>
+        <td><span class="badge {{ 'badge-ok' if image.ocr_status.value == 'completed' else 'badge-danger' if image.ocr_status.value == 'failed' else 'badge-warn' }}">{{ image.ocr_status.value }}</span></td>
+        <td>{{ image.ocr_extracted_payee or "—" }}</td>
+        <td>{{ image.ocr_extracted_amount or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No check images uploaded yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

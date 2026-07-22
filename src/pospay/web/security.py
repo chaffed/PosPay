@@ -1,0 +1,138 @@
+import secrets
+
+from fastapi import Form, HTTPException, Request, Response, status
+
+from pospay.config import get_settings
+
+ACCESS_COOKIE_NAME = "access_token"
+REFRESH_COOKIE_NAME = "refresh_token"
+MFA_COOKIE_NAME = "mfa_token"
+CSRF_COOKIE_NAME = "csrf_token"
+
+# Narrow paths for the higher-privilege / narrower-purpose cookies — the browser only
+# ever attaches them to requests under these paths, shrinking their exposure surface.
+REFRESH_COOKIE_PATH = "/ui/auth"
+MFA_COOKIE_PATH = "/ui/login/webauthn"
+
+
+def _secure_cookies() -> bool:
+    # `Secure` requires HTTPS. Local dev serves over plain http://127.0.0.1, so this is
+    # tied to the configured origin's scheme rather than hardcoded — correct in both cases
+    # without a separate "are we in prod" flag.
+    return get_settings().webauthn_origin.startswith("https://")
+
+
+def set_access_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        ACCESS_COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=_secure_cookies(),
+        samesite="lax",
+        path="/",
+        max_age=settings.jwt_access_token_expire_minutes * 60,
+    )
+
+
+def set_refresh_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        REFRESH_COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=_secure_cookies(),
+        samesite="strict",
+        path=REFRESH_COOKIE_PATH,
+        max_age=settings.jwt_refresh_token_expire_minutes * 60,
+    )
+
+
+def set_mfa_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        MFA_COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=_secure_cookies(),
+        samesite="strict",
+        path=MFA_COOKIE_PATH,
+        max_age=settings.mfa_pending_token_expire_minutes * 60,
+    )
+
+
+def clear_auth_cookies(response: Response) -> None:
+    # Attributes here must match exactly what was used when the cookie was SET, or the
+    # browser silently keeps it — the most common way a "logout" button does nothing.
+    response.delete_cookie(ACCESS_COOKIE_NAME, path="/", secure=_secure_cookies(), samesite="lax")
+    response.delete_cookie(REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH, secure=_secure_cookies(), samesite="strict")
+
+
+def clear_mfa_cookie(response: Response) -> None:
+    response.delete_cookie(MFA_COOKIE_NAME, path=MFA_COOKIE_PATH, secure=_secure_cookies(), samesite="strict")
+
+
+# --- CSRF: double-submit cookie pattern ---
+#
+# The existing JSON API (Authorization header) is inherently CSRF-immune — a cross-site
+# page can't make the browser attach a custom header. Cookie-based auth removes that
+# immunity, so every /ui/* POST needs this. The csrf_token cookie is deliberately NOT
+# HttpOnly: a double-submit CSRF token's security model relies on Same-Origin Policy (a
+# cross-origin attacker's JS can't read another origin's cookies), not on hiding the
+# value from the page's own JS — and this page's own JS (webauthn.js) needs to read it
+# to attach as a header on fetch() calls, since those carry a JSON body, not a form
+# field. A cross-site attacker can trigger a request with the victim's cookies attached,
+# but can't read csrf_token's value to forge the matching field/header, so a mismatch
+# means the request didn't originate from a page this server rendered.
+#
+# base.html's logout form needs the token on EVERY authenticated page, not just pages
+# with their own forms — so web/deps.py::render_template ensures it on every render
+# rather than each route remembering a separate dependency. These two plain functions
+# (not FastAPI dependencies) are what render_template calls.
+
+CSRF_HEADER_NAME = "X-CSRF-Token"
+
+
+def read_or_generate_csrf_token(request: Request) -> str:
+    return request.cookies.get(CSRF_COOKIE_NAME) or secrets.token_urlsafe(32)
+
+
+def set_csrf_cookie_if_new(request: Request, response: Response, token: str) -> None:
+    if request.cookies.get(CSRF_COOKIE_NAME) == token:
+        return  # already set to this value, nothing to do
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        token,
+        httponly=False,
+        secure=_secure_cookies(),
+        samesite="lax",
+        path="/",
+        max_age=get_settings().jwt_access_token_expire_minutes * 60,
+    )
+
+
+def verify_csrf(request: Request, csrf_token: str = Form(...)) -> None:
+    """Dependency for classic HTML-form /ui/* POST routes. Compares the submitted hidden
+    field against the cookie value using a constant-time comparison."""
+    cookie_value = request.cookies.get(CSRF_COOKIE_NAME)
+    if not cookie_value or not secrets.compare_digest(cookie_value, csrf_token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid or missing CSRF token")
+
+
+def verify_csrf_header(request: Request) -> None:
+    """Dependency for JSON/fetch-based /ui/* POST routes (WebAuthn options/verify,
+    credential deletion) — same check, read from the X-CSRF-Token header instead of a
+    form field since these routes take a JSON body."""
+    cookie_value = request.cookies.get(CSRF_COOKIE_NAME)
+    header_value = request.headers.get(CSRF_HEADER_NAME)
+    if not cookie_value or not header_value or not secrets.compare_digest(cookie_value, header_value):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid or missing CSRF token")
+
+
+def safe_next_path(path: str | None, *, default: str = "/ui/") -> str:
+    """Guards against open-redirect: a `next` value must be a same-origin relative path
+    (a single leading '/', never '//...' which browsers treat as protocol-relative to an
+    external host) — otherwise login could be used to bounce a user to an attacker's site."""
+    if not path or not path.startswith("/") or path.startswith("//"):
+        return default
+    return path

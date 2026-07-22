@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Dashboard</h1>
+  <p>Logged in as <strong>{{ ctx.role }}</strong>.</p>
+  <ul class="quick-links">
+    <li><a href="/ui/exceptions">Exceptions queue</a></li>
+    <li><a href="/ui/issued-items">Issued items</a></li>
+    <li><a href="/ui/stop-payments">Stop payments</a></li>
+    <li><a href="/ui/paid-items">Paid items</a></li>
+    <li><a href="/ui/check-images">Check images</a></li>
+    <li><a href="/ui/ach/authorizations">ACH authorizations</a></li>
+    <li><a href="/ui/ach/transactions">ACH transactions</a></li>
+    {% if can(ctx.role, "admin:manage") %}<li><a href="/ui/admin">Admin</a></li>{% endif %}
+  </ul>
+</div>
+{% endblock %}

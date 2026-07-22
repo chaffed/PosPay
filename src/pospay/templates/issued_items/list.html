@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Issued Items — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Issued Items</h1>
+    {% if can(ctx.role, "issued_item:write") %}<a href="/ui/issued-items/new" class="button">New issued item</a>{% endif %}
+  </div>
+  <form method="get" action="/ui/issued-items">
+    <label style="max-width:220px;">Status
+      <select name="status" onchange="this.form.submit()">
+        <option value="">All</option>
+        {% for s in ["outstanding", "paid", "voided", "stopped", "stale"] %}
+        <option value="{{ s }}" {{ "selected" if status_filter and status_filter.value == s else "" }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+  {% if items %}
+  <table>
+    <thead><tr><th>Check #</th><th>Amount</th><th>Payee</th><th>Issue date</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td><a href="/ui/issued-items/{{ item.id }}">{{ item.check_number }}</a></td>
+        <td>{{ item.amount }}</td>
+        <td>{{ item.payee_name }}</td>
+        <td>{{ item.issue_date }}</td>
+        <td><span class="badge {{ 'badge-ok' if item.status.value == 'outstanding' else 'badge-warn' if item.status.value in ['stale','stopped'] else 'badge-danger' if item.status.value == 'voided' else '' }}">{{ item.status.value }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No issued items yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

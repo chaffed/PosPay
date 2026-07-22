@@ -1,0 +1,10 @@
+.claude/
+.venv/
+__pycache__/
+*.pyc
+*.db
+.env
+src/pospay/ml/artifacts/*.joblib
+.pytest_cache/
+*.egg-info/
+data/

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Error — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ status_code_display }}</h1>
+  <p>{{ message }}</p>
+  <a href="/ui/">Back to dashboard</a>
+</div>
+{% endblock %}

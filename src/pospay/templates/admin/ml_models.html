@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Admin — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>ML Models</h1>
+  <p>Networks registered: {{ networks | join(", ") }}</p>
+  <form method="post" action="/ui/admin/ml/retrain" class="toolbar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label style="max-width:220px;">Network
+      <select name="network_code" required>
+        {% for n in networks %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Retrain</button>
+  </form>
+
+  {% if models %}
+  <table>
+    <thead><tr><th>Network</th><th>Version</th><th>Status</th><th>Trained on</th><th>Metrics</th><th></th></tr></thead>
+    <tbody>
+      {% for m in models %}
+      <tr>
+        <td>{{ m.network_code }}</td>
+        <td>{{ m.version }}</td>
+        <td><span class="badge {{ 'badge-ok' if m.status.value == 'active' else '' }}">{{ m.status.value }}</span></td>
+        <td>{{ m.trained_from_decision_count }} decisions</td>
+        <td>{{ m.metrics_json }}</td>
+        <td>
+          {% if m.status.value != "active" %}
+          <form method="post" action="/ui/admin/ml/models/{{ m.id }}/activate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="secondary">Activate</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No models trained yet — matching/exceptions still work fully, ML scoring is just not available until enough decisions accumulate.</p>
+  {% endif %}
+</div>
+{% endblock %}

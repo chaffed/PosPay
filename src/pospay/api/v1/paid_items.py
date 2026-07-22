@@ -1,0 +1,75 @@
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from pospay.auth.deps import require_permission
+from pospay.db.session import get_db
+from pospay.db.tenancy import TenantContext
+from pospay.domain.paid_item import PaidItemSource
+from pospay.networks.check.ingestion import PaidItemSubmission, ingest_paid_item, ingest_paid_items_bulk
+from pospay.repositories.paid_item_repo import PaidItemRepository
+from pospay.schemas.common import BulkRowResultOut, BulkSubmitResponse
+from pospay.schemas.paid_item import PaidItemCreate, PaidItemRead
+
+router = APIRouter(prefix="/paid-items", tags=["paid-items"])
+
+
+def _to_submission(payload: PaidItemCreate, source: PaidItemSource) -> PaidItemSubmission:
+    return PaidItemSubmission(
+        account_id=payload.account_id,
+        check_number=payload.check_number,
+        presented_amount=payload.presented_amount,
+        presented_date=payload.presented_date,
+        source=source,
+    )
+
+
+@router.post("", response_model=PaidItemRead, status_code=status.HTTP_201_CREATED)
+def create_paid_item(
+    payload: PaidItemCreate,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission("paid_item:write")),
+) -> PaidItemRead:
+    item = ingest_paid_item(db, ctx.tenant_id, _to_submission(payload, PaidItemSource.API))
+    db.commit()
+    return PaidItemRead.model_validate(item)
+
+
+@router.post("/bulk", response_model=BulkSubmitResponse)
+def create_paid_items_bulk(
+    payload: list[PaidItemCreate],
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission("paid_item:write")),
+) -> BulkSubmitResponse:
+    submissions = [_to_submission(row, PaidItemSource.BULK_FILE) for row in payload]
+    results = ingest_paid_items_bulk(db, ctx.tenant_id, submissions)
+    out = [
+        BulkRowResultOut(index=r.index, success=r.success, id=str(r.paid_item_id) if r.paid_item_id else None, status=r.match_status, error=r.error)
+        for r in results
+    ]
+    return BulkSubmitResponse(
+        total=len(out), succeeded=sum(r.success for r in out), failed=sum(not r.success for r in out), results=out
+    )
+
+
+@router.get("", response_model=list[PaidItemRead])
+def list_paid_items(
+    account_id: uuid.UUID | None = None,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+) -> list[PaidItemRead]:
+    items = PaidItemRepository(db, ctx.tenant_id).list(account_id=account_id)
+    return [PaidItemRead.model_validate(i) for i in items]
+
+
+@router.get("/{item_id}", response_model=PaidItemRead)
+def get_paid_item(
+    item_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+) -> PaidItemRead:
+    item = PaidItemRepository(db, ctx.tenant_id).get(item_id)
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Paid item not found")
+    return PaidItemRead.model_validate(item)

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Security — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Security keys</h1>
+    <button type="button" id="register-btn">Register a new key</button>
+  </div>
+  <p id="register-error" class="flash flash-error" style="display:none;"></p>
+  <p>Registering a key turns on a second factor for this account: future logins will
+    require your password AND this key.</p>
+
+  {% if credentials %}
+  <table>
+    <thead><tr><th>Nickname</th><th>Registered</th><th>Last used</th><th></th></tr></thead>
+    <tbody>
+      {% for cred in credentials %}
+      <tr>
+        <td>{{ cred.nickname or "(unnamed)" }}</td>
+        <td>{{ cred.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ cred.last_used_at.strftime("%Y-%m-%d %H:%M") if cred.last_used_at else "never" }}</td>
+        <td>
+          <form method="post" action="/ui/security/webauthn/{{ cred.id }}/delete" class="inline-form" data-confirm="Remove this security key?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No security keys registered yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/webauthn.js"></script>
+<script>
+  const errorEl = document.getElementById("register-error");
+  document.getElementById("register-btn").addEventListener("click", () => {
+    errorEl.style.display = "none";
+    const nickname = window.prompt("Name this key (e.g. 'YubiKey', 'Laptop Touch ID'):", "");
+    if (nickname === null) return;
+    registerWebAuthn(
+      nickname,
+      () => window.location.reload(),
+      (message) => {
+        errorEl.textContent = message;
+        errorEl.style.display = "block";
+      }
+    );
+  });
+</script>
+{% endblock %}

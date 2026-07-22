@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Paid Items — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Paid Items</h1>
+    {% if can(ctx.role, "paid_item:write") %}<a href="/ui/paid-items/new" class="button">Submit paid item</a>{% endif %}
+  </div>
+  {% if items %}
+  <table>
+    <thead><tr><th>Check #</th><th>Presented amount</th><th>Presented date</th><th>Match status</th><th>Settlement</th></tr></thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td><a href="/ui/paid-items/{{ item.id }}">{{ item.check_number }}</a></td>
+        <td>{{ item.presented_amount }}</td>
+        <td>{{ item.presented_date }}</td>
+        <td><span class="badge {{ 'badge-ok' if item.match_status.value == 'matched' else 'badge-danger' if item.match_status.value == 'exception' else '' }}">{{ item.match_status.value }}</span></td>
+        <td>{{ item.settlement_status.value }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No paid items yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

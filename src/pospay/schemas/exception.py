@@ -1,0 +1,27 @@
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+from pospay.domain.exception_item import ExceptionStatus
+
+
+class ExceptionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    network_code: str
+    source_item_id: uuid.UUID
+    related_reference_id: uuid.UUID | None
+    exception_types: list[str]
+    status: ExceptionStatus
+    ml_score: float | None
+    ml_model_version: str | None
+    decision_deadline: datetime | None
+    created_at: datetime
+
+    @classmethod
+    def from_orm_row(cls, row) -> "ExceptionRead":
+        data = {c.name: getattr(row, c.name) for c in row.__table__.columns}
+        data["exception_types"] = row.exception_types.split(",") if row.exception_types else []
+        return cls.model_validate(data)

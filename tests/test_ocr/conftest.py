@@ -1,0 +1,26 @@
+import io
+
+import pytest
+from PIL import Image, ImageDraw, ImageFont
+
+
+def make_check_image(*, payee: str = "Acme Test Vendor", amount: str = "123.45") -> bytes:
+    img = Image.new("RGB", (1200, 500), "white")
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 36)
+    except OSError:
+        font = ImageFont.load_default()
+
+    draw.text((50, 50), "DATE: 01/10/2026", fill="black", font=font)
+    draw.text((50, 150), f"PAY TO THE ORDER OF: {payee}", fill="black", font=font)
+    draw.text((900, 150), f"${amount}", fill="black", font=font)
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def sample_check_image_bytes() -> bytes:
+    return make_check_image()

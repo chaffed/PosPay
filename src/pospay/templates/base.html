@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PosPay{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  {% if ctx %}
+  <nav class="topnav">
+    <a href="/ui/" class="brand">PosPay</a>
+    <a href="/ui/accounts">Accounts</a>
+    <a href="/ui/issued-items">Issued Items</a>
+    <a href="/ui/stop-payments">Stop Payments</a>
+    <a href="/ui/paid-items">Paid Items</a>
+    <a href="/ui/check-images">Check Images</a>
+    <a href="/ui/ach/authorizations">ACH Authorizations</a>
+    <a href="/ui/ach/transactions">ACH Transactions</a>
+    <a href="/ui/exceptions">Exceptions</a>
+    {% if can(ctx.role, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
+    <span class="spacer"></span>
+    <a href="/ui/security">Security</a>
+    <form method="post" action="/ui/logout" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="link-button">Log out</button>
+    </form>
+  </nav>
+  {% endif %}
+
+  <div class="page">
+    {% include "partials/_flash.html" %}
+    {% block content %}{% endblock %}
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

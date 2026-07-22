@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Submit ACH Transaction — PosPay{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Submit ACH transaction</h1>
+  <p>Submitting runs the ACH positive pay matching engine immediately.</p>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/ui/ach/transactions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Account
+      <select name="account_id" required>
+        {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }} ({{ a.account_number }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Originator (company) ID <input type="text" name="originator_id" required></label>
+    <label>Originator name <input type="text" name="originator_name" required></label>
+    <label>Receiver ID (optional) <input type="text" name="receiver_id"></label>
+    <label>Amount <input type="text" name="amount" placeholder="0.00" required></label>
+    <label>Type
+      <select name="transaction_type" required>
+        <option value="debit">Debit</option>
+        <option value="credit">Credit</option>
+      </select>
+    </label>
+    <label>SEC code <input type="text" name="sec_code" placeholder="PPD" required></label>
+    <label>Trace number <input type="text" name="trace_number" required></label>
+    <label>Effective date <input type="date" name="effective_date" required></label>
+    <button type="submit">Submit</button>
+  </form>
+</div>
+{% endblock %}

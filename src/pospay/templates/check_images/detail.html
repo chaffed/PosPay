@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Check Image — PosPay{% endblock %}
+{% if image.ocr_status.value == "pending" %}
+{% block scripts %}<meta http-equiv="refresh" content="2">{% endblock %}
+{% endif %}
+{% block content %}
+<div class="card">
+  <h1>Check image</h1>
+  <p>OCR status: <span class="badge {{ 'badge-ok' if image.ocr_status.value == 'completed' else 'badge-danger' if image.ocr_status.value == 'failed' else 'badge-warn' }}">{{ image.ocr_status.value }}</span>
+    {% if image.ocr_status.value == "pending" %}<a href="/ui/check-images/{{ image.id }}">(refresh)</a>{% endif %}
+  </p>
+  {% if image.ocr_status.value == "completed" %}
+  <p>Extracted payee: {{ image.ocr_extracted_payee or "not found" }}</p>
+  <p>Extracted amount: {{ image.ocr_extracted_amount or "not found" }}</p>
+  <p>Confidence: {{ "%.0f"|format((image.ocr_confidence or 0) * 100) }}%</p>
+  <p>Provider: {{ image.ocr_provider }}</p>
+  {% endif %}
+
+  {% if can(ctx.role, "paid_item:write") %}
+  <form method="post" action="/ui/check-images/{{ image.id }}/reprocess" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary">Reprocess</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}ACH Transactions — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>ACH Transactions</h1>
+    {% if can(ctx.role, "ach_transaction:write") %}<a href="/ui/ach/transactions/new" class="button">Submit transaction</a>{% endif %}
+  </div>
+  {% if txns %}
+  <table>
+    <thead><tr><th>Originator</th><th>Type</th><th>Amount</th><th>Effective date</th><th>Match status</th></tr></thead>
+    <tbody>
+      {% for txn in txns %}
+      <tr>
+        <td><a href="/ui/ach/transactions/{{ txn.id }}">{{ txn.originator_name }}</a></td>
+        <td>{{ txn.transaction_type.value }}</td>
+        <td>{{ txn.amount }}</td>
+        <td>{{ txn.effective_date }}</td>
+        <td><span class="badge {{ 'badge-ok' if txn.match_status.value == 'matched' else 'badge-danger' if txn.match_status.value == 'exception' else '' }}">{{ txn.match_status.value }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No ACH transactions yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

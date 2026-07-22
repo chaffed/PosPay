@@ -1,0 +1,23 @@
+# Importing this package must register every ORM mapper, even though most call sites
+# only need one or two models directly. SQLAlchemy resolves ForeignKey("table.id")
+# strings lazily against whatever's been mapped so far — if a model referenced only by
+# FK string (e.g. Account, via issued_item.account_id) was never actually imported
+# anywhere in the running process, mapper configuration fails at first flush with
+# NoReferencedTableError, even though every individual module imports cleanly on its own.
+from pospay.domain import (  # noqa: F401
+    account,
+    ach_authorization_rule,
+    ach_transaction,
+    check_image,
+    decision,
+    exception_item,
+    issued_item,
+    ml_model,
+    paid_item,
+    payment_network,
+    stop_payment,
+    tenant,
+    user,
+    webauthn_challenge,
+    webauthn_credential,
+)

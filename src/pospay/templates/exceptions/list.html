@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Exceptions — PosPay{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Exceptions Queue</h1>
+  <form method="get" action="/ui/exceptions" class="toolbar">
+    <label style="max-width:180px;">Network
+      <select name="network_code" onchange="this.form.submit()">
+        <option value="">All</option>
+        <option value="check" {{ "selected" if network_filter == "check" else "" }}>Check</option>
+        <option value="ach" {{ "selected" if network_filter == "ach" else "" }}>ACH</option>
+      </select>
+    </label>
+    <label style="max-width:220px;">Status
+      <select name="status" onchange="this.form.submit()">
+        <option value="">All</option>
+        {% for s in ["open", "pending_approval", "pay", "return", "escalated"] %}
+        <option value="{{ s }}" {{ "selected" if status_filter and status_filter.value == s else "" }}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if rows %}
+  <table>
+    <thead><tr><th>Network</th><th>Item</th><th>Amount</th><th>Types</th><th>ML score</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><span class="badge">{{ row.exception.network_code }}</span></td>
+        <td><a href="/ui/exceptions/{{ row.exception.id }}">{{ row.summary.label }}</a></td>
+        <td>{{ row.summary.amount }}</td>
+        <td>{{ row.exception.exception_types.replace(",", ", ") }}</td>
+        <td>{% if row.exception.ml_score is not none %}{{ "%.2f"|format(row.exception.ml_score) }}{% else %}<span class="badge">no model yet</span>{% endif %}</td>
+        <td><span class="badge {{ 'badge-ok' if row.exception.status.value == 'pay' else 'badge-danger' if row.exception.status.value in ['return','escalated'] else 'badge-warn' }}">{{ row.exception.status.value }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No exceptions — nothing needs review right now.</p>
+  {% endif %}
+</div>
+{% endblock %}
