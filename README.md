@@ -21,7 +21,18 @@ double-click support yet), run the same script directly:
 python3 scripts/launcher.py
 ```
 
-**Manual setup**, if you'd rather control each step yourself:
+Everything this creates — the virtual environment, the SQLite database, uploaded check
+images, and trained ML models — lives under `.pospay-run/` next to the project, never in
+the source tree itself. **To fully reset and leave the checkout exactly as cloned, just
+delete that one folder:**
+
+```bash
+rm -rf .pospay-run
+```
+
+**Manual setup**, if you'd rather control each step yourself (and are fine with `.venv`,
+`pospay.db`, `data/`, and `ml_artifacts/` living directly in the project root as
+persistent local dev state, rather than one disposable folder):
 
 ```bash
 python3 -m venv .venv

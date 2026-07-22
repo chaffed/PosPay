@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from pospay.auth.security import hash_password
+from pospay.config import get_settings
 from pospay.db.base import Base
 from pospay.db.session import get_db
 from pospay.domain.account import Account
@@ -18,6 +19,20 @@ from pospay.domain.user import User, UserRole
 # pospay.domain's __init__ imports every model module, fully populating Base.metadata
 # before create_all — see its docstring for why this must be centralized in one place.
 import pospay.domain  # noqa: F401
+
+
+@pytest.fixture(autouse=True)
+def isolated_filesystem_settings(tmp_path, monkeypatch):
+    """Every test gets its own throwaway directory for anything the app writes to disk
+    (trained ML model artifacts, check-image uploads) — without this, running the suite
+    leaves ml_artifacts/ behind in the project root exactly like the launcher's runtime
+    state used to, since these paths default to plain relative paths meant for a real
+    single-instance deployment, not test isolation."""
+    monkeypatch.setenv("POSPAY_ML_ARTIFACT_DIR", str(tmp_path / "ml_artifacts"))
+    monkeypatch.setenv("POSPAY_CHECK_IMAGE_STORAGE_DIR", str(tmp_path / "check_images"))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture

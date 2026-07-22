@@ -1,16 +1,8 @@
-import pytest
-
-from pospay.config import get_settings
 from tests.conftest import login_headers
 from tests.test_ocr.conftest import make_check_image
 
-
-@pytest.fixture(autouse=True)
-def isolated_check_image_storage(tmp_path, monkeypatch):
-    monkeypatch.setenv("POSPAY_CHECK_IMAGE_STORAGE_DIR", str(tmp_path))
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+# Check-image storage isolation is now handled globally by conftest.py's
+# isolated_filesystem_settings autouse fixture.
 
 
 def test_upload_check_image_runs_ocr_and_populates_fields(client, tenant_factory):

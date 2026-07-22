@@ -6,7 +6,15 @@ Run this directly (`python3 scripts/launcher.py`) or via the platform wrapper
 project into it, runs database migrations, prompts for first-run setup info if the
 database is empty, then starts the server and opens your browser.
 
-Safe to re-run any time — every step is idempotent and skips whatever's already done.
+Everything this script creates — the virtual environment, the SQLite database, uploaded
+check images, and trained ML model files — lives under .pospay-run/ next to this project,
+never inside the source tree itself. To fully reset (wipe the database, uploads, trained
+models, and installed dependencies) and start over, just delete that one folder:
+
+    rm -rf .pospay-run
+
+Safe to re-run any time otherwise — every step is idempotent and skips whatever's
+already done.
 
 Deliberately stdlib-only until AFTER the re-exec into the venv's own interpreter (see
 _create_venv_and_install/_reexec_under_venv below): this script must run under whatever
@@ -21,7 +29,8 @@ import venv
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-VENV_DIR = PROJECT_ROOT / ".venv"
+RUN_DIR = PROJECT_ROOT / ".pospay-run"  # delete this one folder to fully reset — see module docstring
+VENV_DIR = RUN_DIR / "venv"
 # Written only after a fully successful install — an interrupted first run (Ctrl+C
 # mid-`pip install`) leaves a venv directory behind but no marker, so the next run
 # recreates it from scratch rather than trusting a half-installed environment.
@@ -56,6 +65,7 @@ def _create_venv_and_install() -> None:
         shutil.rmtree(VENV_DIR)
 
     print(f"  Creating virtual environment at {VENV_DIR}")
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
     venv.create(str(VENV_DIR), with_pip=True)
 
     venv_python = str(_venv_python())
@@ -78,6 +88,19 @@ def _reexec_under_venv() -> None:
     sys.stderr.flush()
     venv_python = str(_venv_python())
     os.execv(venv_python, [venv_python, str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
+def _configure_run_env() -> None:
+    """Points the app's database, check-image storage, and ML artifacts at .pospay-run/
+    instead of their normal project-root-relative defaults (used by a manual `alembic
+    upgrade head && uvicorn ...` dev setup) — this is what keeps the quickstart from
+    ever writing into the checked-out source tree. setdefault() so an advanced user's
+    own POSPAY_* env vars still win. Must run before the first `pospay.config.get_settings()`
+    call anywhere (it's @lru_cache'd), so this is called before any `from pospay...` import."""
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("POSPAY_DATABASE_URL", f"sqlite:///{RUN_DIR / 'pospay.db'}")
+    os.environ.setdefault("POSPAY_CHECK_IMAGE_STORAGE_DIR", str(RUN_DIR / "check_images"))
+    os.environ.setdefault("POSPAY_ML_ARTIFACT_DIR", str(RUN_DIR / "ml_artifacts"))
 
 
 def _check_tesseract() -> None:
@@ -165,20 +188,22 @@ def _open_browser_when_ready(url: str) -> None:
 
 
 def main() -> None:
-    os.chdir(PROJECT_ROOT)  # every relative path in config.py (DB file, OCR storage,
-    # ML artifacts) is resolved relative to cwd — pin it regardless of how this was invoked
+    os.chdir(PROJECT_ROOT)  # pin cwd regardless of how this was invoked (double-click,
+    # `python3 scripts/launcher.py` from elsewhere, etc.) — everything else uses absolute paths anyway
 
     if not _is_running_under_venv():
         _create_venv_and_install()
         _reexec_under_venv()
         return  # unreachable: execv replaces this process
 
+    _configure_run_env()
     _check_tesseract()
     _run_migrations()
     _prompt_first_run_setup()
 
     url = f"http://{HOST}:{PORT}/ui/login"
     print(f"Starting PosPay at {url}")
+    print(f"Everything this run creates lives under {RUN_DIR} — delete that folder to fully reset.")
     print("Press Ctrl+C to stop.\n")
     _open_browser_when_ready(url)
 

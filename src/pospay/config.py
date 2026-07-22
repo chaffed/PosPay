@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     payee_match_fuzzy_threshold: float = 85.0
 
     ml_min_new_decisions_for_retrain: int = 20
-    ml_artifact_dir: str = "src/pospay/ml/artifacts"
+    ml_artifact_dir: str = "./ml_artifacts"  # NOT inside src/pospay/ — that's installed package code, not a place for runtime output
     enable_ml_scheduler: bool = False  # opt-in: off by default so tests/local dev don't spawn a background thread
     ml_retrain_cron_hour: int = 2  # nightly at 2am when enabled
 
