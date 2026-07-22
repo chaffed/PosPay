@@ -1,15 +1,19 @@
 import uuid
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from pospay.bulk_import.nacha import NachaParseError, parse_nacha_file
+from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.tenancy import TenantContext
 from pospay.db.session import get_db
 from pospay.domain.ach_transaction import AchTransactionType
+from pospay.networks.ach.bulk_import import ingest_ach_rows, ingest_nacha_entries
 from pospay.networks.ach.ingestion import AchTransactionSubmission, ingest_ach_transaction
 from pospay.repositories.ach_transaction_repo import AchTransactionRepository
 from pospay.services import account_service
@@ -81,6 +85,64 @@ def create_transaction(
 
     flash = "Transaction matched." if txn.match_status.value == "matched" else "Transaction created an exception — see the Exceptions queue."
     return RedirectResponse(f"/ui/ach/transactions/{txn.id}?flash={quote(flash)}", status_code=303)
+
+
+# NOTE: /bulk must be registered before /{transaction_id} below — FastAPI matches path
+# patterns in registration order, and "bulk" would otherwise be captured as
+# transaction_id and rejected as an invalid UUID before this route is ever tried.
+
+
+@router.get("/bulk")
+def bulk_upload_form(
+    request: Request, ctx: TenantContext = Depends(require_web_permission("ach_transaction:write"))
+) -> HTMLResponse:
+    return render_template(request, "ach/transaction_bulk_upload.html", ctx=ctx)
+
+
+@router.post("/bulk")
+async def bulk_upload_transactions(
+    request: Request,
+    upload_file: UploadFile,
+    format: Literal["tabular", "nacha"] = Form(...),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("ach_transaction:write")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    content = await upload_file.read()
+
+    if format == "nacha":
+        try:
+            entries = parse_nacha_file(content)
+        except NachaParseError as exc:
+            return render_template(
+                request, "ach/transaction_bulk_upload.html", ctx=ctx, nacha_error=str(exc), status_code=422
+            )
+        results = ingest_nacha_entries(db, ctx.tenant_id, entries)
+    else:
+        try:
+            rows = parse_tabular_file(upload_file.filename or "upload.csv", content)
+        except TabularParseError as exc:
+            return render_template(
+                request, "ach/transaction_bulk_upload.html", ctx=ctx, tabular_error=str(exc), status_code=422
+            )
+        if not rows:
+            return render_template(
+                request,
+                "ach/transaction_bulk_upload.html",
+                ctx=ctx,
+                tabular_error="That file has no data rows.",
+                status_code=422,
+            )
+        results = ingest_ach_rows(db, ctx.tenant_id, rows)
+
+    return render_template(
+        request,
+        "bulk_result.html",
+        ctx=ctx,
+        results=results,
+        back_url="/ui/ach/transactions",
+        back_label="Back to ACH transactions",
+    )
 
 
 @router.get("/{transaction_id}")

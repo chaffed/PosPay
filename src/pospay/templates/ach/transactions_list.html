@@ -4,7 +4,12 @@
 <div class="card">
   <div class="toolbar">
     <h1>ACH Transactions</h1>
-    {% if can(ctx.role, "ach_transaction:write") %}<a href="/ui/ach/transactions/new" class="button">Submit transaction</a>{% endif %}
+    {% if can(ctx.role, "ach_transaction:write") %}
+    <div class="actions">
+      <a href="/ui/ach/transactions/new" class="button">Submit transaction</a>
+      <a href="/ui/ach/transactions/bulk" class="button secondary">Bulk upload</a>
+    </div>
+    {% endif %}
   </div>
   {% if txns %}
   <table>

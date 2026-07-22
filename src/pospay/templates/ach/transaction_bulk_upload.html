@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload ACH Transactions — PosPay{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Bulk upload ACH transactions</h1>
+
+  <h2>Delimited or Excel file</h2>
+  <p>First row must be a header row with these column names (case/spacing-insensitive,
+    any order):</p>
+  <table>
+    <thead><tr><th>Column</th><th>Required</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>account_number</td><td>yes</td><td>1001</td></tr>
+      <tr><td>originator_id</td><td>yes</td><td>1234567890</td></tr>
+      <tr><td>originator_name</td><td>yes</td><td>Acme Payroll</td></tr>
+      <tr><td>receiver_id</td><td>no</td><td>EMP001</td></tr>
+      <tr><td>amount</td><td>yes</td><td>150.00</td></tr>
+      <tr><td>transaction_type</td><td>yes</td><td>debit or credit</td></tr>
+      <tr><td>sec_code</td><td>yes</td><td>PPD</td></tr>
+      <tr><td>trace_number</td><td>yes</td><td>123456780000001</td></tr>
+      <tr><td>effective_date</td><td>yes</td><td>2026-01-15</td></tr>
+    </tbody>
+  </table>
+  {% if tabular_error %}<p class="flash flash-error">{{ tabular_error }}</p>{% endif %}
+  <form method="post" action="/ui/ach/transactions/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="format" value="tabular">
+    <label>File <input type="file" name="upload_file" accept=".csv,.txt,.tsv,.xlsx,.xls" required></label>
+    <button type="submit">Upload</button>
+  </form>
+
+  <h2>NACHA file</h2>
+  <p>Upload a standard 94-character fixed-width NACHA file. Originator company ID/name,
+    SEC code, and effective date come from each batch header (record type 5); amount,
+    receiver ID, DFI account number, and trace number come from each entry detail record
+    (record type 6). File/batch control totals (record types 8 and 9) are not validated —
+    a malformed file may partially import rather than being rejected outright.</p>
+  {% if nacha_error %}<p class="flash flash-error">{{ nacha_error }}</p>{% endif %}
+  <form method="post" action="/ui/ach/transactions/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="format" value="nacha">
+    <label>File <input type="file" name="upload_file" accept=".ach,.txt,.nacha" required></label>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+{% endblock %}

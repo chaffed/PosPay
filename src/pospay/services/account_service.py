@@ -25,6 +25,14 @@ def list_accounts(session: Session, tenant_id: uuid.UUID) -> list[Account]:
     return AccountRepository(session, tenant_id).list()
 
 
+def get_account_by_number(session: Session, tenant_id: uuid.UUID, account_number: str) -> Account | None:
+    """Used by bulk file imports (issued items, ACH) to resolve a human-readable account
+    number in an uploaded row/entry to this tenant's internal account id — files never
+    carry our UUIDs, only the account number a user would actually recognize."""
+    matches = AccountRepository(session, tenant_id).list(account_number=account_number)
+    return matches[0] if matches else None
+
+
 def set_ach_debit_block_mode(session: Session, tenant_id: uuid.UUID, account_id: uuid.UUID, mode: AchDebitBlockMode) -> Account | None:
     repo = AccountRepository(session, tenant_id)
     account = repo.get(account_id)

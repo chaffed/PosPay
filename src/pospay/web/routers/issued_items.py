@@ -1,10 +1,11 @@
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.issued_item import IssuedItemStatus
@@ -93,6 +94,52 @@ def create_issued_item(
         )
 
     return RedirectResponse("/ui/issued-items?flash=Issued+item+created.", status_code=303)
+
+
+# NOTE: /bulk must be registered before /{item_id} below — FastAPI matches path patterns
+# in registration order, and "bulk" would otherwise be captured as item_id and rejected
+# as an invalid UUID before this route is ever tried.
+
+
+@router.get("/bulk")
+def bulk_upload_form(
+    request: Request, ctx: TenantContext = Depends(require_web_permission("issued_item:write"))
+) -> HTMLResponse:
+    return render_template(request, "issued_items/bulk_upload.html", ctx=ctx)
+
+
+@router.post("/bulk")
+async def bulk_upload_issued_items(
+    request: Request,
+    upload_file: UploadFile,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("issued_item:write")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    content = await upload_file.read()
+    try:
+        rows = parse_tabular_file(upload_file.filename or "upload.csv", content)
+    except TabularParseError as exc:
+        return render_template(
+            request, "issued_items/bulk_upload.html", ctx=ctx, error=str(exc), status_code=422
+        )
+
+    if not rows:
+        return render_template(
+            request, "issued_items/bulk_upload.html", ctx=ctx, error="That file has no data rows.", status_code=422
+        )
+
+    results = issued_item_service.create_issued_items_from_rows(
+        db, ctx.tenant_id, rows, submitted_by_user_id=ctx.user_id
+    )
+    return render_template(
+        request,
+        "bulk_result.html",
+        ctx=ctx,
+        results=results,
+        back_url="/ui/issued-items",
+        back_label="Back to issued items",
+    )
 
 
 @router.get("/{item_id}")

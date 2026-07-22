@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Results — PosPay{% endblock %}
+{% block content %}
+{% set failures = results | rejectattr("success") | list %}
+{% set succeeded = results | selectattr("success") | list %}
+<div class="card">
+  <h1>Bulk upload results</h1>
+  <p>
+    <span class="badge {{ 'badge-ok' if not failures else 'badge-warn' }}">
+      {{ succeeded | length }} of {{ results | length }} succeeded
+    </span>
+  </p>
+  {% if failures %}
+  <table>
+    <thead><tr><th>Row</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for r in failures %}
+      <tr><td>{{ r.row_label }}</td><td>{{ r.error }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  <p><a href="{{ back_url }}">{{ back_label }}</a></p>
+</div>
+{% endblock %}

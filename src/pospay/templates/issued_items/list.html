@@ -4,7 +4,12 @@
 <div class="card">
   <div class="toolbar">
     <h1>Issued Items</h1>
-    {% if can(ctx.role, "issued_item:write") %}<a href="/ui/issued-items/new" class="button">New issued item</a>{% endif %}
+    {% if can(ctx.role, "issued_item:write") %}
+    <div class="actions">
+      <a href="/ui/issued-items/new" class="button">New issued item</a>
+      <a href="/ui/issued-items/bulk" class="button secondary">Bulk upload</a>
+    </div>
+    {% endif %}
   </div>
   <form method="get" action="/ui/issued-items">
     <label style="max-width:220px;">Status

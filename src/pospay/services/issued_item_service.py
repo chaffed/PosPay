@@ -2,11 +2,15 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.orm import Session
 
+from pospay.bulk_import.fields import RowFieldError, parse_date, parse_decimal, require_str
+from pospay.bulk_import.results import BulkFileRowResult
 from pospay.domain.issued_item import IssuedItem, IssuedItemSource, IssuedItemStatus
 from pospay.repositories.issued_item_repo import IssuedItemRepository
+from pospay.services import account_service
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,3 +95,53 @@ def list_issued_items(
 ) -> list[IssuedItem]:
     repo = IssuedItemRepository(session, tenant_id)
     return repo.list(status=status, account_id=account_id)
+
+
+def _issued_item_input_from_row(session: Session, tenant_id: uuid.UUID, row: dict[str, Any]) -> IssuedItemInput:
+    """Raises RowFieldError on any missing/invalid field or unrecognized account_number
+    — callers (create_issued_items_from_rows) catch this per-row so one bad row doesn't
+    fail the whole file. Expected (case/whitespace-insensitive) columns: account_number,
+    check_number, amount, payee_name, issue_date."""
+    account_number = require_str(row, "account_number")
+    account = account_service.get_account_by_number(session, tenant_id, account_number)
+    if account is None:
+        raise RowFieldError(f"No account found with account number {account_number!r}")
+
+    return IssuedItemInput(
+        account_id=account.id,
+        check_number=require_str(row, "check_number"),
+        amount=parse_decimal(row, "amount"),
+        payee_name=require_str(row, "payee_name"),
+        issue_date=parse_date(row, "issue_date"),
+    )
+
+
+def create_issued_items_from_rows(
+    session: Session,
+    tenant_id: uuid.UUID,
+    rows: list[dict[str, Any]],
+    *,
+    submitted_by_user_id: uuid.UUID | None,
+) -> list[BulkFileRowResult]:
+    """Entry point for delimited/Excel bulk uploads (see web/routers/issued_items.py) —
+    each row carries its own account_number (resolved to this tenant's account), unlike
+    the JSON API's /issued-items/bulk which takes a single tenant-wide account per item
+    already as a UUID. One DB transaction per row, same isolation pattern as
+    create_issued_items_bulk, so a single bad row doesn't roll back the whole file."""
+    results: list[BulkFileRowResult] = []
+    for index, row in enumerate(rows):
+        row_label = f"row {index + 2}"  # +2: 1-based, plus the header row itself
+        try:
+            data = _issued_item_input_from_row(session, tenant_id, row)
+            item = create_issued_item(
+                session, tenant_id, data, submitted_by_user_id=submitted_by_user_id, source=IssuedItemSource.BULK_FILE
+            )
+            session.commit()
+            results.append(BulkFileRowResult(row_label=row_label, success=True, created_id=item.id))
+        except RowFieldError as exc:
+            session.rollback()
+            results.append(BulkFileRowResult(row_label=row_label, success=False, error=str(exc)))
+        except Exception as exc:  # noqa: BLE001 — isolate row failures (e.g. duplicate check number) in a bulk file
+            session.rollback()
+            results.append(BulkFileRowResult(row_label=row_label, success=False, error=str(exc)))
+    return results
