@@ -78,6 +78,120 @@ whole file) — resolved against your existing accounts, so one file can span mu
 accounts. Unmatched account numbers, and any other bad row, are reported individually in
 the results page without failing the rest of the file (one DB transaction per row).
 
+Both upload forms have a **"create missing accounts"** checkbox: when checked, any
+account number in the file that doesn't already exist is created automatically instead of
+failing that row. Delimited/Excel files may include an optional `account_name` column,
+used as the new account's name; NACHA files carry no such field, so accounts it creates
+are named `Account <number>`. The same new account number appearing in multiple rows of
+one file is only created once.
+
+**Every submitted file is saved and signed** (`bulk_import/file_storage.py`,
+`bulk_import/signing.py`, `services/bulk_upload_file_service.py`) — issued items, ACH
+(tabular and NACHA), and the user bulk upload (see below) all keep the original bytes on
+local disk (`POSPAY_BULK_UPLOAD_STORAGE_DIR`, default
+`./data/bulk_uploads`, consolidated under `.pospay-run/` by the quickstart launcher) plus
+a SHA-256 fingerprint and an HMAC-SHA256 signature computed with a server-held secret
+(`POSPAY_FILE_SIGNING_SECRET` — same HS256 pattern already used for JWTs). This is saved
+**even when the file is rejected outright** (bad format, no data rows) — a malformed
+submission is still evidence of what was actually sent, so it's recorded before parsing
+ever runs, with a link to it shown right on the error page. Every results/error page links
+to a detail view (`/ui/bulk-uploads/<id>`) that re-verifies the signature against a fresh
+read of the file **on every visit** — not a cached flag — so tampering after upload (even
+a direct edit of the file on disk) shows up as a mismatch, and the original file can be
+downloaded byte-for-byte from there. Gated by the same permission that gated the original
+upload (`issued_item:write` / `ach_transaction:write` / `user:manage`).
+
+## Users, security groups, and cross-tenant access
+
+Access control is a set of per-tenant **security groups** (`auth/permissions.py`,
+`services/security_group_service.py`), not a fixed role enum — each group is a named,
+editable set of permission keys drawn from a single catalog covering every action in the
+app (read/write per resource, plus `exception:recommend`/`exception:decide`,
+`admin:manage`, `user:manage`, `security_group:manage`). Every new tenant is seeded with 4
+default groups reproducing the old fixed roles — **Admin** (everything), **Preparer**
+(read/write except deciding exceptions or managing users/groups/admin), **Approver**
+(read-only plus `exception:decide`), **Viewer** (read-only) — fully editable from there
+via `/ui/security-groups`. Permissions are resolved from the database on **every
+request** (`auth/deps.py::decode_and_build_context`), not baked into the JWT, so editing a
+group's permissions — or deactivating a user — takes effect on the very next request, not
+after the token expires.
+
+**Users** (`/ui/users`) can be added one at a time or via CSV bulk upload
+(`/ui/users/bulk`, columns: `email`, `security_group`, `password`), reusing the same
+`bulk_import/` infrastructure as issued items/ACH. A `User` is a **global login identity**
+(email is unique platform-wide, not per-tenant) with zero or more `TenantMembership` rows,
+each pointing at one tenant and one security group there — this is what makes **cross-tenant
+access** possible: the same person, same password, can hold membership (with a different
+security group) in more than one tenant. Login still takes an organization slug + email +
+password exactly as before; once logged in, **"Switch organization"** in the nav
+re-mints tokens for any other tenant you're an active member of, with no re-entry of
+password or WebAuthn (see below).
+
+Adding a user by an email that already belongs to an identity in a *different* tenant
+never attaches it silently — both the single-add form and the bulk CSV surface an explicit
+confirmation step ("grant this existing user access to this organization?") before a
+membership is created, and that confirmation re-resolves the identity by email
+server-side rather than trusting anything the client posted.
+
+WebAuthn credentials are still registered **per tenant-membership**, not once for the
+whole identity — a user with memberships in two tenants currently registers a security key
+separately in each. Unifying that to one identity-wide credential set is a reasonable
+fast-follow, deliberately out of scope for the cross-tenant-membership work.
+
+## Per-tenant branding
+
+Each tenant can customize a logo, favicon, accent color, and display name from
+`/ui/settings` (gated by a dedicated `tenant:manage` permission, not folded into
+`admin:manage`, so a security group can be scoped to branding alone). Uploaded images are
+stored on local disk under `POSPAY_TENANT_ASSET_STORAGE_DIR` (default
+`./data/tenant_assets`, consolidated under `.pospay-run/` by the quickstart launcher, same
+as check-image storage) — the DB only ever stores the path and content-type, never the
+blob. The accent color reuses the single `--accent` CSS custom property `app.css` already
+threads through every button/link/nav highlight, applied via a small inline `<style>`
+override, so no CSS rewrite was needed.
+
+Branding shows throughout the logged-in app shell (nav logo/name, page titles, browser-tab
+favicon, accent color) **and** on the login page itself — via a tenant slug in the URL
+(`/ui/login/<slug>`), not Host-header/subdomain routing. A slug-based login link needs no
+DNS or reverse-proxy infrastructure and works identically locally and in production,
+unlike a subdomain-per-tenant approach, which this project deliberately doesn't build
+toward given its local-first, one-click-launcher design. An unknown or inactive slug falls
+back to the plain generic login form rather than an error. Logo/favicon bytes are served
+by two public (unauthenticated) routes keyed by slug, `/ui/branding/<slug>/logo` and
+`/ui/branding/<slug>/favicon` — a company logo isn't sensitive, and the login page needs to
+show it before any session exists, so both the pre-auth login page and the authenticated
+app shell hit the exact same serving routes.
+
+## Immutable action log
+
+Every state-changing action — through **either** the web UI or the JSON API — is recorded
+to a per-tenant, tamper-evident action log (`/ui/audit-log`, gated by a dedicated
+`audit_log:read` permission that's Admin-only by default, unlike every other `*:read`
+permission, since "who did what" is more sensitive than any single resource's own data).
+Covers create/void/cancel/revoke/upload/recommend/decide across issued items, stop
+payments, paid items, check images, ACH authorizations/transactions, exceptions/decisions,
+accounts, users, security groups, and tenant settings — one entry per successfully-created
+row for bulk uploads too, not one entry for the file as a whole (the file itself already
+has its own signed audit record — see "Bulk file uploads" above).
+
+Entries form a **hash chain**, not independent per-row signatures: each entry's
+`entry_hash` is an HMAC-SHA256 (`POSPAY_AUDIT_LOG_SIGNING_SECRET`, a dedicated secret,
+distinct from every other signing secret in this app) over its own fields plus the
+*previous* entry's hash. A chain — not independent signatures — is what's needed here,
+because the real threat to an action log is deletion or reordering, not just editing one
+row: an independent per-row signature can't detect a row being deleted outright, but a
+broken chain link can. `services/audit_log_service.py::verify_chain` (surfaced as "Verify
+chain" on the audit log page) walks every entry for a tenant and recomputes each hash from
+scratch — proof nothing has been edited, deleted, or reordered since it was written, not a
+cached flag. This is tamper-**evidence**, not OS-level tamper-*prevention* (no DB
+triggers/grants are revoked) — the same posture as bulk-upload file signing.
+
+Logging calls live in the route handlers (both `web/routers/*.py` and `api/v1/*.py`),
+right after the mutating service call succeeds and before that request's `db.commit()` —
+so the audit entry and the business change commit together atomically, and every route
+already has the actor/tenant/channel it needs without any shared service function having
+to take on a new required parameter.
+
 ## Authentication
 
 Username + password (bcrypt-hashed) issuing JWTs (`api/v1/auth.py`), with an optional
@@ -115,17 +229,20 @@ POSPAY_DATABASE_URL=postgresql+psycopg://pospay:pospay@localhost:5432/pospay ale
 Or bring up the whole stack (app + Postgres) with `docker compose up --build`.
 
 **Row-Level Security**: on Postgres, migrations enable RLS (`FORCE ROW LEVEL SECURITY`)
-on the single-tenant operational tables (`account`, `user`, `issued_item`,
-`stop_payment`, `check_image`, `paid_item`, `ach_authorization_rule`,
-`ach_transaction`) as defense-in-depth alongside the primary tenant-isolation mechanism
-(the repository-layer filter in `repositories/base.py`, which is what's actually under
-test in `tests/test_api/test_cross_tenant_isolation.py`). `exception_item` and `decision`
-are deliberately excluded — the ML retraining pipeline reads across all tenants by design
-(see `ml/train.py`) and a blanket RLS policy there would silently break it. This RLS
-migration has been schema-compile-verified against the Postgres dialect but **not yet
-exercised against a live Postgres instance** in development (no Docker/Postgres available
-in the environment this was built in) — test it thoroughly, including the cross-tenant
-suite against a real Postgres backend, before relying on it in production.
+on the single-tenant operational tables (`account`, `issued_item`, `stop_payment`,
+`check_image`, `paid_item`, `ach_authorization_rule`, `ach_transaction`,
+`security_group`, `tenant_membership`, `bulk_upload_file`, `audit_log_entry`) as
+defense-in-depth alongside the primary
+tenant-isolation mechanism (the repository-layer filter in `repositories/base.py`, which
+is what's actually under test in `tests/test_api/test_cross_tenant_isolation.py`).
+`exception_item`/`decision` (the ML pipeline reads across all tenants by design, see
+`ml/train.py`) and `user` (a global login identity with no single-tenant row-ownership
+story — see "Users, security groups, and cross-tenant access" above) are deliberately
+excluded. This RLS migration has been schema-compile-verified against the Postgres
+dialect but **not yet exercised against a live Postgres instance** in development (no
+Docker/Postgres available in the environment this was built in) — test it thoroughly,
+including the cross-tenant suite against a real Postgres backend, before relying on it in
+production.
 
 ## MSSQL
 
@@ -152,7 +269,8 @@ Known friction points, not yet exercised against a live instance in this build:
 Server-rendered (FastAPI + Jinja2, no Node/build step) under `/ui/*`, covering every
 resource: accounts, issued items, stop payments, paid items, check images (upload +
 OCR status), ACH authorizations/transactions, the exceptions review queue
-(recommend/decide), admin ML screens, and WebAuthn security-key management.
+(recommend/decide), admin ML screens, users/security groups, per-tenant branding
+settings, the immutable action log, and WebAuthn security-key management.
 
 It's a second presentation layer over the same `services/`/`auth/` code the JSON API
 uses (`web/routers/*.py` call service functions directly — never the JSON API over
@@ -160,10 +278,10 @@ HTTP), authenticated via cookies instead of a bearer token: `web/deps.py::get_we
 reads an `access_token` cookie, `auth/deps.py::get_current_context` reads the
 `Authorization` header — the two channels never read each other's credential. Moving to
 cookies reintroduces CSRF risk the header-based API doesn't have, so every `/ui/*` POST
-is guarded by a double-submit cookie token (`web/security.py`); role-based UI gating
-reuses the exact same permission matrix (`auth/rbac.py`) the API enforces, exposed to
-templates as a `can(role, permission)` Jinja global — hiding a button is cosmetic, the
-POST route's own permission check is what actually enforces it.
+is guarded by a double-submit cookie token (`web/security.py`); UI gating checks the same
+`ctx.permissions` set (resolved from the caller's security group) the API enforces,
+exposed to templates as a `can(ctx, permission)` Jinja global — hiding a button is
+cosmetic, the POST route's own permission check is what actually enforces it.
 
 ## Architecture at a glance
 

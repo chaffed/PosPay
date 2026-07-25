@@ -73,6 +73,48 @@ def test_bulk_upload_xlsx_creates_items(client, tenant_factory):
     assert "9101" in items_page.text
 
 
+def test_bulk_upload_with_checkbox_creates_missing_account(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-bulk-issued-auto-create")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    content = (
+        "account_number,check_number,amount,payee_name,issue_date\n"
+        "9201,9201,150.00,Vendor A,2026-01-01\n"
+    ).encode()
+
+    resp = client.post(
+        "/ui/issued-items/bulk",
+        data={"csrf_token": csrf, "create_missing_accounts": "true"},
+        files={"upload_file": ("items.csv", content, "text/csv")},
+    )
+
+    assert resp.status_code == 200
+    assert "1 of 1 succeeded" in resp.text
+
+    items_page = client.get("/ui/issued-items")
+    assert "9201" in items_page.text
+
+
+def test_bulk_upload_without_checkbox_still_reports_missing_account(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-bulk-issued-no-auto-create")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    content = (
+        "account_number,check_number,amount,payee_name,issue_date\n"
+        "9301,9301,150.00,Vendor A,2026-01-01\n"
+    ).encode()
+
+    resp = client.post(
+        "/ui/issued-items/bulk",
+        data={"csrf_token": csrf},
+        files={"upload_file": ("items.csv", content, "text/csv")},
+    )
+
+    assert resp.status_code == 200
+    assert "0 of 1 succeeded" in resp.text
+    assert "No account found" in resp.text
+
+
 def test_bulk_upload_rejects_unparseable_file(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-bulk-issued-bad-file")
     csrf = _login(client, tenant.slug, users["admin"].email)

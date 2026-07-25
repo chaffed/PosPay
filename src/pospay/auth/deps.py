@@ -3,14 +3,16 @@ import uuid
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from pospay.auth.rbac import role_has_permission
 from pospay.auth.security import decode_token
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.domain.user import UserRole
+from pospay.domain.security_group import SecurityGroup
+from pospay.domain.tenant_membership import TenantMembership
+from pospay.domain.user import User
+from pospay.services.tenant_service import get_tenant_branding_by_id
 
 _bearer_scheme = HTTPBearer(auto_error=True)
 
@@ -18,6 +20,15 @@ _bearer_scheme = HTTPBearer(auto_error=True)
 class WrongTokenType(Exception):
     """Raised by decode_and_build_context when a token of the wrong `type` claim is
     presented (e.g. an mfa_pending token where an access token is required)."""
+
+
+class AccessRevoked(Exception):
+    """Raised by decode_and_build_context when the token is well-formed and unexpired but
+    the access it once granted no longer exists: the user's global account was
+    deactivated, their membership in this specific tenant was deactivated, or the
+    security group it points at no longer exists. Treated identically to an invalid
+    token by every caller — this is what makes deactivating a user/membership take effect
+    immediately rather than waiting for the token to expire."""
 
 
 def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> TenantContext:
@@ -29,16 +40,49 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
     Deliberately does NOT catch jwt's exceptions itself: jwt.ExpiredSignatureError vs
     jwt.InvalidTokenError vs WrongTokenType are meaningfully different outcomes to a
     caller (e.g. the web layer treats "expired" as refreshable but "invalid" as an
-    immediate redirect-to-login), so translation is left to each call site."""
+    immediate redirect-to-login), so translation is left to each call site.
+
+    Permissions are resolved fresh from the SecurityGroup row here, on every request,
+    rather than being baked into the token — see auth/security.py::create_token — and the
+    user/membership are re-checked for is_active here too, so editing a group's
+    permissions or deactivating a user/membership takes effect on the very next request."""
     payload = decode_token(token)  # may raise jwt.ExpiredSignatureError / jwt.InvalidTokenError
 
     if payload.get("type") != expected_type:
         raise WrongTokenType(f"Expected a {expected_type!r} token, got {payload.get('type')!r}")
 
+    user_id = uuid.UUID(payload["sub"])
+    tenant_id = uuid.UUID(payload["tenant_id"])
+    security_group_id = uuid.UUID(payload["security_group_id"])
+
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise AccessRevoked("User account is no longer active")
+
+    membership = db.execute(
+        select(TenantMembership).where(TenantMembership.user_id == user_id, TenantMembership.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if membership is None or not membership.is_active:
+        raise AccessRevoked("Membership in this organization is no longer active")
+
+    group = db.get(SecurityGroup, security_group_id)
+    if group is None:
+        raise AccessRevoked("Security group no longer exists")
+
+    branding = get_tenant_branding_by_id(db, tenant_id)
+    if branding is None:
+        raise AccessRevoked("Tenant no longer exists")
+
     ctx = TenantContext(
-        tenant_id=uuid.UUID(payload["tenant_id"]),
-        user_id=uuid.UUID(payload["sub"]),
-        role=payload["role"],
+        tenant_id=tenant_id,
+        user_id=user_id,
+        security_group_id=security_group_id,
+        permissions=frozenset(group.permissions),
+        tenant_slug=branding.slug,
+        tenant_name=branding.name,
+        accent_color=branding.accent_color,
+        has_logo=branding.has_logo,
+        has_favicon=branding.has_favicon,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting
@@ -58,7 +102,7 @@ def _header_context(credentials: HTTPAuthorizationCredentials, db: Session, *, e
         return decode_and_build_context(credentials.credentials, db, expected_type=expected_type)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired") from None
-    except (jwt.InvalidTokenError, WrongTokenType):
+    except (jwt.InvalidTokenError, WrongTokenType, AccessRevoked):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token") from None
 
 
@@ -83,7 +127,7 @@ def get_mfa_pending_context(
 
 def require_permission(permission: str):
     def _check(ctx: TenantContext = Depends(get_current_context)) -> TenantContext:
-        if not role_has_permission(UserRole(ctx.role), permission):
+        if permission not in ctx.permissions:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {permission}")
         return ctx
 

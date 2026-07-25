@@ -8,7 +8,7 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.schemas.decision import DecideRequest, DecisionRead, RecommendRequest
 from pospay.schemas.exception import ExceptionRead
-from pospay.services import decision_service
+from pospay.services import audit_log_service, decision_service
 from pospay.services.decision_service import DecisionError
 
 router = APIRouter(prefix="/exceptions", tags=["decisions"])
@@ -39,6 +39,16 @@ def recommend_decision(
     )
     if result.error is not None:
         raise HTTPException(_ERROR_STATUS[result.error], result.error.value)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="exception.recommend",
+        summary=f"Recommended {payload.outcome.value} on exception ({payload.reason_code})",
+        resource_type="exception_item",
+        resource_id=exception_id,
+    )
     db.commit()
     return ExceptionRead.from_orm_row(result.exception)
 
@@ -61,6 +71,16 @@ def decide_exception(
     )
     if result.error is not None:
         raise HTTPException(_ERROR_STATUS[result.error], result.error.value)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="exception.decide",
+        summary=f"Decided {payload.outcome.value} on exception ({payload.reason_code})",
+        resource_type="exception_item",
+        resource_id=exception_id,
+    )
     db.commit()
     return DecisionRead.model_validate(result.decision)
 

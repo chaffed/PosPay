@@ -10,6 +10,7 @@ from pospay.networks.ach.ingestion import AchTransactionSubmission, ingest_ach_t
 from pospay.repositories.ach_transaction_repo import AchTransactionRepository
 from pospay.schemas.ach import AchTransactionCreate, AchTransactionRead
 from pospay.schemas.common import BulkRowResultOut, BulkSubmitResponse
+from pospay.services import audit_log_service
 
 router = APIRouter(prefix="/ach/transactions", tags=["ach-transactions"])
 
@@ -25,6 +26,16 @@ def create_ach_transaction(
     ctx: TenantContext = Depends(require_permission("ach_transaction:write")),
 ) -> AchTransactionRead:
     txn = ingest_ach_transaction(db, ctx.tenant_id, _to_submission(payload))
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="ach_transaction.create",
+        summary=f"Submitted ACH {txn.transaction_type.value} of {txn.amount} from {txn.originator_name}",
+        resource_type="ach_transaction",
+        resource_id=txn.id,
+    )
     db.commit()
     return AchTransactionRead.model_validate(txn)
 
@@ -37,6 +48,20 @@ def create_ach_transactions_bulk(
 ) -> BulkSubmitResponse:
     submissions = [_to_submission(row) for row in payload]
     results = ingest_ach_transactions_bulk(db, ctx.tenant_id, submissions)
+    for r in results:
+        if not r.success:
+            continue
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="api",
+            action="ach_transaction.create",
+            summary=f"ACH transaction created via bulk API (row {r.index})",
+            resource_type="ach_transaction",
+            resource_id=r.ach_transaction_id,
+        )
+    db.commit()
     out = [
         BulkRowResultOut(
             index=r.index,
@@ -56,7 +81,7 @@ def create_ach_transactions_bulk(
 def list_ach_transactions(
     account_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("ach_transaction:read")),
 ) -> list[AchTransactionRead]:
     txns = AchTransactionRepository(db, ctx.tenant_id).list(account_id=account_id)
     return [AchTransactionRead.model_validate(t) for t in txns]
@@ -66,7 +91,7 @@ def list_ach_transactions(
 def get_ach_transaction(
     transaction_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("ach_transaction:read")),
 ) -> AchTransactionRead:
     txn = AchTransactionRepository(db, ctx.tenant_id).get(transaction_id)
     if txn is None:

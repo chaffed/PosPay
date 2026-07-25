@@ -38,7 +38,7 @@ def register_options(
     ctx: TenantContext = Depends(get_current_context),
 ) -> Response:
     user = _get_user_or_500(db, ctx)
-    options_json = begin_registration(db, user)
+    options_json = begin_registration(db, user, ctx.tenant_id)
     db.commit()
     return Response(content=options_json, media_type="application/json")
 
@@ -51,7 +51,7 @@ def register_verify(
 ) -> WebauthnCredentialRead:
     user = _get_user_or_500(db, ctx)
     try:
-        credential = complete_registration(db, user, payload.credential, nickname=payload.nickname)
+        credential = complete_registration(db, user, ctx.tenant_id, payload.credential, nickname=payload.nickname)
     except WebauthnError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     db.commit()
@@ -86,7 +86,7 @@ def login_options(
 ) -> Response:
     user = _get_user_or_500(db, ctx)
     try:
-        options_json = begin_authentication(db, user)
+        options_json = begin_authentication(db, user, ctx.tenant_id)
     except WebauthnError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     db.commit()
@@ -101,14 +101,16 @@ def login_verify(
 ) -> TokenResponse:
     user = _get_user_or_500(db, ctx)
     try:
-        complete_authentication(db, user, payload.credential)
+        complete_authentication(db, user, ctx.tenant_id, payload.credential)
     except WebauthnError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
 
     tokens = TokenResponse(
-        access_token=create_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value, token_type="access"),
+        access_token=create_token(
+            user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="access"
+        ),
         refresh_token=create_token(
-            user_id=user.id, tenant_id=user.tenant_id, role=user.role.value, token_type="refresh"
+            user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="refresh"
         ),
     )
     db.commit()

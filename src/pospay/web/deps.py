@@ -3,11 +3,9 @@ from fastapi import Depends, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
-from pospay.auth.deps import WrongTokenType, decode_and_build_context
-from pospay.auth.rbac import role_has_permission
+from pospay.auth.deps import AccessRevoked, WrongTokenType, decode_and_build_context
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.domain.user import UserRole
 from pospay.web.security import (
     ACCESS_COOKIE_NAME,
     MFA_COOKIE_NAME,
@@ -44,10 +42,9 @@ def get_web_context(request: Request, db: Session = Depends(get_db)) -> TenantCo
         raise WebAuthRequired(next_path=request.url.path)
     try:
         return decode_and_build_context(token, db, expected_type="access")
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, WrongTokenType):
-        # Phase 1: any failure (including plain expiry) sends the user back to login.
-        # Phase 3 adds a silent-refresh middleware in front of this so an expired access
-        # token backed by a still-valid refresh token never reaches this dependency at all.
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, WrongTokenType, AccessRevoked):
+        # Phase 1: any failure (including plain expiry, or an access/membership that was
+        # deactivated since the token was issued) sends the user back to login.
         raise WebAuthRequired(next_path=request.url.path) from None
 
 
@@ -59,13 +56,13 @@ def get_mfa_pending_web_context(request: Request, db: Session = Depends(get_db))
         raise WebAuthRequired(next_path="/ui/login")
     try:
         return decode_and_build_context(token, db, expected_type="mfa_pending")
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, WrongTokenType):
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, WrongTokenType, AccessRevoked):
         raise WebAuthRequired(next_path="/ui/login") from None
 
 
 def require_web_permission(permission: str):
     def _check(ctx: TenantContext = Depends(get_web_context)) -> TenantContext:
-        if not role_has_permission(UserRole(ctx.role), permission):
+        if permission not in ctx.permissions:
             raise WebForbidden()
         return ctx
 

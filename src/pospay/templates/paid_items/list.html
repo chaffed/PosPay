@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Paid Items — PosPay{% endblock %}
+{% block title %}Paid Items — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
     <h1>Paid Items</h1>
-    {% if can(ctx.role, "paid_item:write") %}<a href="/ui/paid-items/new" class="button">Submit paid item</a>{% endif %}
+    {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/new" class="button">Submit paid item</a>{% endif %}
   </div>
   {% if items %}
-  <table>
-    <thead><tr><th>Check #</th><th>Presented amount</th><th>Presented date</th><th>Match status</th><th>Settlement</th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th>Check #</th><th data-type="number">Presented amount</th><th>Presented date</th><th>Match status</th><th>Settlement</th></tr></thead>
     <tbody>
       {% for item in items %}
       <tr>

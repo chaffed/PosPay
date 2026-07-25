@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Paid Item {{ item.check_number }} — PosPay{% endblock %}
+{% block title %}Paid Item {{ item.check_number }} — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Paid item #{{ item.check_number }}</h1>

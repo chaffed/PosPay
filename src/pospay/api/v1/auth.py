@@ -2,11 +2,13 @@ import uuid
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pospay.auth.login_service import authenticate_password
 from pospay.auth.security import create_token, decode_token
 from pospay.db.session import get_db
+from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.schemas.auth import LoginRequest, LoginResponse, RefreshRequest, TokenResponse
 
@@ -18,16 +20,22 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     identity = authenticate_password(db, payload.tenant_slug, payload.email, payload.password)
     if identity is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
-    user, tenant = identity.user, identity.tenant
+    user, tenant, membership = identity.user, identity.tenant, identity.membership
 
     if identity.mfa_required:
-        mfa_token = create_token(user_id=user.id, tenant_id=tenant.id, role=user.role.value, token_type="mfa_pending")
+        mfa_token = create_token(
+            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="mfa_pending"
+        )
         return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
     return LoginResponse(
         mfa_required=False,
-        access_token=create_token(user_id=user.id, tenant_id=tenant.id, role=user.role.value, token_type="access"),
-        refresh_token=create_token(user_id=user.id, tenant_id=tenant.id, role=user.role.value, token_type="refresh"),
+        access_token=create_token(
+            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="access"
+        ),
+        refresh_token=create_token(
+            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="refresh"
+        ),
     )
 
 
@@ -41,15 +49,28 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
     if claims.get("type") != "refresh":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not a refresh token")
 
-    user = db.get(User, uuid.UUID(claims["sub"]))
+    user_id = uuid.UUID(claims["sub"])
+    tenant_id = uuid.UUID(claims["tenant_id"])
+
+    user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User no longer active")
 
+    # Re-derived from the current membership (not the token's own security_group_id
+    # claim) so a group reassignment since the refresh token was issued takes effect here
+    # — the same "always reflects current state" property this already had for role
+    # changes before security groups replaced roles.
+    membership = db.execute(
+        select(TenantMembership).where(TenantMembership.user_id == user_id, TenantMembership.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if membership is None or not membership.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Membership no longer active")
+
     return TokenResponse(
         access_token=create_token(
-            user_id=user.id, tenant_id=user.tenant_id, role=user.role.value, token_type="access"
+            user_id=user.id, tenant_id=tenant_id, security_group_id=membership.security_group_id, token_type="access"
         ),
         refresh_token=create_token(
-            user_id=user.id, tenant_id=user.tenant_id, role=user.role.value, token_type="refresh"
+            user_id=user.id, tenant_id=tenant_id, security_group_id=membership.security_group_id, token_type="refresh"
         ),
     )

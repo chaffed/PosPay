@@ -28,10 +28,15 @@ def create_token(
     *,
     user_id: uuid.UUID,
     tenant_id: uuid.UUID,
-    role: str,
+    security_group_id: uuid.UUID,
     token_type: TokenType,
     settings: Settings | None = None,
 ) -> str:
+    """The token only carries the security_group_id, not the permission set itself —
+    auth/deps.py::decode_and_build_context resolves the actual permissions from the
+    SecurityGroup row fresh on every request, so editing a group (or deactivating a
+    membership) takes effect on the next request rather than waiting for this token to
+    expire."""
     settings = settings or get_settings()
     expire_minutes = {
         "access": settings.jwt_access_token_expire_minutes,
@@ -42,7 +47,7 @@ def create_token(
     payload = {
         "sub": str(user_id),
         "tenant_id": str(tenant_id),
-        "role": role,
+        "security_group_id": str(security_group_id),
         "type": token_type,
         "iat": now,
         "exp": now + timedelta(minutes=expire_minutes),

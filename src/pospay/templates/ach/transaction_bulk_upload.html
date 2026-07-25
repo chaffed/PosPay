@@ -1,8 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Bulk Upload ACH Transactions — PosPay{% endblock %}
+{% block title %}Bulk Upload ACH Transactions — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Bulk upload ACH transactions</h1>
+  {% if upload_record %}
+  <p>The file you just submitted was still saved and signed for audit purposes:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
 
   <h2>Delimited or Excel file</h2>
   <p>First row must be a header row with these column names (case/spacing-insensitive,
@@ -19,6 +24,7 @@
       <tr><td>sec_code</td><td>yes</td><td>PPD</td></tr>
       <tr><td>trace_number</td><td>yes</td><td>123456780000001</td></tr>
       <tr><td>effective_date</td><td>yes</td><td>2026-01-15</td></tr>
+      <tr><td>account_name</td><td>no</td><td>Operating (used only when creating a new account)</td></tr>
     </tbody>
   </table>
   {% if tabular_error %}<p class="flash flash-error">{{ tabular_error }}</p>{% endif %}
@@ -26,6 +32,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="format" value="tabular">
     <label>File <input type="file" name="upload_file" accept=".csv,.txt,.tsv,.xlsx,.xls" required></label>
+    <label><input type="checkbox" name="create_missing_accounts" value="true"> Automatically create accounts for account numbers not already in the system</label>
     <button type="submit">Upload</button>
   </form>
 
@@ -40,6 +47,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="format" value="nacha">
     <label>File <input type="file" name="upload_file" accept=".ach,.txt,.nacha" required></label>
+    <label><input type="checkbox" name="create_missing_accounts" value="true"> Automatically create accounts for DFI account numbers not already in the system</label>
     <button type="submit">Upload</button>
   </form>
 </div>

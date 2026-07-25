@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Results — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+{% set created = results | selectattr("outcome", "equalto", "created") | list %}
+{% set already_member = results | selectattr("outcome", "equalto", "already_member") | list %}
+{% set failed = results | selectattr("outcome", "equalto", "failed") | list %}
+{% set needs_confirmation = results | selectattr("outcome", "equalto", "needs_confirmation") | list %}
+<div class="card">
+  <h1>Bulk upload results</h1>
+  <p>
+    <span class="badge {{ 'badge-ok' if not failed else 'badge-warn' }}">{{ created | length }} created</span>
+    {% if already_member %}<span class="badge">{{ already_member | length }} already had access</span>{% endif %}
+    {% if needs_confirmation %}<span class="badge badge-warn">{{ needs_confirmation | length }} need confirmation</span>{% endif %}
+    {% if failed %}<span class="badge badge-danger">{{ failed | length }} failed</span>{% endif %}
+  </p>
+  {% if failed %}
+  <table>
+    <thead><tr><th>Row</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for r in failed %}
+      <tr><td>{{ r.row_label }}</td><td>{{ r.error }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if upload_record %}
+  <p>Original file saved and signed:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
+  <p><a href="/ui/users">Back to users</a></p>
+</div>
+
+{% if pending %}
+<div class="card card-narrow">
+  <h1>Needs confirmation</h1>
+  <p>These emails already belong to users in another organization. Check the ones you
+    want to grant access to this organization — their existing password stays
+    unchanged, nothing new is created.</p>
+  <form method="post" action="/ui/users/bulk/confirm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% for row in pending %}
+    <label><input type="checkbox" name="confirm" value="{{ row.value }}" checked> {{ row.email }} — {{ row.group_name }}</label>
+    {% endfor %}
+    <button type="submit">Grant access</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

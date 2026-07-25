@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Switch Organization — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Switch organization</h1>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  {% if memberships %}
+  {% for m in memberships %}
+  <form method="post" action="/ui/switch-tenant" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="tenant_id" value="{{ m.tenant.id }}">
+    <button type="submit">{{ m.tenant.name }}</button>
+  </form>
+  {% endfor %}
+  {% else %}
+  <p>You don't belong to any other organization.</p>
+  {% endif %}
+</div>
+{% endblock %}

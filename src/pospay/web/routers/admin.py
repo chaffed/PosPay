@@ -12,7 +12,7 @@ from pospay.domain.ml_model import MlModel
 from pospay.ml.registry import activate_model
 from pospay.ml.train import InsufficientTrainingData, train_model
 from pospay.networks.registry import registered_codes
-from pospay.web.deps import get_web_context, render_template, require_web_permission
+from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/admin", tags=["web-admin"])

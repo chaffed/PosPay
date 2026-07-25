@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Users — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Users</h1>
+    <div class="actions">
+      <a href="/ui/users/new" class="button">Add user</a>
+      <a href="/ui/users/bulk" class="button secondary">Bulk upload</a>
+    </div>
+  </div>
+  {% if rows %}
+  <table data-sortable>
+    <thead><tr><th>Email</th><th>Security group</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.user.email }}</td>
+        <td>{{ row.security_group_name }}</td>
+        <td><span class="badge {{ 'badge-ok' if row.membership.is_active else 'badge-danger' }}">{{ 'active' if row.membership.is_active else 'deactivated' }}</span></td>
+        <td>
+          {% if row.membership.is_active %}
+          <form method="post" action="/ui/users/{{ row.membership.id }}/deactivate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="/ui/users/{{ row.membership.id }}/reactivate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">Reactivate</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No users yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

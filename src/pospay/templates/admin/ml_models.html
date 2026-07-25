@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Admin — PosPay{% endblock %}
+{% block title %}Admin — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>ML Models</h1>
@@ -15,8 +15,8 @@
   </form>
 
   {% if models %}
-  <table>
-    <thead><tr><th>Network</th><th>Version</th><th>Status</th><th>Trained on</th><th>Metrics</th><th></th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th>Network</th><th>Version</th><th>Status</th><th data-type="number">Trained on</th><th>Metrics</th><th></th></tr></thead>
     <tbody>
       {% for m in models %}
       <tr>

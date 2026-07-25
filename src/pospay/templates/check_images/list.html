@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Check Images — PosPay{% endblock %}
+{% block title %}Check Images — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
     <h1>Check Images</h1>
-    {% if can(ctx.role, "paid_item:write") %}<a href="/ui/check-images/upload" class="button">Upload check image</a>{% endif %}
+    {% if can(ctx, "check_image:write") %}<a href="/ui/check-images/upload" class="button">Upload check image</a>{% endif %}
   </div>
   {% if images %}
-  <table>
-    <thead><tr><th>Uploaded</th><th>OCR status</th><th>Extracted payee</th><th>Extracted amount</th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th>Uploaded</th><th>OCR status</th><th>Extracted payee</th><th data-type="number">Extracted amount</th></tr></thead>
     <tbody>
       {% for image in images %}
       <tr>

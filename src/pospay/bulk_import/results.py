@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,4 +14,20 @@ class BulkFileRowResult:
     row_label: str
     success: bool
     created_id: uuid.UUID | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UserBulkRowResult:
+    """User bulk-load has a third outcome the other imports don't: a row's email can
+    resolve to an identity that already exists in a DIFFERENT tenant, which this app
+    never attaches silently (see services/user_service.py) — it's held as
+    "needs_confirmation" and shown back to the admin for an explicit follow-up grant
+    (web/routers/users.py's bulk-confirm step) rather than folded into success or
+    failure."""
+
+    row_label: str
+    outcome: Literal["created", "already_member", "needs_confirmation", "failed"]
+    email: str | None = None
+    security_group_id: uuid.UUID | None = None
     error: str | None = None

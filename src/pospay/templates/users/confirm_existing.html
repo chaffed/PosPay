@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Confirm Access — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Confirm access</h1>
+  <p><strong>{{ email }}</strong> already has an account in another organization. Grant
+    this existing user access to your organization as <strong>{{ security_group_name }}</strong>?
+    Their existing password is unchanged — nothing new is created.</p>
+  <form method="post" action="/ui/users/confirm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="email" value="{{ email }}">
+    <input type="hidden" name="security_group_id" value="{{ security_group_id }}">
+    <button type="submit">Grant access</button>
+  </form>
+  <p><a href="/ui/users">Cancel</a></p>
+</div>
+{% endblock %}

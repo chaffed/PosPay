@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Exception — PosPay{% endblock %}
+{% block title %}Exception — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Exception <span class="badge">{{ item.network_code }}</span></h1>
@@ -21,7 +21,7 @@
 
 {% if item.status.value in ["open", "pending_approval"] %}
 
-{% if can(ctx.role, "exception:recommend") %}
+{% if can(ctx, "exception:recommend") %}
 <div class="card card-narrow">
   <h1>Recommend a decision</h1>
   <form method="post" action="/ui/exceptions/{{ item.id }}/recommend">
@@ -39,7 +39,7 @@
 </div>
 {% endif %}
 
-{% if can(ctx.role, "exception:decide") %}
+{% if can(ctx, "exception:decide") %}
 <div class="card card-narrow">
   <h1>Decide</h1>
   <form method="post" action="/ui/exceptions/{{ item.id }}/decide">

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Accounts — PosPay{% endblock %}
+{% block title %}Accounts — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Accounts</h1>
   {% if accounts %}
-  <table>
+  <table data-sortable>
     <thead><tr><th>Account number</th><th>Name</th><th>ACH debit mode</th></tr></thead>
     <tbody>
       {% for a in accounts %}
@@ -17,7 +17,7 @@
   {% endif %}
 </div>
 
-{% if can(ctx.role, "account:write") %}
+{% if can(ctx, "account:write") %}
 <div class="card card-narrow">
   <h1>Add account</h1>
   <form method="post" action="/ui/accounts">

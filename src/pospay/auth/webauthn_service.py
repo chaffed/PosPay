@@ -28,7 +28,7 @@ def _descriptor(credential: WebauthnCredential) -> PublicKeyCredentialDescriptor
 
 
 def _store_challenge(
-    session: Session, user: User, purpose: WebauthnChallengePurpose, challenge: bytes
+    session: Session, user: User, tenant_id: uuid.UUID, purpose: WebauthnChallengePurpose, challenge: bytes
 ) -> WebauthnChallenge:
     # Only one pending challenge per (user, purpose) at a time — starting a new ceremony
     # invalidates any prior unfinished one for the same purpose, rather than letting them
@@ -37,7 +37,7 @@ def _store_challenge(
         delete(WebauthnChallenge).where(WebauthnChallenge.user_id == user.id, WebauthnChallenge.purpose == purpose)
     )
     row = WebauthnChallenge(
-        tenant_id=user.tenant_id,
+        tenant_id=tenant_id,
         user_id=user.id,
         challenge=challenge,
         purpose=purpose,
@@ -66,9 +66,12 @@ def _consume_challenge(session: Session, user_id: uuid.UUID, purpose: WebauthnCh
     return row.challenge
 
 
-def begin_registration(session: Session, user: User) -> str:
+def begin_registration(session: Session, user: User, tenant_id: uuid.UUID) -> str:
+    """WebAuthn credentials are still registered per tenant-membership, not once for the
+    whole identity (see the module docstring below and the plan's WebAuthn trade-off
+    note) — a user with memberships in two tenants registers a key separately in each."""
     settings = get_settings()
-    existing = WebauthnCredentialRepository(session, user.tenant_id).list(user_id=user.id)
+    existing = WebauthnCredentialRepository(session, tenant_id).list(user_id=user.id)
 
     options = webauthn.generate_registration_options(
         rp_id=settings.webauthn_rp_id,
@@ -79,12 +82,12 @@ def begin_registration(session: Session, user: User) -> str:
         exclude_credentials=[_descriptor(c) for c in existing] or None,
     )
 
-    _store_challenge(session, user, WebauthnChallengePurpose.REGISTRATION, options.challenge)
+    _store_challenge(session, user, tenant_id, WebauthnChallengePurpose.REGISTRATION, options.challenge)
     return webauthn.options_to_json(options)
 
 
 def complete_registration(
-    session: Session, user: User, credential: str | dict[str, Any], *, nickname: str | None = None
+    session: Session, user: User, tenant_id: uuid.UUID, credential: str | dict[str, Any], *, nickname: str | None = None
 ) -> WebauthnCredential:
     settings = get_settings()
     expected_challenge = _consume_challenge(session, user.id, WebauthnChallengePurpose.REGISTRATION)
@@ -99,7 +102,7 @@ def complete_registration(
     except Exception as exc:  # webauthn raises its own exception hierarchy; normalize to WebauthnError
         raise WebauthnError(f"Registration verification failed: {exc}") from exc
 
-    repo = WebauthnCredentialRepository(session, user.tenant_id)
+    repo = WebauthnCredentialRepository(session, tenant_id)
     credential_row = WebauthnCredential(
         user_id=user.id,
         credential_id=verified.credential_id,
@@ -113,9 +116,9 @@ def complete_registration(
     return credential_row
 
 
-def begin_authentication(session: Session, user: User) -> str:
+def begin_authentication(session: Session, user: User, tenant_id: uuid.UUID) -> str:
     settings = get_settings()
-    credentials = WebauthnCredentialRepository(session, user.tenant_id).list(user_id=user.id)
+    credentials = WebauthnCredentialRepository(session, tenant_id).list(user_id=user.id)
     if not credentials:
         raise WebauthnError("This user has no registered security keys.")
 
@@ -124,16 +127,18 @@ def begin_authentication(session: Session, user: User) -> str:
         allow_credentials=[_descriptor(c) for c in credentials],
     )
 
-    _store_challenge(session, user, WebauthnChallengePurpose.AUTHENTICATION, options.challenge)
+    _store_challenge(session, user, tenant_id, WebauthnChallengePurpose.AUTHENTICATION, options.challenge)
     return webauthn.options_to_json(options)
 
 
-def complete_authentication(session: Session, user: User, credential: str | dict[str, Any]) -> WebauthnCredential:
+def complete_authentication(
+    session: Session, user: User, tenant_id: uuid.UUID, credential: str | dict[str, Any]
+) -> WebauthnCredential:
     settings = get_settings()
     expected_challenge = _consume_challenge(session, user.id, WebauthnChallengePurpose.AUTHENTICATION)
 
     parsed = webauthn.helpers.parse_authentication_credential_json(credential)
-    repo = WebauthnCredentialRepository(session, user.tenant_id)
+    repo = WebauthnCredentialRepository(session, tenant_id)
     matching = [c for c in repo.list(user_id=user.id) if c.credential_id == parsed.raw_id]
     if not matching:
         raise WebauthnError("Unrecognized credential for this user.")

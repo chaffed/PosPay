@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Stop Payments — PosPay{% endblock %}
+{% block title %}Stop Payments — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
     <h1>Stop Payments</h1>
-    {% if can(ctx.role, "stop_payment:write") %}<a href="/ui/stop-payments/new" class="button">New stop payment</a>{% endif %}
+    {% if can(ctx, "stop_payment:write") %}<a href="/ui/stop-payments/new" class="button">New stop payment</a>{% endif %}
   </div>
   {% if stops %}
-  <table>
-    <thead><tr><th>Check #</th><th>Amount</th><th>Effective</th><th>Expires</th><th>Status</th><th></th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th>Check #</th><th data-type="number">Amount</th><th>Effective</th><th>Expires</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for stop in stops %}
       <tr>
@@ -18,7 +18,7 @@
         <td>{{ stop.expiration_date or "never" }}</td>
         <td><span class="badge {{ 'badge-ok' if stop.status.value == 'active' else '' }}">{{ stop.status.value }}</span></td>
         <td>
-          {% if stop.status.value == "active" and can(ctx.role, "stop_payment:write") %}
+          {% if stop.status.value == "active" and can(ctx, "stop_payment:write") %}
           <form method="post" action="/ui/stop-payments/{{ stop.id }}/cancel" class="inline-form" data-confirm="Cancel this stop payment?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="secondary">Cancel</button>

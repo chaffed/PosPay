@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Users — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Bulk upload users</h1>
+  <p>Upload a delimited file (CSV, TSV, pipe- or semicolon-separated) or an Excel
+    (.xlsx) file. The first row must be a header row with these column names
+    (case/spacing-insensitive, any order):</p>
+  <table>
+    <thead><tr><th>Column</th><th>Required</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>email</td><td>yes</td><td>jane@example.com</td></tr>
+      <tr><td>security_group</td><td>yes</td><td>Preparer</td></tr>
+      <tr><td>password</td><td>only for new emails</td><td>a temporary password</td></tr>
+    </tbody>
+  </table>
+  <p>A row whose email already belongs to a user in another organization is never
+    attached silently — it comes back on the results page as needing your explicit
+    confirmation before access is granted.</p>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  {% if upload_record %}
+  <p>The file you just submitted was still saved and signed for audit purposes:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
+  <form method="post" action="/ui/users/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>File <input type="file" name="upload_file" accept=".csv,.txt,.tsv,.xlsx,.xls" required></label>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+{% endblock %}

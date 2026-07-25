@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Bulk Upload Issued Items — PosPay{% endblock %}
+{% block title %}Bulk Upload Issued Items — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Bulk upload issued items</h1>
@@ -14,12 +14,19 @@
       <tr><td>amount</td><td>yes</td><td>150.00</td></tr>
       <tr><td>payee_name</td><td>yes</td><td>Acme Vendor</td></tr>
       <tr><td>issue_date</td><td>yes</td><td>2026-01-15</td></tr>
+      <tr><td>account_name</td><td>no</td><td>Operating (used only when creating a new account)</td></tr>
     </tbody>
   </table>
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  {% if upload_record %}
+  <p>The file you just submitted was still saved and signed for audit purposes:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
   <form method="post" action="/ui/issued-items/bulk" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>File <input type="file" name="upload_file" accept=".csv,.txt,.tsv,.xlsx,.xls" required></label>
+    <label><input type="checkbox" name="create_missing_accounts" value="true"> Automatically create accounts for account numbers not already in the system</label>
     <button type="submit">Upload</button>
   </form>
 </div>

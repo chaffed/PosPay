@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Audit Log — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Audit log</h1>
+    <a href="/ui/audit-log/verify" class="button secondary">Verify chain</a>
+  </div>
+  {% if verification %}
+  <p>
+    {% if verification.valid %}
+    <span class="badge badge-ok">chain verified — {{ verification.checked_count }} entries, no tampering detected</span>
+    {% else %}
+    <span class="badge badge-danger">CHAIN BROKEN after {{ verification.checked_count }} entries — tampering or deletion detected</span>
+    {% endif %}
+  </p>
+  {% endif %}
+  {% if rows %}
+  <table data-sortable>
+    <thead><tr><th>Time</th><th>Actor</th><th>Channel</th><th>Action</th><th>Summary</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.entry.occurred_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+        <td>{{ row.actor_email }}</td>
+        <td><span class="badge">{{ row.entry.channel.value }}</span></td>
+        <td><code>{{ row.entry.action }}</code></td>
+        <td>{{ row.entry.summary }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No actions recorded yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

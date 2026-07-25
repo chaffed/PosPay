@@ -8,7 +8,7 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.stop_payment import StopPaymentStatus
 from pospay.schemas.stop_payment import StopPaymentCreate, StopPaymentRead
-from pospay.services import stop_payment_service
+from pospay.services import audit_log_service, stop_payment_service
 
 router = APIRouter(prefix="/stop-payments", tags=["stop-payments"])
 
@@ -25,6 +25,16 @@ def create_stop_payment(
         stop_payment_service.StopPaymentInput(**payload.model_dump()),
         created_by_user_id=ctx.user_id,
     )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="stop_payment.create",
+        summary=f"Stopped payment on check #{stop.check_number}" + (f": {stop.reason}" if stop.reason else ""),
+        resource_type="stop_payment",
+        resource_id=stop.id,
+    )
     db.commit()
     return StopPaymentRead.model_validate(stop)
 
@@ -33,7 +43,7 @@ def create_stop_payment(
 def list_stop_payments(
     status_filter: StopPaymentStatus | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("stop_payment:read")),
 ) -> list[StopPaymentRead]:
     stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, status=status_filter)
     return [StopPaymentRead.model_validate(s) for s in stops]
@@ -42,7 +52,7 @@ def list_stop_payments(
 @router.get("/outstanding", response_model=list[StopPaymentRead])
 def list_active_stop_payments(
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("stop_payment:read")),
 ) -> list[StopPaymentRead]:
     stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, status=StopPaymentStatus.ACTIVE)
     return [StopPaymentRead.model_validate(s) for s in stops]
@@ -57,5 +67,15 @@ def cancel_stop_payment(
     stop = stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id)
     if stop is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stop payment not found")
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="stop_payment.cancel",
+        summary=f"Cancelled stop payment on check #{stop.check_number}",
+        resource_type="stop_payment",
+        resource_id=stop.id,
+    )
     db.commit()
     return StopPaymentRead.model_validate(stop)

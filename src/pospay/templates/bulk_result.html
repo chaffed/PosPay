@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Bulk Upload Results — PosPay{% endblock %}
+{% block title %}Bulk Upload Results — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 {% set failures = results | rejectattr("success") | list %}
 {% set succeeded = results | selectattr("success") | list %}
@@ -19,6 +19,11 @@
       {% endfor %}
     </tbody>
   </table>
+  {% endif %}
+  {% if upload_record %}
+  <p>Original file saved and signed:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
   {% endif %}
   <p><a href="{{ back_url }}">{{ back_label }}</a></p>
 </div>

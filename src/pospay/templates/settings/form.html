@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Organization settings</h1>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/ui/settings" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Display name <input type="text" name="name" value="{{ tenant_display_name }}" required></label>
+    <label>Accent color
+      <input type="color" name="accent_color" value="{{ accent_color if accent_color else '#2563eb' }}">
+    </label>
+
+    <label>Logo
+      {% if ctx.has_logo %}<p><img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="Current logo" class="brand-logo"></p>{% endif %}
+      <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml">
+    </label>
+
+    <label>Favicon
+      {% if ctx.has_favicon %}<p><img src="/ui/branding/{{ ctx.tenant_slug }}/favicon" alt="Current favicon" style="max-height:20px;"></p>{% endif %}
+      <input type="file" name="favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml">
+    </label>
+
+    <button type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}

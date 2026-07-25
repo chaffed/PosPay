@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.services import account_service, ach_authorization_service
-from pospay.web.deps import get_web_context, render_template, require_web_permission
+from pospay.services import account_service, ach_authorization_service, audit_log_service
+from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorizations"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorization
 
 @router.get("")
 def list_authorizations(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_web_context)
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("ach_authorization:read"))
 ) -> HTMLResponse:
     rules = ach_authorization_service.list_ach_authorizations(db, ctx.tenant_id)
     return render_template(request, "ach/authorizations_list.html", ctx=ctx, rules=rules)
@@ -61,7 +61,7 @@ def create_authorization(
             request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, error="Invalid input.", status_code=422
         )
 
-    ach_authorization_service.create_ach_authorization(
+    rule = ach_authorization_service.create_ach_authorization(
         db,
         ctx.tenant_id,
         ach_authorization_service.AchAuthorizationInput(
@@ -77,6 +77,16 @@ def create_authorization(
         ),
         created_by_user_id=ctx.user_id,
     )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="ach_authorization.create",
+        summary=f"Authorized ACH originator {rule.originator_name} ({rule.originator_id})",
+        resource_type="ach_authorization",
+        resource_id=rule.id,
+    )
     db.commit()
     return RedirectResponse("/ui/ach/authorizations?flash=Authorization+created.", status_code=303)
 
@@ -88,6 +98,17 @@ def revoke_authorization(
     ctx: TenantContext = Depends(require_web_permission("ach_authorization:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id)
+    rule = ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id)
+    if rule is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="ach_authorization.revoke",
+            summary=f"Revoked ACH authorization for {rule.originator_name} ({rule.originator_id})",
+            resource_type="ach_authorization",
+            resource_id=rule.id,
+        )
     db.commit()
     return RedirectResponse("/ui/ach/authorizations?flash=Authorization+revoked.", status_code=303)

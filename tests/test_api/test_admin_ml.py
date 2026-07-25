@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -38,7 +39,20 @@ def _seed_labeled_decisions(db_session, tenant, account, users, count: int = 12)
         from pospay.repositories.exception_repo import ExceptionRepository
 
         exception = ExceptionRepository(db_session, tenant.id).list(source_item_id=paid_item.id)[0]
-        ctx = TenantContext(tenant_id=tenant.id, user_id=users["approver"].id, role="approver")
+        # decision_service.decide only reads ctx.tenant_id/user_id (not permissions or
+        # branding), so placeholder values are fine — this ctx isn't going through a
+        # require_permission() check or rendered in a template.
+        ctx = TenantContext(
+            tenant_id=tenant.id,
+            user_id=users["approver"].id,
+            security_group_id=uuid.uuid4(),
+            permissions=frozenset(),
+            tenant_slug=tenant.slug,
+            tenant_name=tenant.name,
+            accent_color=None,
+            has_logo=False,
+            has_favicon=False,
+        )
         outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
         decision_service.decide(db_session, tenant.id, exception.id, ctx, outcome=outcome, reason_code="test", notes=None)
         db_session.commit()

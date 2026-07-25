@@ -11,7 +11,8 @@ from pospay.domain.check_image import OcrStatus
 from pospay.networks.check.ocr_processing import create_check_image, process_check_image_ocr
 from pospay.repositories.check_image_repo import CheckImageRepository
 from pospay.repositories.paid_item_repo import PaidItemRepository
-from pospay.web.deps import WebNotFound, get_web_context, render_template, require_web_permission
+from pospay.services import audit_log_service
+from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/check-images", tags=["web-check-images"])
@@ -30,7 +31,7 @@ def _run_ocr_in_background(engine: Engine, check_image_id: uuid.UUID, tenant_id:
 
 @router.get("")
 def list_check_images(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_web_context)
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("check_image:read"))
 ) -> HTMLResponse:
     images = CheckImageRepository(db, ctx.tenant_id).list()
     return render_template(request, "check_images/list.html", ctx=ctx, images=images)
@@ -41,7 +42,7 @@ def upload_form(
     request: Request,
     paid_item_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_web_permission("paid_item:write")),
+    ctx: TenantContext = Depends(require_web_permission("check_image:write")),
 ) -> HTMLResponse:
     paid_items = PaidItemRepository(db, ctx.tenant_id).list()
     return render_template(request, "check_images/upload.html", ctx=ctx, paid_items=paid_items, selected_paid_item_id=paid_item_id)
@@ -53,13 +54,23 @@ def upload_check_image(
     front_image: UploadFile = File(...),
     paid_item_id: str = "",
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_web_permission("paid_item:write")),
+    ctx: TenantContext = Depends(require_web_permission("check_image:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     front_bytes = front_image.file.read()
     parsed_paid_item_id = uuid.UUID(paid_item_id) if paid_item_id else None
 
     check_image = create_check_image(db, ctx.tenant_id, front_bytes=front_bytes, back_bytes=None, paid_item_id=parsed_paid_item_id)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="check_image.upload",
+        summary="Uploaded a check image",
+        resource_type="check_image",
+        resource_id=check_image.id,
+    )
     db.commit()
 
     background_tasks.add_task(_run_ocr_in_background, db.get_bind(), check_image.id, ctx.tenant_id)
@@ -71,7 +82,7 @@ def check_image_detail(
     request: Request,
     check_image_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_web_context),
+    ctx: TenantContext = Depends(require_web_permission("check_image:read")),
 ) -> HTMLResponse:
     image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
     if image is None:
@@ -84,13 +95,23 @@ def reprocess_check_image(
     check_image_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_web_permission("paid_item:write")),
+    ctx: TenantContext = Depends(require_web_permission("check_image:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
     if image is None:
         raise WebNotFound()
     image.ocr_status = OcrStatus.PENDING
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="check_image.reprocess",
+        summary="Requested OCR reprocessing of a check image",
+        resource_type="check_image",
+        resource_id=image.id,
+    )
     db.commit()
     background_tasks.add_task(_run_ocr_in_background, db.get_bind(), image.id, ctx.tenant_id)
     return RedirectResponse(f"/ui/check-images/{check_image_id}?flash=Reprocessing.", status_code=303)

@@ -94,6 +94,47 @@ def test_bulk_upload_nacha_rejects_malformed_file(client, tenant_factory):
     assert "No entry detail records" in resp.text
 
 
+def test_bulk_upload_csv_with_checkbox_creates_missing_account(client, tenant_factory):
+    tenant, account, users = tenant_factory.make(slug="web-bulk-ach-csv-auto-create")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    content = (
+        "account_number,originator_id,originator_name,receiver_id,amount,transaction_type,sec_code,trace_number,effective_date\n"
+        f"{account.account_number},ORIG1,Payroll Co,,10.00,credit,PPD,T1,2026-01-10\n"
+        "9401,ORIG2,Other Co,,20.00,credit,WEB,T2,2026-01-10\n"
+    ).encode()
+
+    resp = client.post(
+        "/ui/ach/transactions/bulk",
+        data={"csrf_token": csrf, "format": "tabular", "create_missing_accounts": "true"},
+        files={"upload_file": ("txns.csv", content, "text/csv")},
+    )
+
+    assert resp.status_code == 200
+    assert "2 of 2 succeeded" in resp.text
+
+
+def test_bulk_upload_nacha_with_checkbox_creates_missing_account(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-bulk-ach-nacha-auto-create")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    lines = [
+        _nacha_batch_header(),
+        _nacha_entry_detail(dfi_account_number="9402"),
+        "8" + " " * 93,
+    ]
+    content = "\n".join(lines).encode("ascii")
+
+    resp = client.post(
+        "/ui/ach/transactions/bulk",
+        data={"csrf_token": csrf, "format": "nacha", "create_missing_accounts": "true"},
+        files={"upload_file": ("payroll.ach", content, "application/octet-stream")},
+    )
+
+    assert resp.status_code == 200
+    assert "1 of 1 succeeded" in resp.text
+
+
 def test_bulk_upload_nacha_with_unmatched_account_reported(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-bulk-ach-nacha-unmatched")
     csrf = _login(client, tenant.slug, users["admin"].email)

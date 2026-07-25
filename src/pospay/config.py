@@ -10,6 +10,12 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = "dev-secret-change-me-32-bytes-minimum-for-hs256"
     jwt_algorithm: str = "HS256"
+    # Separate from jwt_secret_key on purpose (bulk_import/signing.py) — a leaked
+    # file-signing secret shouldn't also let someone forge auth tokens, or vice versa.
+    file_signing_secret: str = "dev-secret-change-me-32-bytes-minimum-for-hmac"
+    # Also separate from file_signing_secret — a distinct secret per signed artifact type,
+    # same key-separation reasoning (services/audit_log_service.py).
+    audit_log_signing_secret: str = "dev-secret-change-me-32-bytes-minimum-for-audit-hmac"
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_minutes: int = 60 * 24 * 7
     mfa_pending_token_expire_minutes: int = 5  # short-lived: only enough time to complete the WebAuthn ceremony
@@ -23,6 +29,8 @@ class Settings(BaseSettings):
 
     ocr_provider: str = "tesseract"
     check_image_storage_dir: str = "./data/check_images"
+    tenant_asset_storage_dir: str = "./data/tenant_assets"
+    bulk_upload_storage_dir: str = "./data/bulk_uploads"
 
     check_stale_date_default_days: int = 180
     payee_match_fuzzy_threshold: float = 85.0

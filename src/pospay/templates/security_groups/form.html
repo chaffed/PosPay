@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if group else "New" }} Security Group — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>{{ "Edit" if group else "New" }} security group</h1>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ '/ui/security-groups/' ~ group.id if group else '/ui/security-groups' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Name <input type="text" name="name" value="{{ group.name if group else '' }}" required autofocus></label>
+    <fieldset>
+      <legend>Permissions</legend>
+      {% for key, label in catalog.items() %}
+      <label><input type="checkbox" name="permissions" value="{{ key }}" {% if key in selected %}checked{% endif %}> {{ label }} <code>{{ key }}</code></label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit">{{ "Save" if group else "Create" }}</button>
+  </form>
+</div>
+{% endblock %}

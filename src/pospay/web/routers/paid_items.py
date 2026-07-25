@@ -11,8 +11,8 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.networks.check.ingestion import PaidItemSubmission, ingest_paid_item
 from pospay.repositories.paid_item_repo import PaidItemRepository
-from pospay.services import account_service
-from pospay.web.deps import WebNotFound, get_web_context, render_template, require_web_permission
+from pospay.services import account_service, audit_log_service
+from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/paid-items", tags=["web-paid-items"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/ui/paid-items", tags=["web-paid-items"])
 
 @router.get("")
 def list_paid_items(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_web_context)
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("paid_item:read"))
 ) -> HTMLResponse:
     items = PaidItemRepository(db, ctx.tenant_id).list()
     return render_template(request, "paid_items/list.html", ctx=ctx, items=items)
@@ -63,6 +63,16 @@ def create_paid_item(
             account_id=account_id, check_number=check_number, presented_amount=parsed_amount, presented_date=parsed_date
         ),
     )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="paid_item.create",
+        summary=f"Presented check #{item.check_number} for {item.presented_amount}",
+        resource_type="paid_item",
+        resource_id=item.id,
+    )
     db.commit()
 
     flash = "Paid item matched." if item.match_status.value == "matched" else "Paid item created an exception — see the Exceptions queue."
@@ -74,7 +84,7 @@ def paid_item_detail(
     request: Request,
     item_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_web_context),
+    ctx: TenantContext = Depends(require_web_permission("paid_item:read")),
 ) -> HTMLResponse:
     item = PaidItemRepository(db, ctx.tenant_id).get(item_id)
     if item is None:

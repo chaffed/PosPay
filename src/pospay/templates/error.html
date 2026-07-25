@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Error — PosPay{% endblock %}
+{% block title %}Error — {{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>{{ status_code_display }}</h1>

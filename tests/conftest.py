@@ -7,14 +7,13 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from pospay.auth.security import hash_password
 from pospay.config import get_settings
 from pospay.db.base import Base
 from pospay.db.session import get_db
 from pospay.domain.account import Account
 from pospay.domain.payment_network import PaymentNetwork, SettlementTiming
 from pospay.domain.tenant import Tenant
-from pospay.domain.user import User, UserRole
+from pospay.services import security_group_service, user_service
 
 # pospay.domain's __init__ imports every model module, fully populating Base.metadata
 # before create_all — see its docstring for why this must be centralized in one place.
@@ -30,6 +29,8 @@ def isolated_filesystem_settings(tmp_path, monkeypatch):
     single-instance deployment, not test isolation."""
     monkeypatch.setenv("POSPAY_ML_ARTIFACT_DIR", str(tmp_path / "ml_artifacts"))
     monkeypatch.setenv("POSPAY_CHECK_IMAGE_STORAGE_DIR", str(tmp_path / "check_images"))
+    monkeypatch.setenv("POSPAY_TENANT_ASSET_STORAGE_DIR", str(tmp_path / "tenant_assets"))
+    monkeypatch.setenv("POSPAY_BULK_UPLOAD_STORAGE_DIR", str(tmp_path / "bulk_uploads"))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -75,9 +76,11 @@ def db_session(session_factory) -> Generator[Session, None, None]:
 
 
 class TenantFactory:
-    """Creates a tenant plus one user of each role, all with a known plaintext password,
-    for tests that need a fully-authenticated multi-role scenario without repeating
-    boilerplate. `make()` returns a dict of {role_name: (User, plain_password)}."""
+    """Creates a tenant (with its 4 default security groups seeded) plus one user per
+    default group, all with a known plaintext password, for tests that need a
+    fully-authenticated multi-group scenario without repeating boilerplate. `make()`
+    returns a dict of {group_name_lowercase: User} — e.g. users["admin"], users["preparer"]
+    — mirroring the old fixed-role dict this replaces."""
 
     PASSWORD = "test-password-123"
 
@@ -93,16 +96,18 @@ class TenantFactory:
         account = Account(tenant_id=tenant.id, account_number="0001", name="Operating")
         self.session.add(account)
 
+        groups = security_group_service.seed_default_security_groups(self.session, tenant.id)
+
         users = {}
-        for role in UserRole:
-            user = User(
-                tenant_id=tenant.id,
-                email=f"{role.value}@{slug}.example.com",
-                hashed_password=hash_password(self.PASSWORD),
-                role=role,
+        for group_name, group in groups.items():
+            user = user_service.create_user_with_membership(
+                self.session,
+                tenant.id,
+                email=f"{group_name.lower()}@{slug}.example.com",
+                password=self.PASSWORD,
+                security_group_id=group.id,
             )
-            self.session.add(user)
-            users[role.value] = user
+            users[group_name.lower()] = user
 
         self.session.commit()
         return tenant, account, users

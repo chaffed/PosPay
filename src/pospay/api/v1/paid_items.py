@@ -11,6 +11,7 @@ from pospay.networks.check.ingestion import PaidItemSubmission, ingest_paid_item
 from pospay.repositories.paid_item_repo import PaidItemRepository
 from pospay.schemas.common import BulkRowResultOut, BulkSubmitResponse
 from pospay.schemas.paid_item import PaidItemCreate, PaidItemRead
+from pospay.services import audit_log_service
 
 router = APIRouter(prefix="/paid-items", tags=["paid-items"])
 
@@ -32,6 +33,16 @@ def create_paid_item(
     ctx: TenantContext = Depends(require_permission("paid_item:write")),
 ) -> PaidItemRead:
     item = ingest_paid_item(db, ctx.tenant_id, _to_submission(payload, PaidItemSource.API))
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="paid_item.create",
+        summary=f"Presented check #{item.check_number} for {item.presented_amount}",
+        resource_type="paid_item",
+        resource_id=item.id,
+    )
     db.commit()
     return PaidItemRead.model_validate(item)
 
@@ -44,6 +55,20 @@ def create_paid_items_bulk(
 ) -> BulkSubmitResponse:
     submissions = [_to_submission(row, PaidItemSource.BULK_FILE) for row in payload]
     results = ingest_paid_items_bulk(db, ctx.tenant_id, submissions)
+    for r in results:
+        if not r.success:
+            continue
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="api",
+            action="paid_item.create",
+            summary=f"Paid item created via bulk API (row {r.index})",
+            resource_type="paid_item",
+            resource_id=r.paid_item_id,
+        )
+    db.commit()
     out = [
         BulkRowResultOut(index=r.index, success=r.success, id=str(r.paid_item_id) if r.paid_item_id else None, status=r.match_status, error=r.error)
         for r in results
@@ -57,7 +82,7 @@ def create_paid_items_bulk(
 def list_paid_items(
     account_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("paid_item:read")),
 ) -> list[PaidItemRead]:
     items = PaidItemRepository(db, ctx.tenant_id).list(account_id=account_id)
     return [PaidItemRead.model_validate(i) for i in items]
@@ -67,7 +92,7 @@ def list_paid_items(
 def get_paid_item(
     item_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("paid_item:read")),
 ) -> PaidItemRead:
     item = PaidItemRepository(db, ctx.tenant_id).get(item_id)
     if item is None:

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ record.original_filename }} — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>{{ record.original_filename }}</h1>
+  <p>
+    <span class="badge {{ 'badge-ok' if verified else 'badge-danger' }}">
+      {{ 'signature verified' if verified else 'SIGNATURE MISMATCH — file has changed since upload' }}
+    </span>
+  </p>
+  <table>
+    <tbody>
+      <tr><th>Kind</th><td>{{ record.kind.value }}</td></tr>
+      <tr><th>Uploaded</th><td>{{ record.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</td></tr>
+      <tr><th>Size</th><td>{{ record.size_bytes }} bytes</td></tr>
+      {% if record.succeeded_count is not none %}
+      <tr><th>Succeeded</th><td>{{ record.succeeded_count }}</td></tr>
+      <tr><th>Failed</th><td>{{ record.failed_count }}</td></tr>
+      {% else %}
+      <tr><th>Result</th><td>Rejected before any rows were processed</td></tr>
+      {% endif %}
+      <tr><th>SHA-256</th><td><code>{{ record.sha256_hex }}</code></td></tr>
+    </tbody>
+  </table>
+  <p><a href="/ui/bulk-uploads/{{ record.id }}/download" class="button">Download original file</a></p>
+</div>
+{% endblock %}

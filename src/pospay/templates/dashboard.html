@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — PosPay{% endblock %}
+{% block title %}Dashboard — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Dashboard</h1>
@@ -12,7 +12,7 @@
     <li><a href="/ui/check-images">Check images</a></li>
     <li><a href="/ui/ach/authorizations">ACH authorizations</a></li>
     <li><a href="/ui/ach/transactions">ACH transactions</a></li>
-    {% if can(ctx.role, "admin:manage") %}<li><a href="/ui/admin">Admin</a></li>{% endif %}
+    {% if can(ctx, "admin:manage") %}<li><a href="/ui/admin">Admin</a></li>{% endif %}
   </ul>
 </div>
 {% endblock %}

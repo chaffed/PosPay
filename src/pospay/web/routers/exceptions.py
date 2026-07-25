@@ -11,9 +11,9 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.decision import DecisionOutcome
 from pospay.domain.exception_item import ExceptionStatus
 from pospay.networks.registry import get_adapter
-from pospay.services import decision_service, exception_service
+from pospay.services import audit_log_service, decision_service, exception_service
 from pospay.services.decision_service import DecisionError
-from pospay.web.deps import WebNotFound, get_web_context, render_template, require_web_permission
+from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/exceptions", tags=["web-exceptions"])
@@ -52,7 +52,7 @@ def list_exceptions(
     network_code: str | None = None,
     status: ExceptionStatus | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_web_context),
+    ctx: TenantContext = Depends(require_web_permission("exception:read")),
 ) -> HTMLResponse:
     items = exception_service.list_exceptions(db, ctx.tenant_id, network_code=network_code, status=status)
     rows = []
@@ -73,7 +73,7 @@ def exception_detail(
     request: Request,
     exception_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_web_context),
+    ctx: TenantContext = Depends(require_web_permission("exception:read")),
 ) -> HTMLResponse:
     item = exception_service.get_exception(db, ctx.tenant_id, exception_id)
     if item is None:
@@ -108,6 +108,17 @@ def recommend(
     result = decision_service.submit_recommendation(
         db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None
     )
+    if result.error is None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="exception.recommend",
+            summary=f"Recommended {outcome.value} on exception ({reason_code})",
+            resource_type="exception_item",
+            resource_id=exception_id,
+        )
     db.commit()
     if result.error is not None:
         message = _DECISION_ERROR_MESSAGES[result.error]
@@ -128,6 +139,17 @@ def decide(
     result = decision_service.decide(
         db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None
     )
+    if result.error is None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="exception.decide",
+            summary=f"Decided {outcome.value} on exception ({reason_code})",
+            resource_type="exception_item",
+            resource_id=exception_id,
+        )
     db.commit()
     if result.error is not None:
         message = _DECISION_ERROR_MESSAGES[result.error]

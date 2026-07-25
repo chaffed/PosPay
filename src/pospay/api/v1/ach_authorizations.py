@@ -8,7 +8,7 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.ach_authorization_rule import AchAuthorizationStatus
 from pospay.schemas.ach import AchAuthorizationCreate, AchAuthorizationRead
-from pospay.services import ach_authorization_service
+from pospay.services import ach_authorization_service, audit_log_service
 
 router = APIRouter(prefix="/ach/authorizations", tags=["ach-authorizations"])
 
@@ -25,6 +25,16 @@ def create_ach_authorization(
         ach_authorization_service.AchAuthorizationInput(**payload.model_dump()),
         created_by_user_id=ctx.user_id,
     )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="ach_authorization.create",
+        summary=f"Authorized ACH originator {rule.originator_name} ({rule.originator_id})",
+        resource_type="ach_authorization",
+        resource_id=rule.id,
+    )
     db.commit()
     return AchAuthorizationRead.model_validate(rule)
 
@@ -33,7 +43,7 @@ def create_ach_authorization(
 def list_ach_authorizations(
     status_filter: AchAuthorizationStatus | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("ach_authorization:read")),
 ) -> list[AchAuthorizationRead]:
     rules = ach_authorization_service.list_ach_authorizations(db, ctx.tenant_id, status=status_filter)
     return [AchAuthorizationRead.model_validate(r) for r in rules]
@@ -48,5 +58,15 @@ def revoke_ach_authorization(
     rule = ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ACH authorization not found")
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="ach_authorization.revoke",
+        summary=f"Revoked ACH authorization for {rule.originator_name} ({rule.originator_id})",
+        resource_type="ach_authorization",
+        resource_id=rule.id,
+    )
     db.commit()
     return AchAuthorizationRead.model_validate(rule)

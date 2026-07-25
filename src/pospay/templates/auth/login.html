@@ -1,8 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Log in — PosPay{% endblock %}
+{% block title %}Log in — {{ branding.name if branding else "PosPay" }}{% endblock %}
+{% block head_extra %}
+{% if branding and branding.has_favicon %}<link rel="icon" href="/ui/branding/{{ branding.slug }}/favicon">{% endif %}
+{% if branding and branding.accent_color %}<style>:root{ --accent: {{ branding.accent_color }}; }</style>{% endif %}
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
-  <h1>PosPay</h1>
+  <h1>
+    {% if branding and branding.has_logo %}<img src="/ui/branding/{{ branding.slug }}/logo" alt="{{ branding.name }}" class="brand-logo">
+    {% elif branding %}{{ branding.name }}
+    {% else %}PosPay{% endif %}
+  </h1>
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
   <form method="post" action="/ui/login">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

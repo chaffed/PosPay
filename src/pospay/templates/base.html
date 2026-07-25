@@ -3,34 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}PosPay{% endblock %}</title>
+  <title>{% block title %}{{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/app.css">
+  {% if ctx and ctx.has_favicon %}<link rel="icon" href="/ui/branding/{{ ctx.tenant_slug }}/favicon">{% endif %}
+  {% if ctx and ctx.accent_color %}<style>:root{ --accent: {{ ctx.accent_color }}; }</style>{% endif %}
+  {% block head_extra %}{% endblock %}
 </head>
 <body>
-  {% if ctx %}
-  <nav class="topnav">
-    <a href="/ui/" class="brand">PosPay</a>
-    <a href="/ui/accounts">Accounts</a>
-    <a href="/ui/issued-items">Issued Items</a>
-    <a href="/ui/stop-payments">Stop Payments</a>
-    <a href="/ui/paid-items">Paid Items</a>
-    <a href="/ui/check-images">Check Images</a>
-    <a href="/ui/ach/authorizations">ACH Authorizations</a>
-    <a href="/ui/ach/transactions">ACH Transactions</a>
-    <a href="/ui/exceptions">Exceptions</a>
-    {% if can(ctx.role, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
-    <span class="spacer"></span>
-    <a href="/ui/security">Security</a>
-    <form method="post" action="/ui/logout" class="inline-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button type="submit" class="link-button">Log out</button>
-    </form>
-  </nav>
-  {% endif %}
+  <div class="app-shell">
+    {% if ctx %}
+    <nav class="sidenav">
+      <a href="/ui/" class="brand">
+        {% if ctx.has_logo %}<img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="{{ ctx.tenant_name }}" class="brand-logo">{% else %}{{ ctx.tenant_name }}{% endif %}
+      </a>
+      <div class="nav-links">
+        <a href="/ui/accounts">Accounts</a>
+        <a href="/ui/issued-items">Issued Items</a>
+        <a href="/ui/stop-payments">Stop Payments</a>
+        <a href="/ui/paid-items">Paid Items</a>
+        <a href="/ui/check-images">Check Images</a>
+        <a href="/ui/ach/authorizations">ACH Authorizations</a>
+        <a href="/ui/ach/transactions">ACH Transactions</a>
+        <a href="/ui/exceptions">Exceptions</a>
+        {% if can(ctx, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
+        {% if can(ctx, "user:manage") %}<a href="/ui/users">Users</a>{% endif %}
+        {% if can(ctx, "security_group:manage") %}<a href="/ui/security-groups">Security Groups</a>{% endif %}
+        {% if can(ctx, "tenant:manage") %}<a href="/ui/settings">Settings</a>{% endif %}
+        {% if can(ctx, "audit_log:read") %}<a href="/ui/audit-log">Audit Log</a>{% endif %}
+      </div>
+      <div class="nav-bottom">
+        <a href="/ui/switch-tenant">Switch organization</a>
+        <a href="/ui/security">Security</a>
+        <form method="post" action="/ui/logout" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="link-button">Log out</button>
+        </form>
+      </div>
+    </nav>
+    {% endif %}
 
-  <div class="page">
-    {% include "partials/_flash.html" %}
-    {% block content %}{% endblock %}
+    <div class="page">
+      {% include "partials/_flash.html" %}
+      {% block content %}{% endblock %}
+    </div>
   </div>
 
   <script src="/static/js/app.js"></script>

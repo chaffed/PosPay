@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Security Groups — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Security Groups</h1>
+    <a href="/ui/security-groups/new" class="button">New security group</a>
+  </div>
+  {% if groups %}
+  <table data-sortable>
+    <thead><tr><th>Name</th><th>Permissions</th><th></th></tr></thead>
+    <tbody>
+      {% for group in groups %}
+      <tr>
+        <td>{{ group.name }}</td>
+        <td>{{ group.permissions | length }} of {{ catalog_size }}</td>
+        <td><a href="/ui/security-groups/{{ group.id }}/edit">Edit</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No security groups yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

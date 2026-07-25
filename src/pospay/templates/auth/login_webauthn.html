@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Security key — PosPay{% endblock %}
+{% block title %}Security key — {{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Verify with your security key</h1>

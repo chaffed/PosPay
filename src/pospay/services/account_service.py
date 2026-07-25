@@ -33,6 +33,23 @@ def get_account_by_number(session: Session, tenant_id: uuid.UUID, account_number
     return matches[0] if matches else None
 
 
+def get_or_create_account_by_number(
+    session: Session, tenant_id: uuid.UUID, account_number: str, *, default_name: str | None = None
+) -> Account:
+    """Used by bulk file imports when the "create missing accounts" option is checked —
+    same lookup as get_account_by_number, but creates a new account instead of returning
+    None when the file references an account number this tenant doesn't have yet. Files
+    rarely carry an account name, so callers may pass one (e.g. from an optional
+    "account_name" column) and it otherwise falls back to a placeholder derived from the
+    number itself."""
+    account = get_account_by_number(session, tenant_id, account_number)
+    if account is not None:
+        return account
+    return create_account(
+        session, tenant_id, AccountInput(account_number=account_number, name=default_name or f"Account {account_number}")
+    )
+
+
 def set_ach_debit_block_mode(session: Session, tenant_id: uuid.UUID, account_id: uuid.UUID, mode: AchDebitBlockMode) -> Account | None:
     repo = AccountRepository(session, tenant_id)
     account = repo.get(account_id)

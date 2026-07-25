@@ -11,6 +11,7 @@ from pospay.domain.check_image import OcrStatus
 from pospay.networks.check.ocr_processing import create_check_image, process_check_image_ocr
 from pospay.repositories.check_image_repo import CheckImageRepository
 from pospay.schemas.check_image import CheckImageRead
+from pospay.services import audit_log_service
 
 router = APIRouter(prefix="/check-images", tags=["check-images"])
 
@@ -36,13 +37,23 @@ def upload_check_image(
     back_image: UploadFile | None = File(None),
     paid_item_id: uuid.UUID | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("paid_item:write")),
+    ctx: TenantContext = Depends(require_permission("check_image:write")),
 ) -> CheckImageRead:
     front_bytes = front_image.file.read()
     back_bytes = back_image.file.read() if back_image is not None else None
 
     check_image = create_check_image(
         db, ctx.tenant_id, front_bytes=front_bytes, back_bytes=back_bytes, paid_item_id=paid_item_id
+    )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="check_image.upload",
+        summary="Uploaded a check image",
+        resource_type="check_image",
+        resource_id=check_image.id,
     )
     db.commit()
 
@@ -54,7 +65,7 @@ def upload_check_image(
 def get_check_image(
     check_image_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("issued_item:read")),
+    ctx: TenantContext = Depends(require_permission("check_image:read")),
 ) -> CheckImageRead:
     check_image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
     if check_image is None:
@@ -67,13 +78,23 @@ def reprocess_check_image(
     check_image_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(require_permission("paid_item:write")),
+    ctx: TenantContext = Depends(require_permission("check_image:write")),
 ) -> CheckImageRead:
     check_image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
     if check_image is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Check image not found")
 
     check_image.ocr_status = OcrStatus.PENDING
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="check_image.reprocess",
+        summary="Requested OCR reprocessing of a check image",
+        resource_type="check_image",
+        resource_id=check_image.id,
+    )
     db.commit()
 
     background_tasks.add_task(_run_ocr_in_background, db.get_bind(), check_image.id, ctx.tenant_id)

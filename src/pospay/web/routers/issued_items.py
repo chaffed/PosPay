@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.bulk_upload_file import BulkUploadKind
 from pospay.domain.issued_item import IssuedItemStatus
 from pospay.repositories.issued_item_repo import IssuedItemRepository
-from pospay.services import account_service, issued_item_service
-from pospay.web.deps import WebNotFound, get_web_context, render_template, require_web_permission
+from pospay.services import account_service, audit_log_service, bulk_upload_file_service, issued_item_service
+from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/issued-items", tags=["web-issued-items"])
@@ -22,7 +23,7 @@ def list_issued_items(
     request: Request,
     status: IssuedItemStatus | None = None,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_web_context),
+    ctx: TenantContext = Depends(require_web_permission("issued_item:read")),
 ) -> HTMLResponse:
     items = issued_item_service.list_issued_items(db, ctx.tenant_id, status=status)
     return render_template(request, "issued_items/list.html", ctx=ctx, items=items, status_filter=status)
@@ -68,7 +69,7 @@ def create_issued_item(
         )
 
     try:
-        issued_item_service.create_issued_item(
+        item = issued_item_service.create_issued_item(
             db,
             ctx.tenant_id,
             issued_item_service.IssuedItemInput(
@@ -79,6 +80,16 @@ def create_issued_item(
                 issue_date=parsed_issue_date,
             ),
             submitted_by_user_id=ctx.user_id,
+        )
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="issued_item.create",
+            summary=f"Issued check #{item.check_number} for {item.amount} to {item.payee_name}",
+            resource_type="issued_item",
+            resource_id=item.id,
         )
         db.commit()
     except Exception as exc:  # noqa: BLE001 — surface a DB constraint violation (e.g. duplicate check number) to the form
@@ -112,31 +123,70 @@ def bulk_upload_form(
 async def bulk_upload_issued_items(
     request: Request,
     upload_file: UploadFile,
+    create_missing_accounts: bool = Form(False),
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("issued_item:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> HTMLResponse:
     content = await upload_file.read()
+
+    # Recorded before parsing (and committed on its own) so a rejected/malformed file is
+    # still captured for audit purposes, not just successful uploads — see
+    # services/bulk_upload_file_service.py.
+    upload_record = bulk_upload_file_service.record_uploaded_file(
+        db,
+        ctx.tenant_id,
+        kind=BulkUploadKind.ISSUED_ITEMS,
+        filename=upload_file.filename or "upload.csv",
+        content_type=upload_file.content_type,
+        data=content,
+        uploaded_by_user_id=ctx.user_id,
+    )
+    db.commit()
+
     try:
         rows = parse_tabular_file(upload_file.filename or "upload.csv", content)
     except TabularParseError as exc:
         return render_template(
-            request, "issued_items/bulk_upload.html", ctx=ctx, error=str(exc), status_code=422
+            request, "issued_items/bulk_upload.html", ctx=ctx, error=str(exc), status_code=422, upload_record=upload_record
         )
 
     if not rows:
         return render_template(
-            request, "issued_items/bulk_upload.html", ctx=ctx, error="That file has no data rows.", status_code=422
+            request,
+            "issued_items/bulk_upload.html",
+            ctx=ctx,
+            error="That file has no data rows.",
+            status_code=422,
+            upload_record=upload_record,
         )
 
     results = issued_item_service.create_issued_items_from_rows(
-        db, ctx.tenant_id, rows, submitted_by_user_id=ctx.user_id
+        db, ctx.tenant_id, rows, submitted_by_user_id=ctx.user_id, auto_create_accounts=create_missing_accounts
     )
+    for r in results:
+        if not r.success:
+            continue
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="issued_item.create",
+            summary=f"Issued item created via bulk upload ({r.row_label})",
+            resource_type="issued_item",
+            resource_id=r.created_id,
+        )
+    bulk_upload_file_service.set_result_counts(
+        db, upload_record, succeeded_count=sum(r.success for r in results), failed_count=sum(not r.success for r in results)
+    )
+    db.commit()
     return render_template(
         request,
         "bulk_result.html",
         ctx=ctx,
         results=results,
+        upload_record=upload_record,
         back_url="/ui/issued-items",
         back_label="Back to issued items",
     )
@@ -147,7 +197,7 @@ def issued_item_detail(
     request: Request,
     item_id: uuid.UUID,
     db: Session = Depends(get_db),
-    ctx: TenantContext = Depends(get_web_context),
+    ctx: TenantContext = Depends(require_web_permission("issued_item:read")),
 ) -> HTMLResponse:
     item = IssuedItemRepository(db, ctx.tenant_id).get(item_id)
     if item is None:
@@ -164,7 +214,18 @@ def void_issued_item(
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     item = issued_item_service.void_issued_item(db, ctx.tenant_id, item_id, reason)
-    db.commit()
     if item is None:
+        db.commit()
         return RedirectResponse(f"/ui/issued-items?error={quote('Issued item not found.')}", status_code=303)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="issued_item.void",
+        summary=f"Voided check #{item.check_number}: {reason}",
+        resource_type="issued_item",
+        resource_id=item.id,
+    )
+    db.commit()
     return RedirectResponse(f"/ui/issued-items/{item_id}?flash=Issued+item+voided.", status_code=303)

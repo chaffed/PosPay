@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.services import account_service, stop_payment_service
-from pospay.web.deps import get_web_context, render_template, require_web_permission
+from pospay.services import account_service, audit_log_service, stop_payment_service
+from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/stop-payments", tags=["web-stop-payments"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/ui/stop-payments", tags=["web-stop-payments"])
 
 @router.get("")
 def list_stop_payments(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_web_context)
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("stop_payment:read"))
 ) -> HTMLResponse:
     stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id)
     return render_template(request, "stop_payments/list.html", ctx=ctx, stops=stops)
@@ -56,7 +56,7 @@ def create_stop_payment(
             request, "stop_payments/form.html", ctx=ctx, accounts=accounts, error="Invalid amount or date.", status_code=422
         )
 
-    stop_payment_service.create_stop_payment(
+    stop = stop_payment_service.create_stop_payment(
         db,
         ctx.tenant_id,
         stop_payment_service.StopPaymentInput(
@@ -69,6 +69,16 @@ def create_stop_payment(
         ),
         created_by_user_id=ctx.user_id,
     )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="stop_payment.create",
+        summary=f"Stopped payment on check #{stop.check_number}" + (f": {reason}" if reason else ""),
+        resource_type="stop_payment",
+        resource_id=stop.id,
+    )
     db.commit()
     return RedirectResponse("/ui/stop-payments?flash=Stop+payment+created.", status_code=303)
 
@@ -80,6 +90,17 @@ def cancel_stop_payment(
     ctx: TenantContext = Depends(require_web_permission("stop_payment:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id)
+    stop = stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id)
+    if stop is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="stop_payment.cancel",
+            summary=f"Cancelled stop payment on check #{stop.check_number}",
+            resource_type="stop_payment",
+            resource_id=stop.id,
+        )
     db.commit()
     return RedirectResponse("/ui/stop-payments?flash=Stop+payment+cancelled.", status_code=303)

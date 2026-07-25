@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Security — PosPay{% endblock %}
+{% block title %}Security — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
@@ -11,7 +11,7 @@
     require your password AND this key.</p>
 
   {% if credentials %}
-  <table>
+  <table data-sortable>
     <thead><tr><th>Nickname</th><th>Registered</th><th>Last used</th><th></th></tr></thead>
     <tbody>
       {% for cred in credentials %}

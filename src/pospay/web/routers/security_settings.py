@@ -39,7 +39,7 @@ def register_options(
     _csrf: None = Depends(verify_csrf_header),
 ) -> Response:
     user = db.get(User, ctx.user_id)
-    options_json = begin_registration(db, user)
+    options_json = begin_registration(db, user, ctx.tenant_id)
     db.commit()
     return Response(content=options_json, media_type="application/json")
 
@@ -53,7 +53,7 @@ def register_verify(
 ) -> JSONResponse:
     user = db.get(User, ctx.user_id)
     try:
-        credential = complete_registration(db, user, payload.credential, nickname=payload.nickname)
+        credential = complete_registration(db, user, ctx.tenant_id, payload.credential, nickname=payload.nickname)
     except WebauthnError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
     db.commit()

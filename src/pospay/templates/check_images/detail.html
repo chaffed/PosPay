@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Check Image — PosPay{% endblock %}
+{% block title %}Check Image — {{ ctx.tenant_name }}{% endblock %}
 {% if image.ocr_status.value == "pending" %}
 {% block scripts %}<meta http-equiv="refresh" content="2">{% endblock %}
 {% endif %}
@@ -16,7 +16,7 @@
   <p>Provider: {{ image.ocr_provider }}</p>
   {% endif %}
 
-  {% if can(ctx.role, "paid_item:write") %}
+  {% if can(ctx, "check_image:write") %}
   <form method="post" action="/ui/check-images/{{ image.id }}/reprocess" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="secondary">Reprocess</button>

@@ -10,7 +10,7 @@ from pospay.domain.issued_item import IssuedItemStatus
 from pospay.repositories.issued_item_repo import IssuedItemRepository
 from pospay.schemas.common import BulkRowResultOut, BulkSubmitResponse
 from pospay.schemas.issued_item import IssuedItemCreate, IssuedItemRead, IssuedItemVoidRequest
-from pospay.services import issued_item_service
+from pospay.services import audit_log_service, issued_item_service
 
 router = APIRouter(prefix="/issued-items", tags=["issued-items"])
 
@@ -27,6 +27,16 @@ def create_issued_item(
         issued_item_service.IssuedItemInput(**payload.model_dump()),
         submitted_by_user_id=ctx.user_id,
     )
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="issued_item.create",
+        summary=f"Issued check #{item.check_number} for {item.amount} to {item.payee_name}",
+        resource_type="issued_item",
+        resource_id=item.id,
+    )
     db.commit()
     return IssuedItemRead.model_validate(item)
 
@@ -39,6 +49,20 @@ def create_issued_items_bulk(
 ) -> BulkSubmitResponse:
     inputs = [issued_item_service.IssuedItemInput(**row.model_dump()) for row in payload]
     results = issued_item_service.create_issued_items_bulk(db, ctx.tenant_id, inputs, submitted_by_user_id=ctx.user_id)
+    for r in results:
+        if not r.success:
+            continue
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="api",
+            action="issued_item.create",
+            summary=f"Issued item created via bulk API (row {r.index})",
+            resource_type="issued_item",
+            resource_id=r.issued_item_id,
+        )
+    db.commit()
     out = [
         BulkRowResultOut(
             index=r.index,
@@ -95,5 +119,15 @@ def void_issued_item(
     item = issued_item_service.void_issued_item(db, ctx.tenant_id, item_id, payload.reason)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Issued item not found")
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="api",
+        action="issued_item.void",
+        summary=f"Voided check #{item.check_number}: {payload.reason}",
+        resource_type="issued_item",
+        resource_id=item.id,
+    )
     db.commit()
     return IssuedItemRead.model_validate(item)

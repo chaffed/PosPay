@@ -91,15 +91,18 @@ def _reexec_under_venv() -> None:
 
 
 def _configure_run_env() -> None:
-    """Points the app's database, check-image storage, and ML artifacts at .pospay-run/
-    instead of their normal project-root-relative defaults (used by a manual `alembic
-    upgrade head && uvicorn ...` dev setup) — this is what keeps the quickstart from
-    ever writing into the checked-out source tree. setdefault() so an advanced user's
-    own POSPAY_* env vars still win. Must run before the first `pospay.config.get_settings()`
-    call anywhere (it's @lru_cache'd), so this is called before any `from pospay...` import."""
+    """Points the app's database, check-image storage, tenant branding assets, saved bulk
+    upload files, and ML artifacts at .pospay-run/ instead of their normal
+    project-root-relative defaults (used by a manual `alembic upgrade head && uvicorn ...`
+    dev setup) — this is what keeps the quickstart from ever writing into the checked-out
+    source tree. setdefault() so an advanced user's own POSPAY_* env vars still win. Must
+    run before the first `pospay.config.get_settings()` call anywhere (it's @lru_cache'd),
+    so this is called before any `from pospay...` import."""
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("POSPAY_DATABASE_URL", f"sqlite:///{RUN_DIR / 'pospay.db'}")
     os.environ.setdefault("POSPAY_CHECK_IMAGE_STORAGE_DIR", str(RUN_DIR / "check_images"))
+    os.environ.setdefault("POSPAY_TENANT_ASSET_STORAGE_DIR", str(RUN_DIR / "tenant_assets"))
+    os.environ.setdefault("POSPAY_BULK_UPLOAD_STORAGE_DIR", str(RUN_DIR / "bulk_uploads"))
     os.environ.setdefault("POSPAY_ML_ARTIFACT_DIR", str(RUN_DIR / "ml_artifacts"))
 
 

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Add User — {{ ctx.tenant_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Add user</h1>
+  <p>If this email already belongs to a user in another organization, you'll be asked to
+    confirm granting them access here before anything is created — their existing
+    password stays unchanged.</p>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/ui/users">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Email <input type="email" name="email" required autofocus></label>
+    <label>Password <input type="password" name="password"></label>
+    <p class="hint">Only used if this email doesn't already belong to an existing user.</p>
+    <label>Security group
+      <select name="security_group_id" required>
+        {% for group in groups %}
+        <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Add user</button>
+  </form>
+</div>
+{% endblock %}

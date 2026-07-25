@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Issued Items — PosPay{% endblock %}
+{% block title %}Issued Items — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
     <h1>Issued Items</h1>
-    {% if can(ctx.role, "issued_item:write") %}
+    {% if can(ctx, "issued_item:write") %}
     <div class="actions">
       <a href="/ui/issued-items/new" class="button">New issued item</a>
       <a href="/ui/issued-items/bulk" class="button secondary">Bulk upload</a>
@@ -22,8 +22,8 @@
     </label>
   </form>
   {% if items %}
-  <table>
-    <thead><tr><th>Check #</th><th>Amount</th><th>Payee</th><th>Issue date</th><th>Status</th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th>Check #</th><th data-type="number">Amount</th><th>Payee</th><th>Issue date</th><th>Status</th></tr></thead>
     <tbody>
       {% for item in items %}
       <tr>

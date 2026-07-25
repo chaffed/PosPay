@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Exceptions — PosPay{% endblock %}
+{% block title %}Exceptions — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Exceptions Queue</h1>
@@ -22,8 +22,8 @@
   </form>
 
   {% if rows %}
-  <table>
-    <thead><tr><th>Network</th><th>Item</th><th>Amount</th><th>Types</th><th>ML score</th><th>Status</th></tr></thead>
+  <table data-sortable>
+    <thead><tr><th>Network</th><th>Item</th><th data-type="number">Amount</th><th>Types</th><th data-type="number">ML score</th><th>Status</th></tr></thead>
     <tbody>
       {% for row in rows %}
       <tr>
