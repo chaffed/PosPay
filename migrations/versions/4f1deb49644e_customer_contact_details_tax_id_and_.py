@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """customer contact details, tax id, and external customer id
 
 Revision ID: 4f1deb49644e

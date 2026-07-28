@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Normalizes an incoming check image (from a ZIP manifest entry or an X9.37 Image View
 Data record) to PNG bytes before storage, regardless of source format — everything
 downstream (Tesseract OCR, the check-image download routes) then only ever has to deal

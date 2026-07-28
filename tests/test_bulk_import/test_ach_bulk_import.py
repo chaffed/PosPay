@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from pospay.networks.ach.bulk_import import ingest_ach_rows, ingest_nacha_entries
 from pospay.repositories.account_repo import AccountRepository
 from pospay.repositories.ach_transaction_repo import AchTransactionRepository

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from pospay.bulk_import.signing import content_hash, sign_file, verify_signature
 
 

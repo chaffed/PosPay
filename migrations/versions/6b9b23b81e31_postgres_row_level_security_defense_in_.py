@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """postgres row-level security defense-in-depth on single-tenant tables
 
 Revision ID: 6b9b23b81e31

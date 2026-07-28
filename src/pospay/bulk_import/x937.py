@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Lenient parser for X9.37 ("DSTU X9.37" / Check 21) image cash letter files.
 
 Supports the common ASCII, line-delimited "variable format" convention: every record's

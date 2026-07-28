@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 # Importing this package must register every ORM mapper, even though most call sites
 # only need one or two models directly. SQLAlchemy resolves ForeignKey("table.id")
 # strings lazily against whatever's been mapped so far — if a model referenced only by

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Tracks which records a bulk upload created, and backs them out later.
 
 Every other service module in this app stays audit-log-agnostic (the calling web/api

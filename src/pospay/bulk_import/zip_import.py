@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Parses a ZIP file containing exactly one tabular manifest (CSV/TSV/Excel — the check's
 encoded data) plus the image files it references by filename. This is the "ZIP+CSV" bulk
 check-image format (see networks/check/bulk_import.py for how the parsed rows/images turn

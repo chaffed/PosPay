@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Web/cookie-auth channel coverage for customer scoping: default membership selection at
 login when a user holds several memberships in one tenant, switching between them via
 /ui/switch-tenant, and confirming CUSTOMER_SCOPE_MASKED_PERMISSIONS holds even for a

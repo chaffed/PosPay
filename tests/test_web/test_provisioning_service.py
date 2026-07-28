@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from pospay.auth.security import verify_password
 from pospay.services.provisioning_service import create_tenant_with_admin
 

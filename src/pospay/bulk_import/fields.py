@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any

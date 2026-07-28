@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """audit log entry table with hash chain, audit_log read permission backfill
 
 Revision ID: 55e0637bba8d

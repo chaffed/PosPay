@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """check network: issued_item, stop_payment, paid_item; exception_item recommendation fields; tenant stale_date_threshold_days
 
 Revision ID: cd4dc7cc709b

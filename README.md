@@ -478,3 +478,15 @@ cosmetic, the POST route's own permission check is what actually enforces it.
 - `scripts/launcher.py` — the one-click local setup/run script (stdlib-only until it
   re-execs itself under a freshly-created venv's own interpreter); `run_pospay.command`
   is the macOS double-click wrapper around it
+
+## License
+
+Copyright (C) 2026 Chaffed
+
+PosPay is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version.
+
+This means that if you run a modified version of PosPay as a network service, you must
+make the modified source available to that service's users — see [LICENSE](LICENSE) for
+the full text.

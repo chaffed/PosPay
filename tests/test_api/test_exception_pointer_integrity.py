@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """exception_item.source_item_id has no DB-level foreign key (see architecture plan —
 a deliberate trade for N-network extensibility). The mitigation is: every exception_item
 is created in the same transaction as its source row, and resolution only ever happens

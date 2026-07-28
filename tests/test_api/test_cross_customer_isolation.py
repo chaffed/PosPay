@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Deliberately attempts to leak every customer-scoped resource type across customers
 within the SAME tenant, and asserts each attempt is blocked — the customer-scoping
 analogue of test_cross_tenant_isolation.py. This is the primary evidence for the riskiest

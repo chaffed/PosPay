@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from pospay.repositories.account_repo import AccountRepository
 from pospay.repositories.issued_item_repo import IssuedItemRepository
 from pospay.services.issued_item_service import create_issued_items_from_rows

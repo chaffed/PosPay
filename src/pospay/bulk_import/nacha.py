@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Lenient NACHA (ACH file format) parser.
 
 Extracts only what's needed to create ach_transaction rows: batch header fields

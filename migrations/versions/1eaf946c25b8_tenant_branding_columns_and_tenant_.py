@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """tenant branding columns and tenant:manage permission backfill
 
 Revision ID: 1eaf946c25b8

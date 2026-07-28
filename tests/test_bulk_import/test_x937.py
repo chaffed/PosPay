@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Tests for the X9.37 image cash letter parser (bulk_import/x937.py).
 
 There is no real-world sample X9.37 file available in this repo to validate against, so

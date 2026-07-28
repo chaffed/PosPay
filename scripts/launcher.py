@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """One-click local launcher for PosPay (SQLite, zero external services).
 
 Run this directly (`python3 scripts/launcher.py`) or via the platform wrapper

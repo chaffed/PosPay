@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 import uuid
 
 from pospay.bulk_import.file_storage import read_uploaded_file, save_uploaded_file

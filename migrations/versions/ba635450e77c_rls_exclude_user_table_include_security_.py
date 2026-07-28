@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """RLS: exclude user table, include security_group and tenant_membership
 
 Revision ID: ba635450e77c

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """ach network: ach_authorization_rule, ach_transaction
 
 Revision ID: 20876d626ec0

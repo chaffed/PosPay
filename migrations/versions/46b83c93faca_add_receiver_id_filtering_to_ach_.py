@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """add receiver_id filtering to ach authorizations and transactions
 
 Revision ID: 46b83c93faca

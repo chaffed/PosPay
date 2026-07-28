@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlalchemy import select

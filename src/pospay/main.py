@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote

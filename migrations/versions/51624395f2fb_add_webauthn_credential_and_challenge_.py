@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """add webauthn credential and challenge tables for FIDO2 second-factor auth
 
 Revision ID: 51624395f2fb

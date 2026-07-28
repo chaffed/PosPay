@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """customers: tenant sub-organizations with account/record segregation
 
 Revision ID: 660947655325

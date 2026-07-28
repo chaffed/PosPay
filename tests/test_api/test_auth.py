@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 def test_login_succeeds_with_correct_credentials(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="login-ok")
 

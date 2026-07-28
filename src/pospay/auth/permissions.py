@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """The full catalog of permission keys a security group can grant, and the default
 groups seeded into every new tenant. Replaces the old fixed `UserRole` enum + static
 `PERMISSIONS` matrix (auth/rbac.py, now deleted) — permission sets are now per-tenant,

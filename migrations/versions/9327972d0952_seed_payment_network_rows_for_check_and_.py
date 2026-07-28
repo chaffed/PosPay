@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """seed payment_network rows for check and ach
 
 Revision ID: 9327972d0952

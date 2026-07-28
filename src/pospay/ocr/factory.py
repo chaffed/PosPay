@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from pospay.config import Settings, get_settings
 from pospay.ocr.base import OCRProvider
 

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """security groups and tenant membership, replace user role with security group
 
 Revision ID: 23275a18351d

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Generates cryptographically valid WebAuthn ceremony responses without a browser.
 
 There's no way to drive a real navigator.credentials.create()/get() call from a backend

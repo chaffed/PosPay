@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """bulk upload file audit table with RLS
 
 Revision ID: bc099ed56cb6

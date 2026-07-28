@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Deliberately attempts to leak every tenant-owned resource type across tenants and
 asserts each attempt is blocked. This is the test suite the architecture plan calls for
 in Phase 6 — a bug in repositories/base.py's tenant filtering is exactly the class of bug

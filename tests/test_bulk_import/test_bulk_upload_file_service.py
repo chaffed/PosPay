@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from pathlib import Path
 
 from pospay.domain.bulk_upload_file import BulkUploadKind

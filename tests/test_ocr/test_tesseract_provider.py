@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from decimal import Decimal
 
 from tests.test_ocr.conftest import make_check_image

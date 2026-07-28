@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """Turns parsed ZIP+CSV manifest rows / X9.37 check items into paid_item + check_image
 rows — the glue layer for the two bulk check-image import formats, mirroring
 networks/ach/bulk_import.py's role for ACH's own two formats (delimited/Excel + NACHA).

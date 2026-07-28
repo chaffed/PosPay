@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """initial schema: tenant, user, account, payment_network, exception_item, decision, ml_model
 
 Revision ID: 18baeeaca329

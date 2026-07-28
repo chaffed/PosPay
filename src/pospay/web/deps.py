@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 import jwt
 from fastapi import Depends, Request
 from fastapi.responses import HTMLResponse

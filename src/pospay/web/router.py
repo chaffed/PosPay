@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 from fastapi import APIRouter
 
 from pospay.web.routers.accounts import router as accounts_router

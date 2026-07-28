@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 import uuid
 
 from pospay.domain.audit_log_entry import AuditLogEntry

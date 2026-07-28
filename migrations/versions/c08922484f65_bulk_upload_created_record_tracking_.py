@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """bulk upload created record tracking table with RLS and backout columns
 
 Revision ID: c08922484f65

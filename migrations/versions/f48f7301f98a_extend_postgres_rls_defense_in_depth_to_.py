@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
 """extend postgres RLS defense-in-depth to webauthn credential and challenge tables
 
 Revision ID: f48f7301f98a
