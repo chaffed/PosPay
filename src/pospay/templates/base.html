@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version('css/app.css') }}">
   {% if ctx and ctx.has_favicon %}<link rel="icon" href="/ui/branding/{{ ctx.tenant_slug }}/favicon">{% endif %}
   {% if ctx and ctx.accent_color %}<style>:root{ --accent: {{ ctx.accent_color }}; }</style>{% endif %}
   {% block head_extra %}{% endblock %}
@@ -58,7 +58,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v={{ asset_version('js/app.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

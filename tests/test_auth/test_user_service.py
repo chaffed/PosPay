@@ -1,6 +1,10 @@
+import uuid
+
+import pytest
+
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
-from pospay.services import security_group_service, user_service
+from pospay.services import customer_service, security_group_service, user_service
 
 
 def test_add_user_creates_brand_new_identity(db_session, tenant_factory):
@@ -120,3 +124,98 @@ def test_create_users_from_rows_bulk(db_session, tenant_factory):
     assert results[1].outcome == "needs_confirmation"
     assert results[2].outcome == "failed"
     assert "No security group found" in results[2].error
+
+
+def test_update_membership_changes_security_group_and_customer(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="user-update-membership")
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["viewer"].id)[0]
+    approver_group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Approver")
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme Co")
+    )
+    db_session.commit()
+
+    updated = user_service.update_membership(
+        db_session, tenant.id, membership.id, security_group_id=approver_group.id, customer_id=customer.id
+    )
+    db_session.commit()
+
+    assert updated.security_group_id == approver_group.id
+    assert updated.customer_id == customer.id
+
+
+def test_update_membership_back_to_bank_wide(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="user-update-membership-bankwide")
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme Co")
+    )
+    preparer_group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+    # a brand-new identity with ONLY this one customer-scoped membership -- no other
+    # membership in this tenant to collide with when moving it to bank-wide
+    scoped_user = user_service.create_user_with_membership(
+        db_session, tenant.id, email="scoped-only@example.com", password="hunter2-hunter2",
+        security_group_id=preparer_group.id, customer_id=customer.id,
+    )
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=scoped_user.id)[0]
+    db_session.commit()
+
+    updated = user_service.update_membership(
+        db_session, tenant.id, membership.id, security_group_id=preparer_group.id, customer_id=None
+    )
+    db_session.commit()
+
+    assert updated.customer_id is None
+
+
+def test_update_membership_raises_for_unknown_membership(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="user-update-membership-unknown")
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+
+    with pytest.raises(ValueError, match="Membership not found"):
+        user_service.update_membership(db_session, tenant.id, uuid.uuid4(), security_group_id=group.id, customer_id=None)
+
+
+def test_update_membership_raises_for_other_tenants_membership(db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="user-update-membership-cross-a")
+    tenant_b, _account_b, _users_b = tenant_factory.make(slug="user-update-membership-cross-b")
+    membership = TenantMembershipRepository(db_session, tenant_a.id).list(user_id=users_a["viewer"].id)[0]
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Preparer")
+
+    with pytest.raises(ValueError, match="Membership not found"):
+        user_service.update_membership(db_session, tenant_b.id, membership.id, security_group_id=group_b.id, customer_id=None)
+
+
+def test_update_membership_raises_for_unknown_security_group(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="user-update-membership-badgroup")
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["viewer"].id)[0]
+
+    with pytest.raises(ValueError, match="Security group not found"):
+        user_service.update_membership(db_session, tenant.id, membership.id, security_group_id=uuid.uuid4(), customer_id=None)
+
+
+def test_update_membership_raises_for_unknown_customer(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="user-update-membership-badcustomer")
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["viewer"].id)[0]
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+
+    with pytest.raises(ValueError, match="Customer not found"):
+        user_service.update_membership(db_session, tenant.id, membership.id, security_group_id=group.id, customer_id=uuid.uuid4())
+
+
+def test_update_membership_raises_on_scope_collision(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="user-update-membership-collision")
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme Co")
+    )
+    preparer_group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+    # viewer now holds TWO memberships in this tenant: their original bank-wide one, and a new customer-scoped one
+    scoped_membership = user_service.confirm_cross_tenant_membership(
+        db_session, tenant.id, email=users["viewer"].email, security_group_id=preparer_group.id, customer_id=customer.id
+    )
+    db_session.commit()
+
+    # trying to move the scoped membership back to bank-wide collides with the viewer's existing bank-wide membership
+    with pytest.raises(ValueError, match="already has a separate membership scoped to that customer"):
+        user_service.update_membership(
+            db_session, tenant.id, scoped_membership.id, security_group_id=preparer_group.id, customer_id=None
+        )

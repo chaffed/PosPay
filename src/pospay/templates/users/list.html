@@ -32,6 +32,7 @@
         <td>{{ row.customer_name or "bank-wide" }}</td>
         <td><span class="badge {{ 'badge-ok' if row.membership.is_active else 'badge-danger' }}">{{ 'active' if row.membership.is_active else 'deactivated' }}</span></td>
         <td>
+          <a href="/ui/users/{{ row.membership.id }}/edit">Edit</a>
           {% if row.membership.is_active %}
           <form method="post" action="/ui/users/{{ row.membership.id }}/deactivate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

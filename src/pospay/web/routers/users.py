@@ -11,6 +11,7 @@ from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.bulk_upload_file import BulkUploadKind
+from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
 from pospay.services import (
     audit_log_service,
@@ -20,7 +21,7 @@ from pospay.services import (
     security_group_service,
     user_service,
 )
-from pospay.web.deps import render_template, require_web_permission
+from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/users", tags=["web-users"])
@@ -356,3 +357,78 @@ def bulk_confirm_users(
         )
     db.commit()
     return render_template(request, "users/bulk_result.html", ctx=ctx, results=results, pending=[])
+
+
+# NOTE: /{membership_id} (bare, no suffix) must be registered after every literal path
+# above it (/bulk, /bulk/confirm, /confirm) — FastAPI matches path patterns in
+# registration order, and "bulk" would otherwise be captured as membership_id and
+# rejected as an invalid UUID before those routes are ever tried. Same class of pitfall
+# as /bulk vs /{item_id} elsewhere in this codebase.
+
+
+@router.get("/{membership_id}/edit")
+def edit_user_form(
+    request: Request,
+    membership_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+) -> HTMLResponse:
+    membership = TenantMembershipRepository(db, ctx.tenant_id).get(membership_id)
+    if membership is None:
+        raise WebNotFound()
+    member_user = UserRepository(db).get(membership.user_id)
+    groups = security_group_service.list_security_groups(db, ctx.tenant_id)
+    customers = customer_service.list_customers(db, ctx.tenant_id)
+    return render_template(
+        request, "users/edit.html", ctx=ctx, membership=membership, member_user=member_user, groups=groups, customers=customers
+    )
+
+
+@router.post("/{membership_id}")
+def update_user(
+    request: Request,
+    membership_id: uuid.UUID,
+    security_group_id: uuid.UUID = Form(...),
+    customer_id: str = Form(""),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    resolved_customer_id = uuid.UUID(customer_id) if customer_id else None
+    try:
+        membership = user_service.update_membership(
+            db, ctx.tenant_id, membership_id, security_group_id=security_group_id, customer_id=resolved_customer_id
+        )
+    except ValueError as exc:
+        db.rollback()
+        existing = TenantMembershipRepository(db, ctx.tenant_id).get(membership_id)
+        if existing is None:
+            raise WebNotFound() from None
+        member_user = UserRepository(db).get(existing.user_id)
+        groups = security_group_service.list_security_groups(db, ctx.tenant_id)
+        customers = customer_service.list_customers(db, ctx.tenant_id)
+        return render_template(
+            request,
+            "users/edit.html",
+            ctx=ctx,
+            membership=existing,
+            member_user=member_user,
+            groups=groups,
+            customers=customers,
+            error=str(exc),
+            status_code=422,
+        )
+
+    actor = UserRepository(db).get(membership.user_id)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="user.update_membership",
+        summary=f"Updated entitlements for {actor.email if actor else membership.user_id}",
+        resource_type="user",
+        resource_id=membership.user_id,
+    )
+    db.commit()
+    return RedirectResponse("/ui/users?flash=Entitlements+updated.", status_code=303)

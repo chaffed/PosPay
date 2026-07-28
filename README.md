@@ -6,7 +6,8 @@ feedback loop.
 
 This README covers local setup and deployment only. For architecture (data model, the
 network-adapter pattern, matching engine rules, ML pipeline design), see the project's
-architecture plan.
+architecture plan. For the JSON API (`/api/v1/*` — endpoints, auth, permissions,
+schemas), see [API.md](API.md).
 
 ## Quickstart
 
@@ -384,6 +385,10 @@ authenticator data, DER ECDSA signature) to exercise the real server-side verifi
 path without a browser. `webauthn_rp_id`/`webauthn_origin` default to `localhost` /
 `http://localhost:8000` — set both to your real domain before deploying, or every
 registered credential will fail verification against the wrong origin.
+
+For the full set of `/api/v1/*` endpoints (issued items, stop payments, paid items,
+check images, ACH, exceptions/decisions, admin, users), the permission each one requires,
+and request/response schemas, see [API.md](API.md).
 
 ## Postgres
 

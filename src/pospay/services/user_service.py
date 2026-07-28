@@ -202,6 +202,52 @@ def reactivate_membership(session: Session, tenant_id: uuid.UUID, membership_id:
     return membership
 
 
+def update_membership(
+    session: Session,
+    tenant_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    *,
+    security_group_id: uuid.UUID,
+    customer_id: uuid.UUID | None,
+) -> TenantMembership:
+    """Changes an existing membership's entitlements — which security group governs it,
+    and/or which customer it's scoped to (or bank-wide, if customer_id is None). This is
+    the only way to change either after creation; add_user/create_users_from_rows only
+    ever set them once, at creation time. Raises ValueError (same convention as every
+    other write-side validation in this app) for a membership/security group/customer
+    that doesn't belong to this tenant, or a target customer scope that would collide
+    with a DIFFERENT membership this same user already holds (the
+    (user_id, tenant_id, customer_id) unique constraint from the customers feature) —
+    reassigning to a scope this identity doesn't yet hold in this tenant is exactly what
+    add_user already does when granting a same-tenant, different-scope membership; this
+    just does it to an existing row instead of creating a new one."""
+    membership = TenantMembershipRepository(session, tenant_id).get(membership_id)
+    if membership is None:
+        raise ValueError("Membership not found")
+
+    group = security_group_service.get_security_group(session, tenant_id, security_group_id)
+    if group is None:
+        raise ValueError("Security group not found")
+
+    if customer_id is not None:
+        customer = customer_service.get_customer(session, tenant_id, customer_id)
+        if customer is None:
+            raise ValueError("Customer not found")
+
+    conflicting = [
+        m
+        for m in TenantMembershipRepository(session, tenant_id).list(user_id=membership.user_id)
+        if m.id != membership.id and m.customer_id == customer_id
+    ]
+    if conflicting:
+        raise ValueError("This user already has a separate membership scoped to that customer")
+
+    membership.security_group_id = security_group_id
+    membership.customer_id = customer_id
+    session.flush()
+    return membership
+
+
 def create_users_from_rows(
     session: Session, tenant_id: uuid.UUID, rows: list[dict[str, Any]], *, scoped_customer_id: uuid.UUID | None = None
 ) -> list[UserBulkRowResult]:
