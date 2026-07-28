@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Bulk Upload ACH Transactions — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About bulk uploads{% endblock %}
+{% block help_body %}
+<p>Two input formats are accepted — a delimited/Excel file with the columns below, or
+  a standard NACHA file straight from your originating bank. Either way, each
+  row/entry is processed independently: one bad row is reported on the results page
+  without failing the rest of the file, and the original file itself is saved and
+  signed for audit purposes even if some rows fail.</p>
+{% endblock %}
 {% block content %}
-<div class="card card-narrow">
+<div class="card">
   <h1>Bulk upload ACH transactions</h1>
   {% if upload_record %}
   <p>The file you just submitted was still saved and signed for audit purposes:

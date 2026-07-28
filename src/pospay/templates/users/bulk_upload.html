@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Bulk Upload Users — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About bulk uploads{% endblock %}
+{% block help_body %}
+<p>Each row is processed independently — one bad row is reported on the results page
+  without failing the rest of the file, and the original file itself is saved and
+  signed for audit purposes even if some rows fail. An email already belonging to a
+  user in another organization is never attached silently, even in bulk — it comes
+  back needing your explicit confirmation.</p>
+{% endblock %}
 {% block content %}
-<div class="card card-narrow">
+<div class="card">
   <h1>Bulk upload users</h1>
   <p>Upload a delimited file (CSV, TSV, pipe- or semicolon-separated) or an Excel
     (.xlsx) file. The first row must be a header row with these column names
@@ -12,6 +20,7 @@
       <tr><td>email</td><td>yes</td><td>jane@example.com</td></tr>
       <tr><td>security_group</td><td>yes</td><td>Preparer</td></tr>
       <tr><td>password</td><td>only for new emails</td><td>a temporary password</td></tr>
+      <tr><td>customer_number</td><td>no</td><td>Blank means bank-wide (all customers)</td></tr>
     </tbody>
   </table>
   <p>A row whose email already belongs to a user in another organization is never

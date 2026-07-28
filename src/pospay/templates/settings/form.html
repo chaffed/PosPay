@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Settings — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About organization settings{% endblock %}
+{% block help_body %}
+<p>Branding shows throughout the app once you're logged in, and on your own login page
+  (reachable at a slug-based URL) before anyone signs in. Uploading a new logo or
+  favicon replaces the current one; leaving the file field empty keeps whatever's
+  already saved.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Organization settings</h1>

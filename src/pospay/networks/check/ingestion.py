@@ -10,6 +10,7 @@ from pospay.domain.issued_item import IssuedItem, IssuedItemStatus
 from pospay.domain.paid_item import PaidItem, PaidItemMatchStatus, PaidItemSettlementStatus, PaidItemSource
 from pospay.ml.predict import score_exception
 from pospay.networks.check.adapter import CheckAdapter
+from pospay.repositories.account_repo import AccountRepository
 
 _adapter = CheckAdapter()
 
@@ -32,14 +33,24 @@ class BulkRowResult:
     error: str | None = None
 
 
-def ingest_paid_item(session: Session, tenant_id: uuid.UUID, submission: PaidItemSubmission) -> PaidItem:
+def ingest_paid_item(
+    session: Session, tenant_id: uuid.UUID, submission: PaidItemSubmission, *, scoped_customer_id: uuid.UUID | None = None
+) -> PaidItem:
     """Creates a paid_item, runs it through the check matching engine, and finalizes its
     status (plus the linked issued_item's status on a clean match, or an exception_item
     on a mismatch). Caller commits — see ingest_paid_items_bulk for the per-row-transaction
-    pattern bulk file ingestion needs."""
+    pattern bulk file ingestion needs. `scoped_customer_id` is the caller's own customer
+    scope (None for tenant-wide staff) — the account is resolved through it so a
+    customer-scoped caller referencing another customer's account_id gets a clean
+    ValueError, and so customer_id can be denormalized onto the new row."""
+    account = AccountRepository(session, tenant_id, scoped_customer_id).get(submission.account_id)
+    if account is None:
+        raise ValueError("Account not found")
+
     paid_item = PaidItem(
         tenant_id=tenant_id,
         account_id=submission.account_id,
+        customer_id=account.customer_id,
         check_number=submission.check_number,
         presented_amount=submission.presented_amount,
         presented_date=submission.presented_date,
@@ -75,14 +86,14 @@ def ingest_paid_item(session: Session, tenant_id: uuid.UUID, submission: PaidIte
 
 
 def ingest_paid_items_bulk(
-    session: Session, tenant_id: uuid.UUID, submissions: list[PaidItemSubmission]
+    session: Session, tenant_id: uuid.UUID, submissions: list[PaidItemSubmission], *, scoped_customer_id: uuid.UUID | None = None
 ) -> list[BulkRowResult]:
     """One commit per row so a single bad row (bad FK, constraint violation) doesn't roll
     back the whole file — matches the plan's bulk-ingestion requirement."""
     results: list[BulkRowResult] = []
     for index, submission in enumerate(submissions):
         try:
-            paid_item = ingest_paid_item(session, tenant_id, submission)
+            paid_item = ingest_paid_item(session, tenant_id, submission, scoped_customer_id=scoped_customer_id)
             session.commit()
             results.append(
                 BulkRowResult(

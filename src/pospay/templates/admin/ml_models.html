@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Admin — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About ML models{% endblock %}
+{% block help_body %}
+<p>ML scoring estimates how likely an exception is to be returned, using this
+  organization's own decision history — it's advisory only, never automatic; a human
+  always makes the final pay/return call. Retraining builds a new model version from
+  decisions made so far; only one version per network is "active" (used for scoring)
+  at a time, and activating an older one is always available if a retrain performs
+  worse.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>ML Models</h1>

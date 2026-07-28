@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Audit Log — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About the audit log{% endblock %}
+{% block help_body %}
+<p>Every state-changing action, through either the web UI or the API, is recorded here
+  — one entry per row created even for a bulk upload, not one entry for the whole
+  file. Entries form a tamper-evident hash chain: each one's hash covers its own
+  fields plus the previous entry's hash, so editing, deleting, or reordering any entry
+  breaks the chain from that point forward.</p>
+<p>"Verify chain" recomputes every hash from scratch right now — proof nothing has
+  been tampered with since, not a cached flag.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">

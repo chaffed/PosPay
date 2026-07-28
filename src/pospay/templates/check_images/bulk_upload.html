@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Check Images — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About bulk uploads{% endblock %}
+{% block help_body %}
+<p>Each row/item is processed independently — one bad item is reported on the results
+  page without failing the rest of the batch, and the original file is saved and
+  signed for audit purposes even if some items fail. Both formats create the paid item
+  and attach its image in the same step, rather than requiring the paid item to
+  already exist.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Bulk upload check images</h1>
+  <p>Each check's encoded data (account, check number, amount) is run through the same
+    matching engine as a single presented item, and its image is attached to the new
+    paid item in the same step.</p>
+  {% if upload_record %}
+  <p>The file you just submitted was still saved and signed for audit purposes:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+
+  <h2>ZIP file (manifest + images)</h2>
+  <p>A zip containing exactly one manifest file (CSV, TSV, or Excel) plus the image
+    files it references. Supported image formats: single- or 2-page TIFF (page 1 =
+    front, page 2 = back), JPG, and PNG. Manifest columns (case/spacing-insensitive,
+    any order):</p>
+  <table>
+    <thead><tr><th>Column</th><th>Required</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>account_number</td><td>yes</td><td>1001</td></tr>
+      <tr><td>check_number</td><td>yes</td><td>5001</td></tr>
+      <tr><td>amount</td><td>yes</td><td>150.00</td></tr>
+      <tr><td>presented_date</td><td>yes</td><td>2026-01-15</td></tr>
+      <tr><td>front_image_filename</td><td>yes</td><td>check5001.tif</td></tr>
+      <tr><td>back_image_filename</td><td>no</td><td>check5001_back.jpg (omit if front_image_filename is a 2-page TIFF)</td></tr>
+    </tbody>
+  </table>
+  <form method="post" action="/ui/check-images/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="format" value="zip">
+    <label>File <input type="file" name="upload_file" accept=".zip" required></label>
+    <button type="submit">Upload zip</button>
+  </form>
+
+  <h2>X9.37 cash letter file</h2>
+  <p>Upload a standard image cash letter file (the common ASCII, line-delimited
+    "variable format" variant, with embedded TIFF or JPEG images). Account number and
+    check number are read from each check's On-Us and Auxiliary On-Us MICR fields — a
+    common real-world convention, not a guarantee for every bank's own MICR layout; if a
+    file's checks don't resolve correctly this way, use the ZIP+CSV format above instead,
+    which lets you specify account and check numbers explicitly. File/cash-letter/bundle
+    control totals are not validated — a malformed file may partially import rather than
+    being rejected outright.</p>
+  <form method="post" action="/ui/check-images/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="format" value="x937">
+    <label>File <input type="file" name="upload_file" accept=".x937,.937,.txt" required></label>
+    <button type="submit">Upload X9.37 file</button>
+  </form>
+</div>
+{% endblock %}

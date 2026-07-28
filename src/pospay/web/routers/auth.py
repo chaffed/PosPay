@@ -11,6 +11,7 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.user import User
 from pospay.schemas.webauthn import AuthenticationVerifyRequest
+from pospay.services import user_service
 from pospay.services.tenant_service import get_tenant_branding_by_slug
 from pospay.web.deps import get_mfa_pending_web_context, render_template
 from pospay.web.security import (
@@ -64,18 +65,32 @@ def login_submit(
 
     if identity.mfa_required:
         mfa_token = create_token(
-            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="mfa_pending"
+            user_id=user.id,
+            tenant_id=tenant.id,
+            security_group_id=membership.security_group_id,
+            customer_id=membership.customer_id,
+            token_type="mfa_pending",
         )
         response = RedirectResponse(f"/ui/login/webauthn?next={quote(next_path)}", status_code=303)
         set_mfa_cookie(response, mfa_token)
         return response
 
     access_token = create_token(
-        user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="access"
+        user_id=user.id,
+        tenant_id=tenant.id,
+        security_group_id=membership.security_group_id,
+        customer_id=membership.customer_id,
+        token_type="access",
     )
     refresh_token = create_token(
-        user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="refresh"
+        user_id=user.id,
+        tenant_id=tenant.id,
+        security_group_id=membership.security_group_id,
+        customer_id=membership.customer_id,
+        token_type="refresh",
     )
+    user_service.record_login(db, user.id)
+    db.commit()
     response = RedirectResponse(next_path, status_code=303)
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, refresh_token)
@@ -133,15 +148,24 @@ def login_webauthn_verify(
         complete_authentication(db, user, ctx.tenant_id, payload.credential)
     except WebauthnError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
+    user_service.record_login(db, user.id)
     db.commit()
 
     next_path = safe_next_path(next)
     response = JSONResponse({"redirect": next_path})
     access_token = create_token(
-        user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="access"
+        user_id=user.id,
+        tenant_id=ctx.tenant_id,
+        security_group_id=ctx.security_group_id,
+        customer_id=ctx.customer_id,
+        token_type="access",
     )
     refresh_token = create_token(
-        user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="refresh"
+        user_id=user.id,
+        tenant_id=ctx.tenant_id,
+        security_group_id=ctx.security_group_id,
+        customer_id=ctx.customer_id,
+        token_type="refresh",
     )
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, refresh_token)

@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Security Groups — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About security groups{% endblock %}
+{% block help_body %}
+<p>A security group is a named, editable set of permissions — not a fixed role. Every
+  new organization starts with four (Admin, Preparer, Approver, Viewer), fully
+  editable from here. A user's membership pairs one security group with a scope (bank-wide
+  or one customer) — the group defines <em>what</em> they can do, the membership's
+  scope defines <em>whose</em> data it applies to.</p>
+<p>Editing a group's permissions takes effect for everyone in it on their very next
+  request — not after their session expires.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">

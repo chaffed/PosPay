@@ -1,6 +1,6 @@
 from pospay.domain.account import Account
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class AccountRepository(TenantScopedRepository[Account]):
+class AccountRepository(CustomerScopedRepository[Account]):
     model = Account

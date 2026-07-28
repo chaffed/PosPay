@@ -52,6 +52,8 @@ def _seed_labeled_decisions(db_session, tenant, account, users, count: int = 12)
             accent_color=None,
             has_logo=False,
             has_favicon=False,
+            customer_id=None,
+            customer_name=None,
         )
         outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
         decision_service.decide(db_session, tenant.id, exception.id, ctx, outcome=outcome, reason_code="test", notes=None)

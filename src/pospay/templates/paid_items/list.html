@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Paid Items — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About paid items{% endblock %}
+{% block help_body %}
+<p>A paid item is a check presented for payment against one of your accounts.
+  Submitting one immediately runs it through the matching engine against your issued
+  items, stop payments, and any prior payments on the same check.</p>
+<ul>
+  <li><strong>Match status</strong> — <span class="badge badge-ok">matched</span> means
+    it cleared cleanly; <span class="badge badge-danger">exception</span> means it's
+    now in the review queue.</li>
+  <li><strong>Settlement</strong> — pending / paid / returned, or <em>reversed</em> if
+    it was backed out via a bulk-upload reversal.</li>
+</ul>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">

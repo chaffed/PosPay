@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this dashboard{% endblock %}
+{% block help_body %}
+<p>PosPay is a positive pay platform: it matches checks and ACH transactions presented
+  against your account against what you told it to expect, and routes anything that
+  doesn't match to the Exceptions queue for a human decision.</p>
+<p>The links below jump straight to each resource's list page. If you're scoped to one
+  customer, you'll only ever see that customer's own data throughout the app.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Dashboard</h1>

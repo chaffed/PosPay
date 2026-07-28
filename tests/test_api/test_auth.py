@@ -13,6 +13,22 @@ def test_login_succeeds_with_correct_credentials(client, tenant_factory):
     assert body["token_type"] == "bearer"
 
 
+def test_login_records_last_login_at(client, db_session, tenant_factory):
+    from pospay.repositories.user_repo import UserRepository
+
+    tenant, _account, users = tenant_factory.make(slug="login-last-login")
+    assert UserRepository(db_session).get(users["admin"].id).last_login_at is None
+
+    resp = client.post(
+        "/api/v1/auth/login",
+        json={"tenant_slug": tenant.slug, "email": users["admin"].email, "password": tenant_factory.PASSWORD},
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    assert UserRepository(db_session).get(users["admin"].id).last_login_at is not None
+
+
 def test_login_rejects_wrong_password(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="login-bad-pw")
 

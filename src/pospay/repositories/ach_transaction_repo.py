@@ -1,6 +1,6 @@
 from pospay.domain.ach_transaction import AchTransaction
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class AchTransactionRepository(TenantScopedRepository[AchTransaction]):
+class AchTransactionRepository(CustomerScopedRepository[AchTransaction]):
     model = AchTransaction

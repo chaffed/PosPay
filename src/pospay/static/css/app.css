@@ -35,6 +35,10 @@ body {
   padding: 0 0.5rem; margin-bottom: 1rem;
 }
 .sidenav .brand-logo { max-height: 28px; display: block; }
+.customer-scope-badge {
+  margin: -0.5rem 0.5rem 1rem; padding: 0.3rem 0.5rem; font-size: 0.75rem; color: #92400e;
+  background: #fef3c7; border-radius: 6px;
+}
 .sidenav .nav-links { display: flex; flex-direction: column; gap: 0.2rem; }
 .sidenav .nav-bottom {
   margin-top: auto; display: flex; flex-direction: column; gap: 0.2rem;
@@ -44,7 +48,7 @@ body {
 .sidenav .link-button { display: block; width: 100%; text-align: left; padding: 0.4rem 0.5rem; border-radius: 6px; }
 .sidenav .link-button:hover { color: var(--accent); background: var(--bg-muted); }
 
-.page { flex: 1; min-width: 0; max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+.page { flex: 1; min-width: 0; max-width: 1400px; margin: 0 auto; padding: 1.5rem; position: relative; }
 
 @media (max-width: 720px) {
   .app-shell { flex-direction: column; min-height: 0; }
@@ -55,6 +59,7 @@ body {
   .sidenav .brand { margin-bottom: 0; }
   .sidenav .nav-links { flex-direction: row; flex-wrap: wrap; }
   .sidenav .nav-bottom { margin-top: 0; margin-left: auto; flex-direction: row; border-top: none; padding-top: 0; }
+  .page { padding: 1rem; }
 }
 
 .card {
@@ -62,9 +67,10 @@ body {
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
+  overflow-x: auto;
 }
 
-.card-narrow { max-width: 420px; margin: 3rem auto; }
+.card-narrow { max-width: 480px; margin: 3rem auto; }
 
 h1 { margin-top: 0; font-size: 1.4rem; }
 
@@ -130,3 +136,30 @@ th.sort-desc::after { content: "\2193"; opacity: 1; }
 
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .actions { display: flex; gap: 0.5rem; }
+
+.help-button {
+  position: absolute; top: 1.5rem; right: 1.5rem;
+  width: 2rem; height: 2rem; border-radius: 999px;
+  background: var(--bg-muted); color: #374151; border: 1px solid var(--border);
+  font-size: 0.9rem; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+}
+.help-button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.help-dialog {
+  max-width: 480px; width: calc(100% - 2rem);
+  border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+.help-dialog::backdrop { background: rgba(17, 24, 39, 0.5); }
+.help-dialog h2 { margin-top: 0; font-size: 1.15rem; }
+.help-dialog .help-close {
+  position: absolute; top: 1rem; right: 1rem;
+  background: none; border: none; font-size: 1.1rem; color: #6b7280; cursor: pointer; padding: 0.25rem;
+}
+.help-dialog .help-close:hover { color: #111827; }
+
+@media (max-width: 720px) {
+  .help-button { top: 1rem; right: 1rem; }
+}

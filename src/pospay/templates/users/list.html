@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Users — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About users{% endblock %}
+{% block help_body %}
+<p>Each row is one membership — a login's access to this organization, via a security
+  group and (optionally) a single customer scope. The same login (same email, same
+  password) can hold a separate membership in another organization entirely;
+  deactivating a membership here only removes access to this one.</p>
+<p>"Customer" being blank means bank-wide access; a customer name means that
+  membership only ever sees that one customer's data, everywhere in the app.
+  Export CSV/JSON download this same list for an access review.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
@@ -7,16 +17,19 @@
     <div class="actions">
       <a href="/ui/users/new" class="button">Add user</a>
       <a href="/ui/users/bulk" class="button secondary">Bulk upload</a>
+      <a href="/ui/users/export.csv" class="button secondary">Export CSV</a>
+      <a href="/ui/users/export.json" class="button secondary">Export JSON</a>
     </div>
   </div>
   {% if rows %}
   <table data-sortable>
-    <thead><tr><th>Email</th><th>Security group</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Email</th><th>Security group</th><th>Customer</th><th>Status</th><th></th></tr></thead>
     <tbody>
       {% for row in rows %}
       <tr>
         <td>{{ row.user.email }}</td>
         <td>{{ row.security_group_name }}</td>
+        <td>{{ row.customer_name or "bank-wide" }}</td>
         <td><span class="badge {{ 'badge-ok' if row.membership.is_active else 'badge-danger' }}">{{ 'active' if row.membership.is_active else 'deactivated' }}</span></td>
         <td>
           {% if row.membership.is_active %}

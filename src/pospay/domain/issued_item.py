@@ -32,6 +32,10 @@ class IssuedItem(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), nullable=False, index=True)
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("account.id"), nullable=False, index=True)
+    # Denormalized from account.customer_id at creation time (never trusted from a
+    # request) — same pattern as tenant_id, so customer-scoped queries stay a flat
+    # WHERE clause instead of a join. See CustomerScopedRepository.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
 
     check_number: Mapped[str] = mapped_column(String(32), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

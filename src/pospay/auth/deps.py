@@ -6,9 +6,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from pospay.auth.permissions import CUSTOMER_SCOPE_MASKED_PERMISSIONS
 from pospay.auth.security import decode_token
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.customer import Customer
 from pospay.domain.security_group import SecurityGroup
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
@@ -54,13 +56,23 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
     user_id = uuid.UUID(payload["sub"])
     tenant_id = uuid.UUID(payload["tenant_id"])
     security_group_id = uuid.UUID(payload["security_group_id"])
+    customer_id = uuid.UUID(payload["customer_id"]) if payload.get("customer_id") else None
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise AccessRevoked("User account is no longer active")
 
+    # customer_id is part of the lookup (not just user_id/tenant_id) because one user can
+    # now hold several memberships in the same tenant — one per customer, or a tenant-wide
+    # one plus per-customer overrides (domain/tenant_membership.py). `== customer_id` here
+    # correctly becomes `IS NULL` when customer_id is None (SQLAlchemy's usual behavior),
+    # matching a tenant-wide membership.
     membership = db.execute(
-        select(TenantMembership).where(TenantMembership.user_id == user_id, TenantMembership.tenant_id == tenant_id)
+        select(TenantMembership).where(
+            TenantMembership.user_id == user_id,
+            TenantMembership.tenant_id == tenant_id,
+            TenantMembership.customer_id == customer_id,
+        )
     ).scalar_one_or_none()
     if membership is None or not membership.is_active:
         raise AccessRevoked("Membership in this organization is no longer active")
@@ -73,16 +85,29 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
     if branding is None:
         raise AccessRevoked("Tenant no longer exists")
 
+    permissions = frozenset(group.permissions)
+    customer_name: str | None = None
+    if customer_id is not None:
+        # Masked regardless of what the security group nominally contains — see
+        # auth/permissions.py::CUSTOMER_SCOPE_MASKED_PERMISSIONS.
+        permissions = permissions - CUSTOMER_SCOPE_MASKED_PERMISSIONS
+        customer = db.get(Customer, customer_id)
+        if customer is None or not customer.is_active:
+            raise AccessRevoked("Customer no longer exists")
+        customer_name = customer.name
+
     ctx = TenantContext(
         tenant_id=tenant_id,
         user_id=user_id,
         security_group_id=security_group_id,
-        permissions=frozenset(group.permissions),
+        permissions=permissions,
         tenant_slug=branding.slug,
         tenant_name=branding.name,
         accent_color=branding.accent_color,
         has_logo=branding.has_logo,
         has_favicon=branding.has_favicon,
+        customer_id=customer_id,
+        customer_name=customer_name,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting

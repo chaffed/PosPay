@@ -1,6 +1,6 @@
 from pospay.domain.issued_item import IssuedItem
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class IssuedItemRepository(TenantScopedRepository[IssuedItem]):
+class IssuedItemRepository(CustomerScopedRepository[IssuedItem]):
     model = IssuedItem

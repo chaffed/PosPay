@@ -15,6 +15,7 @@ from pospay.domain.ach_transaction import (
 from pospay.domain.exception_item import ExceptionItem
 from pospay.ml.predict import score_exception
 from pospay.networks.ach.adapter import AchAdapter
+from pospay.repositories.account_repo import AccountRepository
 
 _adapter = AchAdapter()
 
@@ -42,10 +43,21 @@ class BulkRowResult:
     error: str | None = None
 
 
-def ingest_ach_transaction(session: Session, tenant_id: uuid.UUID, submission: AchTransactionSubmission) -> AchTransaction:
+def ingest_ach_transaction(
+    session: Session, tenant_id: uuid.UUID, submission: AchTransactionSubmission, *, scoped_customer_id: uuid.UUID | None = None
+) -> AchTransaction:
+    """`scoped_customer_id` is the caller's own customer scope (None for tenant-wide
+    staff) — the account is resolved through it so a customer-scoped caller referencing
+    another customer's account_id gets a clean ValueError, and so customer_id can be
+    denormalized onto the new row."""
+    account = AccountRepository(session, tenant_id, scoped_customer_id).get(submission.account_id)
+    if account is None:
+        raise ValueError("Account not found")
+
     txn = AchTransaction(
         tenant_id=tenant_id,
         account_id=submission.account_id,
+        customer_id=account.customer_id,
         originator_id=submission.originator_id,
         originator_name=submission.originator_name,
         receiver_id=submission.receiver_id,
@@ -82,12 +94,12 @@ def ingest_ach_transaction(session: Session, tenant_id: uuid.UUID, submission: A
 
 
 def ingest_ach_transactions_bulk(
-    session: Session, tenant_id: uuid.UUID, submissions: list[AchTransactionSubmission]
+    session: Session, tenant_id: uuid.UUID, submissions: list[AchTransactionSubmission], *, scoped_customer_id: uuid.UUID | None = None
 ) -> list[BulkRowResult]:
     results: list[BulkRowResult] = []
     for index, submission in enumerate(submissions):
         try:
-            txn = ingest_ach_transaction(session, tenant_id, submission)
+            txn = ingest_ach_transaction(session, tenant_id, submission, scoped_customer_id=scoped_customer_id)
             session.commit()
             results.append(
                 BulkRowResult(index=index, success=True, ach_transaction_id=txn.id, match_status=txn.match_status.value)

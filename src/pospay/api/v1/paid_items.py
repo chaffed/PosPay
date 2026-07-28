@@ -32,7 +32,12 @@ def create_paid_item(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("paid_item:write")),
 ) -> PaidItemRead:
-    item = ingest_paid_item(db, ctx.tenant_id, _to_submission(payload, PaidItemSource.API))
+    try:
+        item = ingest_paid_item(
+            db, ctx.tenant_id, _to_submission(payload, PaidItemSource.API), scoped_customer_id=ctx.customer_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -54,7 +59,7 @@ def create_paid_items_bulk(
     ctx: TenantContext = Depends(require_permission("paid_item:write")),
 ) -> BulkSubmitResponse:
     submissions = [_to_submission(row, PaidItemSource.BULK_FILE) for row in payload]
-    results = ingest_paid_items_bulk(db, ctx.tenant_id, submissions)
+    results = ingest_paid_items_bulk(db, ctx.tenant_id, submissions, scoped_customer_id=ctx.customer_id)
     for r in results:
         if not r.success:
             continue
@@ -84,7 +89,7 @@ def list_paid_items(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("paid_item:read")),
 ) -> list[PaidItemRead]:
-    items = PaidItemRepository(db, ctx.tenant_id).list(account_id=account_id)
+    items = PaidItemRepository(db, ctx.tenant_id, ctx.customer_id).list(account_id=account_id)
     return [PaidItemRead.model_validate(i) for i in items]
 
 
@@ -94,7 +99,7 @@ def get_paid_item(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("paid_item:read")),
 ) -> PaidItemRead:
-    item = PaidItemRepository(db, ctx.tenant_id).get(item_id)
+    item = PaidItemRepository(db, ctx.tenant_id, ctx.customer_id).get(item_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Paid item not found")
     return PaidItemRead.model_validate(item)

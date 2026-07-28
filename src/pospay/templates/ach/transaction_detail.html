@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}ACH Transaction — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this transaction{% endblock %}
+{% block help_body %}
+<p>A snapshot of the matching decision made the moment this transaction was
+  presented. If it's an exception, a reviewer decides pay or return from the
+  Exceptions queue — this page itself is read-only.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>ACH transaction</h1>

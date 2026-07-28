@@ -66,7 +66,7 @@ def test_login_with_registered_key_redirects_to_webauthn_page(client, tenant_fac
     assert "access_token" not in resp.cookies
 
 
-def test_full_web_login_mfa_flow(client, tenant_factory):
+def test_full_web_login_mfa_flow(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-webauthn-full-flow")
     _web_login(client, tenant.slug, users["admin"].email)
     fake = FakeAuthenticator(get_settings().webauthn_rp_id, get_settings().webauthn_origin)
@@ -99,6 +99,11 @@ def test_full_web_login_mfa_flow(client, tenant_factory):
 
     dashboard = client.get("/ui/")
     assert dashboard.status_code == 200
+
+    from pospay.repositories.user_repo import UserRepository
+
+    db_session.expire_all()
+    assert UserRepository(db_session).get(users["admin"].id).last_login_at is not None
 
 
 def test_webauthn_options_rejects_missing_csrf_header(client, tenant_factory):

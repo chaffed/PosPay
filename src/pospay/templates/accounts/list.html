@@ -1,14 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Accounts — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About accounts{% endblock %}
+{% block help_body %}
+<p>An account is one of your bank accounts that PosPay watches for positive-pay
+  matching — every issued item, paid item, stop payment, and ACH activity is tied to
+  one. An account with no customer assigned is a "house" account, visible only to
+  bank-wide staff.</p>
+<p><strong>ACH debit mode</strong>: <code>filter_by_authorization</code> evaluates
+  debits against your ACH Authorizations; <code>block_all</code> rejects every ACH
+  debit outright, no exceptions.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Accounts</h1>
   {% if accounts %}
   <table data-sortable>
-    <thead><tr><th>Account number</th><th>Name</th><th>ACH debit mode</th></tr></thead>
+    <thead><tr><th>Account number</th><th>Name</th>{% if not ctx.customer_id %}<th>Customer</th>{% endif %}<th>ACH debit mode</th></tr></thead>
     <tbody>
       {% for a in accounts %}
-      <tr><td>{{ a.account_number }}</td><td>{{ a.name }}</td><td><span class="badge">{{ a.ach_debit_block_mode.value }}</span></td></tr>
+      <tr>
+        <td>{{ a.account_number }}</td>
+        <td>{{ a.name }}</td>
+        {% if not ctx.customer_id %}<td>{{ customer_names.get(a.customer_id, "—") }}</td>{% endif %}
+        <td><span class="badge">{{ a.ach_debit_block_mode.value }}</span></td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -19,11 +34,24 @@
 
 {% if can(ctx, "account:write") %}
 <div class="card card-narrow">
-  <h1>Add account</h1>
+  <div class="toolbar">
+    <h1>Add account</h1>
+    <a href="/ui/accounts/bulk" class="button secondary">Bulk upload</a>
+  </div>
   <form method="post" action="/ui/accounts">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Account number <input type="text" name="account_number" required></label>
     <label>Name <input type="text" name="name" required></label>
+    {% if not ctx.customer_id %}
+    <label>Customer (optional)
+      <select name="customer_id">
+        <option value="">— unassigned (house account) —</option>
+        {% for customer in customers %}
+        <option value="{{ customer.id }}">{{ customer.name }} ({{ customer.customer_number }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
     <button type="submit">Create</button>
   </form>
 </div>

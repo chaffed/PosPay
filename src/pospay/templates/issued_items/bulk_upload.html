@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Bulk Upload Issued Items — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About bulk uploads{% endblock %}
+{% block help_body %}
+<p>Each row is processed independently — one bad row (bad account number, malformed
+  amount) is reported on the results page without failing the rest of the file. The
+  original file itself is saved and signed for audit purposes even if some rows fail,
+  and can be reviewed later from the Audit Log / bulk-upload detail page.</p>
+{% endblock %}
 {% block content %}
-<div class="card card-narrow">
+<div class="card">
   <h1>Bulk upload issued items</h1>
   <p>Upload a delimited file (CSV, TSV, pipe- or semicolon-separated) or an Excel
     (.xlsx) file. The first row must be a header row with these column names

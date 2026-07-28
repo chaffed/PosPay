@@ -23,6 +23,7 @@ _DECISION_ERROR_MESSAGES = {
     DecisionError.ALREADY_DECIDED: "This exception has already been decided.",
     DecisionError.RECOMMENDATION_REQUIRED: "A recommendation is required before this can be decided under dual control.",
     DecisionError.MAKER_CANNOT_APPROVE_OWN_RECOMMENDATION: "You recommended this decision — a different user must approve it.",
+    DecisionError.WITHDRAWN: "This exception was withdrawn because its underlying item was backed out.",
 }
 
 

@@ -21,12 +21,16 @@ def create_issued_item(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("issued_item:write")),
 ) -> IssuedItemRead:
-    item = issued_item_service.create_issued_item(
-        db,
-        ctx.tenant_id,
-        issued_item_service.IssuedItemInput(**payload.model_dump()),
-        submitted_by_user_id=ctx.user_id,
-    )
+    try:
+        item = issued_item_service.create_issued_item(
+            db,
+            ctx.tenant_id,
+            issued_item_service.IssuedItemInput(**payload.model_dump()),
+            submitted_by_user_id=ctx.user_id,
+            scoped_customer_id=ctx.customer_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -48,7 +52,9 @@ def create_issued_items_bulk(
     ctx: TenantContext = Depends(require_permission("issued_item:write")),
 ) -> BulkSubmitResponse:
     inputs = [issued_item_service.IssuedItemInput(**row.model_dump()) for row in payload]
-    results = issued_item_service.create_issued_items_bulk(db, ctx.tenant_id, inputs, submitted_by_user_id=ctx.user_id)
+    results = issued_item_service.create_issued_items_bulk(
+        db, ctx.tenant_id, inputs, submitted_by_user_id=ctx.user_id, scoped_customer_id=ctx.customer_id
+    )
     for r in results:
         if not r.success:
             continue
@@ -84,7 +90,9 @@ def list_issued_items(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("issued_item:read")),
 ) -> list[IssuedItemRead]:
-    items = issued_item_service.list_issued_items(db, ctx.tenant_id, status=status_filter, account_id=account_id)
+    items = issued_item_service.list_issued_items(
+        db, ctx.tenant_id, status=status_filter, account_id=account_id, customer_id=ctx.customer_id
+    )
     return [IssuedItemRead.model_validate(i) for i in items]
 
 
@@ -93,7 +101,9 @@ def list_outstanding_issued_items(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("issued_item:read")),
 ) -> list[IssuedItemRead]:
-    items = issued_item_service.list_issued_items(db, ctx.tenant_id, status=IssuedItemStatus.OUTSTANDING)
+    items = issued_item_service.list_issued_items(
+        db, ctx.tenant_id, status=IssuedItemStatus.OUTSTANDING, customer_id=ctx.customer_id
+    )
     return [IssuedItemRead.model_validate(i) for i in items]
 
 
@@ -103,7 +113,7 @@ def get_issued_item(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("issued_item:read")),
 ) -> IssuedItemRead:
-    item = IssuedItemRepository(db, ctx.tenant_id).get(item_id)
+    item = IssuedItemRepository(db, ctx.tenant_id, ctx.customer_id).get(item_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Issued item not found")
     return IssuedItemRead.model_validate(item)
@@ -116,7 +126,7 @@ def void_issued_item(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("issued_item:write")),
 ) -> IssuedItemRead:
-    item = issued_item_service.void_issued_item(db, ctx.tenant_id, item_id, payload.reason)
+    item = issued_item_service.void_issued_item(db, ctx.tenant_id, item_id, payload.reason, scoped_customer_id=ctx.customer_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Issued item not found")
     audit_log_service.record_action(

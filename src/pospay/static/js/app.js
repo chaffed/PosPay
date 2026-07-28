@@ -8,7 +8,27 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   initSortableTables();
+  initHelpDialog();
 });
+
+// Opt-in per page via base.html's help_title/help_body blocks — the button and
+// <dialog> only render at all when a page defines help_body (see base.html), so this
+// is a no-op on every page that doesn't.
+function initHelpDialog() {
+  const dialog = document.getElementById("page-help-dialog");
+  const button = document.getElementById("page-help-button");
+  if (!dialog || !button) return;
+
+  button.addEventListener("click", () => dialog.showModal());
+  const closeButton = dialog.querySelector(".help-close");
+  if (closeButton) closeButton.addEventListener("click", () => dialog.close());
+
+  // Native <dialog> doesn't close on backdrop click by itself — a click that lands on
+  // the dialog element itself (not one of its content children) means the backdrop.
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) dialog.close();
+  });
+}
 
 // Any <table data-sortable> gets a filter box injected above it and click-to-sort
 // headers — entirely client-side (no server round-trip, no build step), which fits

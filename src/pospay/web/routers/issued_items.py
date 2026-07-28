@@ -11,7 +11,13 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.bulk_upload_file import BulkUploadKind
 from pospay.domain.issued_item import IssuedItemStatus
 from pospay.repositories.issued_item_repo import IssuedItemRepository
-from pospay.services import account_service, audit_log_service, bulk_upload_file_service, issued_item_service
+from pospay.services import (
+    account_service,
+    audit_log_service,
+    bulk_upload_file_service,
+    bulk_upload_reversal_service,
+    issued_item_service,
+)
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -25,7 +31,7 @@ def list_issued_items(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("issued_item:read")),
 ) -> HTMLResponse:
-    items = issued_item_service.list_issued_items(db, ctx.tenant_id, status=status)
+    items = issued_item_service.list_issued_items(db, ctx.tenant_id, status=status, customer_id=ctx.customer_id)
     return render_template(request, "issued_items/list.html", ctx=ctx, items=items, status_filter=status)
 
 
@@ -35,7 +41,7 @@ def new_issued_item_form(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("issued_item:write")),
 ) -> HTMLResponse:
-    accounts = account_service.list_accounts(db, ctx.tenant_id)
+    accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "issued_items/form.html", ctx=ctx, accounts=accounts)
 
 
@@ -58,7 +64,7 @@ def create_issued_item(
         parsed_amount = Decimal(amount)
         parsed_issue_date = date.fromisoformat(issue_date)
     except (InvalidOperation, ValueError):
-        accounts = account_service.list_accounts(db, ctx.tenant_id)
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request,
             "issued_items/form.html",
@@ -80,6 +86,7 @@ def create_issued_item(
                 issue_date=parsed_issue_date,
             ),
             submitted_by_user_id=ctx.user_id,
+            scoped_customer_id=ctx.customer_id,
         )
         audit_log_service.record_action(
             db,
@@ -94,7 +101,7 @@ def create_issued_item(
         db.commit()
     except Exception as exc:  # noqa: BLE001 — surface a DB constraint violation (e.g. duplicate check number) to the form
         db.rollback()
-        accounts = account_service.list_accounts(db, ctx.tenant_id)
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request,
             "issued_items/form.html",
@@ -162,7 +169,12 @@ async def bulk_upload_issued_items(
         )
 
     results = issued_item_service.create_issued_items_from_rows(
-        db, ctx.tenant_id, rows, submitted_by_user_id=ctx.user_id, auto_create_accounts=create_missing_accounts
+        db,
+        ctx.tenant_id,
+        rows,
+        submitted_by_user_id=ctx.user_id,
+        auto_create_accounts=create_missing_accounts,
+        scoped_customer_id=ctx.customer_id,
     )
     for r in results:
         if not r.success:
@@ -176,6 +188,9 @@ async def bulk_upload_issued_items(
             summary=f"Issued item created via bulk upload ({r.row_label})",
             resource_type="issued_item",
             resource_id=r.created_id,
+        )
+        bulk_upload_reversal_service.track_created_record(
+            db, ctx.tenant_id, upload_record.id, resource_type="issued_item", resource_id=r.created_id, row_label=r.row_label
         )
     bulk_upload_file_service.set_result_counts(
         db, upload_record, succeeded_count=sum(r.success for r in results), failed_count=sum(not r.success for r in results)
@@ -199,7 +214,7 @@ def issued_item_detail(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("issued_item:read")),
 ) -> HTMLResponse:
-    item = IssuedItemRepository(db, ctx.tenant_id).get(item_id)
+    item = IssuedItemRepository(db, ctx.tenant_id, ctx.customer_id).get(item_id)
     if item is None:
         raise WebNotFound()
     return render_template(request, "issued_items/detail.html", ctx=ctx, item=item)
@@ -213,7 +228,7 @@ def void_issued_item(
     ctx: TenantContext = Depends(require_web_permission("issued_item:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    item = issued_item_service.void_issued_item(db, ctx.tenant_id, item_id, reason)
+    item = issued_item_service.void_issued_item(db, ctx.tenant_id, item_id, reason, scoped_customer_id=ctx.customer_id)
     if item is None:
         db.commit()
         return RedirectResponse(f"/ui/issued-items?error={quote('Issued item not found.')}", status_code=303)

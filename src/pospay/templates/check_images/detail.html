@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Check Image — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this check image{% endblock %}
+{% block help_body %}
+<p>OCR runs in the background after upload — this page auto-refreshes while it's
+  pending. "Reprocess" re-runs OCR from scratch (useful after switching OCR providers
+  or if it failed the first time).</p>
+{% endblock %}
 {% if image.ocr_status.value == "pending" %}
 {% block scripts %}<meta http-equiv="refresh" content="2">{% endblock %}
 {% endif %}
@@ -15,6 +21,14 @@
   <p>Confidence: {{ "%.0f"|format((image.ocr_confidence or 0) * 100) }}%</p>
   <p>Provider: {{ image.ocr_provider }}</p>
   {% endif %}
+
+  {% if image.paid_item_id and can(ctx, "paid_item:read") %}
+  <p>Linked paid item: <a href="/ui/paid-items/{{ image.paid_item_id }}">view</a></p>
+  {% endif %}
+  <p>
+    <a href="/ui/check-images/{{ image.id }}/front">Download front image</a>
+    {% if image.back_image_path %} · <a href="/ui/check-images/{{ image.id }}/back">Download back image</a>{% endif %}
+  </p>
 
   {% if can(ctx, "check_image:write") %}
   <form method="post" action="/ui/check-images/{{ image.id }}/reprocess" class="inline-form">

@@ -35,7 +35,7 @@ def test_login_without_registered_key_is_unchanged(client, tenant_factory):
     assert body["mfa_token"] is None
 
 
-def test_full_register_and_mfa_login_flow(client, tenant_factory):
+def test_full_register_and_mfa_login_flow(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="webauthn-full-flow")
     user = users["admin"]
     headers = login_headers(client, tenant.slug, user.email)
@@ -75,6 +75,11 @@ def test_full_register_and_mfa_login_flow(client, tenant_factory):
     # The real access token now works normally.
     ok = client.get("/api/v1/issued-items", headers={"Authorization": f"Bearer {tokens['access_token']}"})
     assert ok.status_code == 200
+
+    from pospay.repositories.user_repo import UserRepository
+
+    db_session.expire_all()
+    assert UserRepository(db_session).get(user.id).last_login_at is not None
 
 
 def test_wrong_credential_signature_rejected_at_login_verify(client, tenant_factory):

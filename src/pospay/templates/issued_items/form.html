@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}New Issued Item — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Records one check you're telling the bank to expect. The check number and amount
+  must match exactly what's presented later for it to clear automatically — any
+  mismatch (or a check number never issued at all) becomes an exception for review.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>New issued item</h1>

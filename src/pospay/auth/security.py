@@ -30,13 +30,16 @@ def create_token(
     tenant_id: uuid.UUID,
     security_group_id: uuid.UUID,
     token_type: TokenType,
+    customer_id: uuid.UUID | None = None,
     settings: Settings | None = None,
 ) -> str:
     """The token only carries the security_group_id, not the permission set itself —
     auth/deps.py::decode_and_build_context resolves the actual permissions from the
     SecurityGroup row fresh on every request, so editing a group (or deactivating a
     membership) takes effect on the next request rather than waiting for this token to
-    expire."""
+    expire. `customer_id` is omitted (not just null) for a tenant-wide membership — the
+    only kind that existed before customers did — so old tokens/callers are unaffected;
+    a real value scopes the whole session to that one customer (domain/tenant_membership.py)."""
     settings = settings or get_settings()
     expire_minutes = {
         "access": settings.jwt_access_token_expire_minutes,
@@ -52,6 +55,8 @@ def create_token(
         "iat": now,
         "exp": now + timedelta(minutes=expire_minutes),
     }
+    if customer_id is not None:
+        payload["customer_id"] = str(customer_id)
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 

@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from pospay.domain.ach_authorization_rule import AchAuthorizationRule, AchAuthorizationStatus
+from pospay.repositories.account_repo import AccountRepository
 from pospay.repositories.ach_authorization_repo import AchAuthorizationRepository
 
 
@@ -23,11 +24,21 @@ class AchAuthorizationInput:
 
 
 def create_ach_authorization(
-    session: Session, tenant_id: uuid.UUID, data: AchAuthorizationInput, *, created_by_user_id: uuid.UUID | None
+    session: Session,
+    tenant_id: uuid.UUID,
+    data: AchAuthorizationInput,
+    *,
+    created_by_user_id: uuid.UUID | None,
+    scoped_customer_id: uuid.UUID | None = None,
 ) -> AchAuthorizationRule:
+    account = AccountRepository(session, tenant_id, scoped_customer_id).get(data.account_id)
+    if account is None:
+        raise ValueError("Account not found")
+
     repo = AchAuthorizationRepository(session, tenant_id)
     rule = AchAuthorizationRule(
         account_id=data.account_id,
+        customer_id=account.customer_id,
         originator_id=data.originator_id,
         originator_name=data.originator_name,
         receiver_id=data.receiver_id,
@@ -43,8 +54,10 @@ def create_ach_authorization(
     return rule
 
 
-def revoke_ach_authorization(session: Session, tenant_id: uuid.UUID, rule_id: uuid.UUID) -> AchAuthorizationRule | None:
-    repo = AchAuthorizationRepository(session, tenant_id)
+def revoke_ach_authorization(
+    session: Session, tenant_id: uuid.UUID, rule_id: uuid.UUID, *, scoped_customer_id: uuid.UUID | None = None
+) -> AchAuthorizationRule | None:
+    repo = AchAuthorizationRepository(session, tenant_id, scoped_customer_id)
     rule = repo.get(rule_id)
     if rule is None:
         return None
@@ -54,7 +67,11 @@ def revoke_ach_authorization(session: Session, tenant_id: uuid.UUID, rule_id: uu
 
 
 def list_ach_authorizations(
-    session: Session, tenant_id: uuid.UUID, *, status: AchAuthorizationStatus | None = None
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    status: AchAuthorizationStatus | None = None,
+    customer_id: uuid.UUID | None = None,
 ) -> list[AchAuthorizationRule]:
-    repo = AchAuthorizationRepository(session, tenant_id)
+    repo = AchAuthorizationRepository(session, tenant_id, customer_id)
     return repo.list(status=status)

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorization
 def list_authorizations(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("ach_authorization:read"))
 ) -> HTMLResponse:
-    rules = ach_authorization_service.list_ach_authorizations(db, ctx.tenant_id)
+    rules = ach_authorization_service.list_ach_authorizations(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "ach/authorizations_list.html", ctx=ctx, rules=rules)
 
 
@@ -29,7 +29,7 @@ def new_authorization_form(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("ach_authorization:write")),
 ) -> HTMLResponse:
-    accounts = account_service.list_accounts(db, ctx.tenant_id)
+    accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "ach/authorization_form.html", ctx=ctx, accounts=accounts)
 
 
@@ -56,27 +56,35 @@ def create_authorization(
         parsed_expiration = date.fromisoformat(expiration_date) if expiration_date else None
         parsed_sec_codes = [c.strip().upper() for c in allowed_sec_codes.split(",") if c.strip()] or None
     except (InvalidOperation, ValueError):
-        accounts = account_service.list_accounts(db, ctx.tenant_id)
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, error="Invalid input.", status_code=422
         )
 
-    rule = ach_authorization_service.create_ach_authorization(
-        db,
-        ctx.tenant_id,
-        ach_authorization_service.AchAuthorizationInput(
-            account_id=account_id,
-            originator_id=originator_id,
-            originator_name=originator_name,
-            receiver_id=receiver_id or None,
-            max_amount=parsed_max_amount,
-            frequency_limit=parsed_frequency_limit,
-            allowed_sec_codes=parsed_sec_codes,
-            effective_date=parsed_effective,
-            expiration_date=parsed_expiration,
-        ),
-        created_by_user_id=ctx.user_id,
-    )
+    try:
+        rule = ach_authorization_service.create_ach_authorization(
+            db,
+            ctx.tenant_id,
+            ach_authorization_service.AchAuthorizationInput(
+                account_id=account_id,
+                originator_id=originator_id,
+                originator_name=originator_name,
+                receiver_id=receiver_id or None,
+                max_amount=parsed_max_amount,
+                frequency_limit=parsed_frequency_limit,
+                allowed_sec_codes=parsed_sec_codes,
+                effective_date=parsed_effective,
+                expiration_date=parsed_expiration,
+            ),
+            created_by_user_id=ctx.user_id,
+            scoped_customer_id=ctx.customer_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface e.g. an out-of-scope account to the form
+        db.rollback()
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
+        return render_template(
+            request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, error=f"Could not create authorization: {exc}", status_code=422
+        )
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -98,7 +106,7 @@ def revoke_authorization(
     ctx: TenantContext = Depends(require_web_permission("ach_authorization:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    rule = ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id)
+    rule = ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id, scoped_customer_id=ctx.customer_id)
     if rule is not None:
         audit_log_service.record_action(
             db,

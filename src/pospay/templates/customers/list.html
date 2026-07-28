@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Customers — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About customers{% endblock %}
+{% block help_body %}
+<p>A customer is one of your own business clients — a company whose accounts and
+  activity you process. Assigning accounts, issued items, and users to a customer
+  segregates their data: a login scoped to that customer sees only its own data
+  everywhere in the app, whether that's a bank employee assigned to that client or the
+  client's own staff.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Customers</h1>
+    <a href="/ui/customers/new" class="button">New customer</a>
+  </div>
+  {% if customers %}
+  <table data-sortable>
+    <thead><tr><th>Customer number</th><th>Name</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for customer in customers %}
+      <tr>
+        <td>{{ customer.customer_number }}</td>
+        <td><a href="/ui/customers/{{ customer.id }}">{{ customer.name }}</a></td>
+        <td><span class="badge {{ 'badge-ok' if customer.is_active else '' }}">{{ 'active' if customer.is_active else 'inactive' }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No customers yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

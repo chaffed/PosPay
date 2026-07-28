@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Issued Item {{ item.check_number }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this issued item{% endblock %}
+{% block help_body %}
+<p>This is one check you told the bank to expect. Voiding it is one-way — there's no
+  "un-void" — and only possible while it's still <strong>outstanding</strong> (a check
+  that's already been paid can't be voided from here).</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Issued item #{{ item.check_number }}</h1>

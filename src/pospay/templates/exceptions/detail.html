@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Exception — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About deciding this exception{% endblock %}
+{% block help_body %}
+<p>Pay releases the item as if it had matched; return sends it back unpaid. In a
+  dual-control organization, a recommendation must be submitted first and approved by
+  a <em>different</em> user — you can't approve your own recommendation. Once decided,
+  this can't be changed.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Exception <span class="badge">{{ item.network_code }}</span></h1>
@@ -10,7 +17,10 @@
   {% endif %}
   <p>Exception types: {{ exception_types | join(", ") }}</p>
   <p>ML score: {% if item.ml_score is not none %}{{ "%.3f"|format(item.ml_score) }} (model {{ item.ml_model_version }}){% else %}<span class="badge">not enough data to score yet</span>{% endif %}</p>
-  <p>Status: <span class="badge {{ 'badge-ok' if item.status.value == 'pay' else 'badge-danger' if item.status.value in ['return','escalated'] else 'badge-warn' }}">{{ item.status.value }}</span></p>
+  <p>Status: <span class="badge {{ 'badge-ok' if item.status.value == 'pay' else 'badge-danger' if item.status.value in ['return','escalated'] else '' if item.status.value == 'withdrawn' else 'badge-warn' }}">{{ item.status.value }}</span></p>
+  {% if item.status.value == "withdrawn" %}
+  <p>This exception was withdrawn because its underlying item was backed out via a bulk upload reversal.</p>
+  {% endif %}
   {% if item.recommended_outcome %}
   <p>Recommended: <strong>{{ item.recommended_outcome }}</strong> ({{ item.recommended_reason_code }}){% if item.recommended_notes %} — {{ item.recommended_notes }}{% endif %}</p>
   {% endif %}

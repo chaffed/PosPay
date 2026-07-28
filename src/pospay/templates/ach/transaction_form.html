@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Submit ACH Transaction — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Simulates a debit or credit being presented against this account. It's matched
+  immediately against ACH authorizations for this originator/receiver and the
+  account's own ACH debit-block mode — anything that doesn't match sends it to the
+  Exceptions queue instead of clearing.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Submit ACH transaction</h1>

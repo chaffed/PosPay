@@ -1,19 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Switch Organization — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About switching organizations{% endblock %}
+{% block help_body %}
+<p>If the same login has access to more than one organization — or more than one
+  customer scope within this organization — each shows up here as its own button.
+  Switching re-mints your session for that membership with no re-entry of your
+  password or security key; it doesn't log you out of the others.</p>
+<p>"(bank-wide)" means that membership sees everything in that organization; anything
+  else names the one customer that membership is scoped to.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Switch organization</h1>
+  <p>Pick which organization — and, if you have more than one, which customer scope
+    within it — to operate as.</p>
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
   {% if memberships %}
   {% for m in memberships %}
   <form method="post" action="/ui/switch-tenant" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="tenant_id" value="{{ m.tenant.id }}">
-    <button type="submit">{{ m.tenant.name }}</button>
+    <input type="hidden" name="membership_id" value="{{ m.membership.id }}">
+    <button type="submit">{{ m.tenant.name }}{{ " — " ~ m.customer_name if m.customer_name else " (bank-wide)" }}</button>
   </form>
   {% endfor %}
   {% else %}
-  <p>You don't belong to any other organization.</p>
+  <p>You don't belong to any other organization or customer scope.</p>
   {% endif %}
 </div>
 {% endblock %}

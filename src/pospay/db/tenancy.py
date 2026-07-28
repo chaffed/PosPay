@@ -13,7 +13,16 @@ class TenantContext:
     changes and membership deactivation take effect on the very next request. The
     `tenant_*`/`has_*` branding fields are resolved the same way, from the same Tenant
     lookup that already happens there (see services/tenant_service.py::TenantBranding) —
-    every template gets branding for free via `ctx`, no per-route plumbing needed."""
+    every template gets branding for free via `ctx`, no per-route plumbing needed.
+
+    `customer_id` is None for a tenant-wide membership (bank-wide staff, the only kind
+    that existed before customers did) and set for a customer-scoped one (bank staff
+    assigned to just that client, or the client's own employee) — see
+    domain/tenant_membership.py. When set, decode_and_build_context has already masked
+    every tenant-admin-only permission out of `permissions` regardless of what the
+    security group nominally contains; repositories/services still must be passed
+    `customer_id` explicitly wherever they accept it (see CustomerScopedRepository) —
+    this field alone doesn't filter anything by itself."""
 
     tenant_id: uuid.UUID
     user_id: uuid.UUID
@@ -24,3 +33,5 @@ class TenantContext:
     accent_color: str | None
     has_logo: bool
     has_favicon: bool
+    customer_id: uuid.UUID | None
+    customer_name: str | None

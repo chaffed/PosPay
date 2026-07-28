@@ -19,12 +19,16 @@ def create_stop_payment(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("stop_payment:write")),
 ) -> StopPaymentRead:
-    stop = stop_payment_service.create_stop_payment(
-        db,
-        ctx.tenant_id,
-        stop_payment_service.StopPaymentInput(**payload.model_dump()),
-        created_by_user_id=ctx.user_id,
-    )
+    try:
+        stop = stop_payment_service.create_stop_payment(
+            db,
+            ctx.tenant_id,
+            stop_payment_service.StopPaymentInput(**payload.model_dump()),
+            created_by_user_id=ctx.user_id,
+            scoped_customer_id=ctx.customer_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -45,7 +49,7 @@ def list_stop_payments(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("stop_payment:read")),
 ) -> list[StopPaymentRead]:
-    stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, status=status_filter)
+    stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, status=status_filter, customer_id=ctx.customer_id)
     return [StopPaymentRead.model_validate(s) for s in stops]
 
 
@@ -54,7 +58,9 @@ def list_active_stop_payments(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("stop_payment:read")),
 ) -> list[StopPaymentRead]:
-    stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, status=StopPaymentStatus.ACTIVE)
+    stops = stop_payment_service.list_stop_payments(
+        db, ctx.tenant_id, status=StopPaymentStatus.ACTIVE, customer_id=ctx.customer_id
+    )
     return [StopPaymentRead.model_validate(s) for s in stops]
 
 
@@ -64,7 +70,7 @@ def cancel_stop_payment(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("stop_payment:write")),
 ) -> StopPaymentRead:
-    stop = stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id)
+    stop = stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id, scoped_customer_id=ctx.customer_id)
     if stop is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stop payment not found")
     audit_log_service.record_action(

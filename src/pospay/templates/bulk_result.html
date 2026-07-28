@@ -3,6 +3,7 @@
 {% block content %}
 {% set failures = results | rejectattr("success") | list %}
 {% set succeeded = results | selectattr("success") | list %}
+{% set noted = succeeded | selectattr("note") | list %}
 <div class="card">
   <h1>Bulk upload results</h1>
   <p>
@@ -16,6 +17,16 @@
     <tbody>
       {% for r in failures %}
       <tr><td>{{ r.row_label }}</td><td>{{ r.error }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if noted %}
+  <table>
+    <thead><tr><th>Row</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for r in noted %}
+      <tr><td>{{ r.row_label }}</td><td>{{ r.note }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

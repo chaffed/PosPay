@@ -57,6 +57,8 @@ def _decide(db_session, tenant, users, exception, outcome: DecisionOutcome):
         accent_color=None,
         has_logo=False,
         has_favicon=False,
+        customer_id=None,
+        customer_name=None,
     )
     result = decision_service.decide(
         db_session, tenant.id, exception.id, ctx, outcome=outcome, reason_code="test", notes=None

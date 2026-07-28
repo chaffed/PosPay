@@ -19,12 +19,16 @@ def create_ach_authorization(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("ach_authorization:write")),
 ) -> AchAuthorizationRead:
-    rule = ach_authorization_service.create_ach_authorization(
-        db,
-        ctx.tenant_id,
-        ach_authorization_service.AchAuthorizationInput(**payload.model_dump()),
-        created_by_user_id=ctx.user_id,
-    )
+    try:
+        rule = ach_authorization_service.create_ach_authorization(
+            db,
+            ctx.tenant_id,
+            ach_authorization_service.AchAuthorizationInput(**payload.model_dump()),
+            created_by_user_id=ctx.user_id,
+            scoped_customer_id=ctx.customer_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -45,7 +49,9 @@ def list_ach_authorizations(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("ach_authorization:read")),
 ) -> list[AchAuthorizationRead]:
-    rules = ach_authorization_service.list_ach_authorizations(db, ctx.tenant_id, status=status_filter)
+    rules = ach_authorization_service.list_ach_authorizations(
+        db, ctx.tenant_id, status=status_filter, customer_id=ctx.customer_id
+    )
     return [AchAuthorizationRead.model_validate(r) for r in rules]
 
 
@@ -55,7 +61,7 @@ def revoke_ach_authorization(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("ach_authorization:write")),
 ) -> AchAuthorizationRead:
-    rule = ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id)
+    rule = ach_authorization_service.revoke_ach_authorization(db, ctx.tenant_id, rule_id, scoped_customer_id=ctx.customer_id)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ACH authorization not found")
     audit_log_service.record_action(

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Accounts — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About bulk uploads{% endblock %}
+{% block help_body %}
+<p>Each row is processed independently — one bad row is reported on the results page
+  without failing the rest of the file, and the original file itself is saved and
+  signed for audit purposes even if some rows fail.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Bulk upload accounts</h1>
+  <p>Upload a delimited file (CSV, TSV, pipe- or semicolon-separated) or an Excel
+    (.xlsx) file. The first row must be a header row with these column names
+    (case/spacing-insensitive, any order):</p>
+  <table>
+    <thead><tr><th>Column</th><th>Required</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>account_number</td><td>yes</td><td>1001</td></tr>
+      <tr><td>name</td><td>yes</td><td>Operating</td></tr>
+      {% if not ctx.customer_id %}
+      <tr><td>customer_number</td><td>no</td><td>Blank means an unassigned house account</td></tr>
+      {% endif %}
+      <tr><td>ach_debit_block_mode</td><td>no</td><td>block_all or filter_by_authorization</td></tr>
+    </tbody>
+  </table>
+  {% if ctx.customer_id %}<p>Every account in this file will be assigned to <strong>{{ ctx.customer_name }}</strong>.</p>{% endif %}
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  {% if upload_record %}
+  <p>The file you just submitted was still saved and signed for audit purposes:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
+  <form method="post" action="/ui/accounts/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>File <input type="file" name="upload_file" accept=".csv,.txt,.tsv,.xlsx,.xls" required></label>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+{% endblock %}

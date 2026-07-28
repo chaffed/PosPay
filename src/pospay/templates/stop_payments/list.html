@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Stop Payments — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About stop payments{% endblock %}
+{% block help_body %}
+<p>A stop payment blocks a specific check from clearing — a presented check matching
+  an active stop (by check number, account, and amount if one was given) is flagged as
+  an exception instead of matching normally, even if it would otherwise match an
+  issued item exactly.</p>
+<ul>
+  <li>Leaving <strong>Amount</strong> blank matches any amount presented for that
+    check number.</li>
+  <li>Leaving <strong>Expires</strong> blank means the stop never expires on its own.</li>
+  <li>Cancelling is one-way — there's no "un-cancel."</li>
+</ul>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">

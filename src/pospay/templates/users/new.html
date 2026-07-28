@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Add User — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Leave Customer blank for bank-wide access (sees everything in this organization);
+  pick one to restrict that login to only that customer's data everywhere in the app.
+  A brand-new email needs a password here; an email that already exists elsewhere
+  reuses its existing password — nothing new is created for it.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Add user</h1>
@@ -16,6 +23,14 @@
       <select name="security_group_id" required>
         {% for group in groups %}
         <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Customer (optional)
+      <select name="customer_id">
+        <option value="">— bank-wide (all customers) —</option>
+        {% for customer in customers %}
+        <option value="{{ customer.id }}">{{ customer.name }} ({{ customer.customer_number }})</option>
         {% endfor %}
       </select>
     </label>

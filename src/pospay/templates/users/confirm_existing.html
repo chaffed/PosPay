@@ -10,6 +10,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="email" value="{{ email }}">
     <input type="hidden" name="security_group_id" value="{{ security_group_id }}">
+    <input type="hidden" name="customer_id" value="{{ customer_id or '' }}">
     <button type="submit">Grant access</button>
   </form>
   <p><a href="/ui/users">Cancel</a></p>

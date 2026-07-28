@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from pospay.domain.stop_payment import StopPayment, StopPaymentStatus
+from pospay.repositories.account_repo import AccountRepository
 from pospay.repositories.stop_payment_repo import StopPaymentRepository
 
 
@@ -20,11 +21,21 @@ class StopPaymentInput:
 
 
 def create_stop_payment(
-    session: Session, tenant_id: uuid.UUID, data: StopPaymentInput, *, created_by_user_id: uuid.UUID | None
+    session: Session,
+    tenant_id: uuid.UUID,
+    data: StopPaymentInput,
+    *,
+    created_by_user_id: uuid.UUID | None,
+    scoped_customer_id: uuid.UUID | None = None,
 ) -> StopPayment:
+    account = AccountRepository(session, tenant_id, scoped_customer_id).get(data.account_id)
+    if account is None:
+        raise ValueError("Account not found")
+
     repo = StopPaymentRepository(session, tenant_id)
     stop = StopPayment(
         account_id=data.account_id,
+        customer_id=account.customer_id,
         check_number=data.check_number,
         amount=data.amount,
         effective_date=data.effective_date,
@@ -37,8 +48,10 @@ def create_stop_payment(
     return stop
 
 
-def cancel_stop_payment(session: Session, tenant_id: uuid.UUID, stop_id: uuid.UUID) -> StopPayment | None:
-    repo = StopPaymentRepository(session, tenant_id)
+def cancel_stop_payment(
+    session: Session, tenant_id: uuid.UUID, stop_id: uuid.UUID, *, scoped_customer_id: uuid.UUID | None = None
+) -> StopPayment | None:
+    repo = StopPaymentRepository(session, tenant_id, scoped_customer_id)
     stop = repo.get(stop_id)
     if stop is None:
         return None
@@ -48,7 +61,11 @@ def cancel_stop_payment(session: Session, tenant_id: uuid.UUID, stop_id: uuid.UU
 
 
 def list_stop_payments(
-    session: Session, tenant_id: uuid.UUID, *, status: StopPaymentStatus | None = None
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    status: StopPaymentStatus | None = None,
+    customer_id: uuid.UUID | None = None,
 ) -> list[StopPayment]:
-    repo = StopPaymentRepository(session, tenant_id)
+    repo = StopPaymentRepository(session, tenant_id, customer_id)
     return repo.list(status=status)

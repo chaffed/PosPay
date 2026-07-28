@@ -1,6 +1,6 @@
 from pospay.domain.stop_payment import StopPayment
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class StopPaymentRepository(TenantScopedRepository[StopPayment]):
+class StopPaymentRepository(CustomerScopedRepository[StopPayment]):
     model = StopPayment

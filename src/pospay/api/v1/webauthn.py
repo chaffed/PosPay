@@ -19,6 +19,7 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.user import User
 from pospay.schemas.auth import TokenResponse
 from pospay.schemas.webauthn import AuthenticationVerifyRequest, RegistrationVerifyRequest, WebauthnCredentialRead
+from pospay.services import user_service
 
 router = APIRouter(prefix="/auth/webauthn", tags=["webauthn"])
 
@@ -113,5 +114,6 @@ def login_verify(
             user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="refresh"
         ),
     )
+    user_service.record_login(db, user.id)
     db.commit()
     return tokens

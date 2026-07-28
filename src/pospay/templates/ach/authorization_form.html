@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}New ACH Authorization — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>An authorization is a standing rule pre-approving future ACH activity from one
+  originator on this account. Leave receiver ID blank for a "blanket" authorization
+  covering any receiver from that originator; leave max amount, frequency limit, or
+  allowed SEC codes blank for no limit on that dimension.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>New ACH authorization</h1>

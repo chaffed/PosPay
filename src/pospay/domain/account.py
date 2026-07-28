@@ -23,6 +23,9 @@ class Account(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), nullable=False, index=True)
+    # Nullable: an account with no customer is a tenant-wide "house" account, visible
+    # only to bank-wide (non-customer-scoped) staff — see TenantMembership.customer_id.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
     account_number: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     ach_debit_block_mode: Mapped[AchDebitBlockMode] = mapped_column(

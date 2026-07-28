@@ -18,6 +18,7 @@ class DecisionError(str, enum.Enum):
     ALREADY_DECIDED = "already_decided"
     RECOMMENDATION_REQUIRED = "recommendation_required"
     MAKER_CANNOT_APPROVE_OWN_RECOMMENDATION = "maker_cannot_approve_own_recommendation"
+    WITHDRAWN = "withdrawn"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,8 @@ def submit_recommendation(
     exception = repo.get(exception_id)
     if exception is None:
         return ServiceResult(None, None, DecisionError.NOT_FOUND)
+    if exception.status == ExceptionStatus.WITHDRAWN:
+        return ServiceResult(None, None, DecisionError.WITHDRAWN)
     if exception.status not in (ExceptionStatus.OPEN, ExceptionStatus.PENDING_APPROVAL):
         return ServiceResult(None, None, DecisionError.ALREADY_DECIDED)
 
@@ -71,6 +74,8 @@ def decide(
     exception = exception_repo.get(exception_id)
     if exception is None:
         return ServiceResult(None, None, DecisionError.NOT_FOUND)
+    if exception.status == ExceptionStatus.WITHDRAWN:
+        return ServiceResult(None, None, DecisionError.WITHDRAWN)
     if exception.status in (ExceptionStatus.PAY, ExceptionStatus.RETURN):
         return ServiceResult(None, None, DecisionError.ALREADY_DECIDED)
 

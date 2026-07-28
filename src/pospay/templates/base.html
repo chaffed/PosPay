@@ -16,6 +16,7 @@
       <a href="/ui/" class="brand">
         {% if ctx.has_logo %}<img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="{{ ctx.tenant_name }}" class="brand-logo">{% else %}{{ ctx.tenant_name }}{% endif %}
       </a>
+      {% if ctx.customer_id %}<p class="customer-scope-badge">Scoped to <strong>{{ ctx.customer_name }}</strong></p>{% endif %}
       <div class="nav-links">
         <a href="/ui/accounts">Accounts</a>
         <a href="/ui/issued-items">Issued Items</a>
@@ -25,6 +26,7 @@
         <a href="/ui/ach/authorizations">ACH Authorizations</a>
         <a href="/ui/ach/transactions">ACH Transactions</a>
         <a href="/ui/exceptions">Exceptions</a>
+        {% if can(ctx, "customer:manage") %}<a href="/ui/customers">Customers</a>{% endif %}
         {% if can(ctx, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
         {% if can(ctx, "user:manage") %}<a href="/ui/users">Users</a>{% endif %}
         {% if can(ctx, "security_group:manage") %}<a href="/ui/security-groups">Security Groups</a>{% endif %}
@@ -44,6 +46,14 @@
 
     <div class="page">
       {% include "partials/_flash.html" %}
+      {% if self.help_body()|trim %}
+      <button type="button" id="page-help-button" class="help-button" aria-label="Help">?</button>
+      <dialog id="page-help-dialog" class="help-dialog">
+        <button type="button" class="help-close" aria-label="Close">&times;</button>
+        <h2>{% block help_title %}Help{% endblock %}</h2>
+        {% block help_body %}{% endblock %}
+      </dialog>
+      {% endif %}
       {% block content %}{% endblock %}
     </div>
   </div>

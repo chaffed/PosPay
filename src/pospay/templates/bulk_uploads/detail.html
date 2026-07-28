@@ -1,7 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{{ record.original_filename }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this upload record{% endblock %}
+{% block help_body %}
+<p>The original file is kept exactly as submitted, signed with a server-held key —
+  "signature verified" re-checks it against a fresh read of the file right now, not a
+  cached flag, so any tampering after upload shows up immediately.</p>
+<p>Backing an upload out reverses what it created: real records (issued items,
+  memberships) are voided/deactivated; accounts and ACH transactions (which have no
+  such concept) are only marked as originating from a reversed upload. It's one-way,
+  and only available for uploads made after this feature shipped — an older upload
+  has nothing tracked to reverse.</p>
+{% endblock %}
 {% block content %}
-<div class="card card-narrow">
+<div class="card">
   <h1>{{ record.original_filename }}</h1>
   <p>
     <span class="badge {{ 'badge-ok' if verified else 'badge-danger' }}">
@@ -23,5 +34,41 @@
     </tbody>
   </table>
   <p><a href="/ui/bulk-uploads/{{ record.id }}/download" class="button">Download original file</a></p>
+
+  {% if record.backed_out_at %}
+  <p><span class="badge">Backed out on {{ record.backed_out_at.strftime("%Y-%m-%d %H:%M") }}</span></p>
+  {% elif record.succeeded_count %}
+    {% set can_back_out = (record.kind.value == "issued_items" and can(ctx, "issued_item:write"))
+       or (record.kind.value == "ach_transactions" and can(ctx, "ach_transaction:write"))
+       or (record.kind.value == "users" and can(ctx, "user:manage"))
+       or (record.kind.value == "accounts" and can(ctx, "account:write"))
+       or (record.kind.value == "check_images" and can(ctx, "check_image:write") and can(ctx, "paid_item:write")) %}
+    {% if tracked_records %}
+      {% if can_back_out %}
+      <form method="post" action="/ui/bulk-uploads/{{ record.id }}/back-out" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="secondary" onclick="return confirm('Back out this upload? Everything it created that can still safely be reversed will be voided, deactivated, or reversed.')">Back out this upload</button>
+      </form>
+      {% endif %}
+    {% else %}
+      <p>This upload predates the backout feature (or nothing it created was tracked) — nothing can be automatically backed out.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if tracked_records %}
+  <h2>Records this upload created</h2>
+  <table data-sortable>
+    <thead><tr><th>Row</th><th>Type</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for tr in tracked_records %}
+      <tr>
+        <td>{{ tr.row_label }}</td>
+        <td>{{ tr.resource_type }}</td>
+        <td>{{ "backed out " ~ tr.reversed_at.strftime("%Y-%m-%d %H:%M") if tr.reversed_at else "active" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
 {% endblock %}

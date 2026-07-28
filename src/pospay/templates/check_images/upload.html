@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Upload Check Image — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Attaches an image to a paid item that already exists (or uploads one with no link
+  at all). To load a whole batch of new checks with their images together, use "Bulk
+  upload" instead.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Upload check image</h1>

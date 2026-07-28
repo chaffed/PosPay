@@ -12,6 +12,8 @@ class BulkUploadKind(str, enum.Enum):
     ISSUED_ITEMS = "issued_items"
     ACH_TRANSACTIONS = "ach_transactions"
     USERS = "users"
+    ACCOUNTS = "accounts"
+    CHECK_IMAGES = "check_images"
 
 
 class BulkUploadFile(Base):
@@ -41,3 +43,10 @@ class BulkUploadFile(Base):
 
     uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Set together, once, by services/bulk_upload_reversal_service.py::back_out_upload —
+    # marks the whole upload as backed out. One-way: nothing in this app supports
+    # "undo the undo", matching every other void/cancel/revoke action's own one-way
+    # design, so a backout attempt is refused once these are set.
+    backed_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    backed_out_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)

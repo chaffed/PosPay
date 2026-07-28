@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Submit Paid Item — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Simulates a check being presented for payment. It's matched immediately against
+  issued items, active stop payments, and prior payments on the same check number —
+  a mismatch on any of those sends it to the Exceptions queue instead of clearing.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Submit paid item</h1>

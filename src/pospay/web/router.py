@@ -9,6 +9,7 @@ from pospay.web.routers.auth import router as auth_router
 from pospay.web.routers.branding import router as branding_router
 from pospay.web.routers.bulk_uploads import router as bulk_uploads_router
 from pospay.web.routers.check_images import router as check_images_router
+from pospay.web.routers.customers import router as customers_router
 from pospay.web.routers.dashboard import router as dashboard_router
 from pospay.web.routers.exceptions import router as exceptions_router
 from pospay.web.routers.issued_items import router as issued_items_router
@@ -28,6 +29,7 @@ web_router.include_router(security_settings_router)
 web_router.include_router(tenant_switch_router)
 web_router.include_router(tenant_settings_router)
 web_router.include_router(accounts_router)
+web_router.include_router(customers_router)
 web_router.include_router(issued_items_router)
 web_router.include_router(stop_payments_router)
 web_router.include_router(paid_items_router)

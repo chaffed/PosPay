@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Issued Items — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About issued items{% endblock %}
+{% block help_body %}
+<p>An issued item is a check you told the bank to expect — the "positive pay" file.
+  When a check is presented for payment (see Paid Items), it's matched against these
+  records; anything that doesn't match cleanly becomes an exception.</p>
+<ul>
+  <li><strong>Outstanding</strong> — issued, not yet presented for payment.</li>
+  <li><strong>Paid</strong> — a matching paid item cleared it.</li>
+  <li><strong>Voided</strong> — cancelled before payment; a presentment against it will
+    no longer match.</li>
+  <li><strong>Stopped</strong> / <strong>Stale</strong> — an active stop payment, or
+    past the tenant's stale-date threshold.</li>
+</ul>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">

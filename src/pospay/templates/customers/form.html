@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit Customer" if customer else "New Customer" }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Only Customer number and Name are required — everything else (external ID, tax ID,
+  contact info, address, notes) is optional and can be filled in or changed any time.
+  External customer ID is for cross-referencing an identifier from an outside system
+  (e.g. a core-banking CIF number); it's separate from Customer number, which is what
+  bulk-upload files match against.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ "Edit customer" if customer else "New customer" }}</h1>
+  {% if not customer %}
+  <p>A customer is your own business client — assign accounts and users to it to keep
+    their data segregated from the rest of your organization.</p>
+  {% endif %}
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ '/ui/customers/' ~ customer.id if customer else '/ui/customers' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <h2>Identifiers</h2>
+    <label>Customer number <input type="text" name="customer_number" value="{{ customer.customer_number if customer else '' }}" required autofocus></label>
+    <label>Name <input type="text" name="name" value="{{ customer.name if customer else '' }}" required></label>
+    <label>External customer ID (optional) <input type="text" name="external_customer_id" value="{{ customer.external_customer_id if customer else '' }}"></label>
+    <label>Tax ID (optional) <input type="text" name="tax_id" value="{{ customer.tax_id if customer else '' }}"></label>
+
+    <h2>Contact</h2>
+    <label>Primary contact name (optional) <input type="text" name="primary_contact_name" value="{{ customer.primary_contact_name if customer else '' }}"></label>
+    <label>Email (optional) <input type="email" name="email" value="{{ customer.email if customer else '' }}"></label>
+    <label>Phone (optional) <input type="tel" name="phone" value="{{ customer.phone if customer else '' }}"></label>
+    <label>Website (optional) <input type="url" name="website" value="{{ customer.website if customer else '' }}"></label>
+
+    <h2>Address</h2>
+    <label>Address line 1 (optional) <input type="text" name="address_line1" value="{{ customer.address_line1 if customer else '' }}"></label>
+    <label>Address line 2 (optional) <input type="text" name="address_line2" value="{{ customer.address_line2 if customer else '' }}"></label>
+    <label>City (optional) <input type="text" name="city" value="{{ customer.city if customer else '' }}"></label>
+    <label>State (optional) <input type="text" name="state" value="{{ customer.state if customer else '' }}"></label>
+    <label>Postal code (optional) <input type="text" name="postal_code" value="{{ customer.postal_code if customer else '' }}"></label>
+
+    <h2>Notes</h2>
+    <label>Notes (optional) <textarea name="notes">{{ customer.notes if customer else '' }}</textarea></label>
+
+    <button type="submit">{{ "Save" if customer else "Create" }}</button>
+  </form>
+</div>
+{% endblock %}

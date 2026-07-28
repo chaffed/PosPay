@@ -39,6 +39,28 @@ def test_login_success_sets_cookies_and_redirects_to_dashboard(client, tenant_fa
     assert "admin" in dashboard.text
 
 
+def test_login_success_records_last_login_at(client, db_session, tenant_factory):
+    from pospay.repositories.user_repo import UserRepository
+
+    tenant, _account, users = tenant_factory.make(slug="web-login-last-login")
+    assert UserRepository(db_session).get(users["admin"].id).last_login_at is None
+
+    csrf = client.get("/ui/login").cookies.get("csrf_token")
+    client.post(
+        "/ui/login",
+        data={
+            "tenant_slug": tenant.slug,
+            "email": users["admin"].email,
+            "password": TenantFactory.PASSWORD,
+            "csrf_token": csrf,
+            "next": "/ui/",
+        },
+    )
+
+    db_session.expire_all()
+    assert UserRepository(db_session).get(users["admin"].id).last_login_at is not None
+
+
 def test_login_wrong_password_rerenders_form_with_error(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-login-bad-pw")
     csrf = client.get("/ui/login").cookies.get("csrf_token")

@@ -22,7 +22,7 @@ router = APIRouter(prefix="/ui/paid-items", tags=["web-paid-items"])
 def list_paid_items(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("paid_item:read"))
 ) -> HTMLResponse:
-    items = PaidItemRepository(db, ctx.tenant_id).list()
+    items = PaidItemRepository(db, ctx.tenant_id, ctx.customer_id).list()
     return render_template(request, "paid_items/list.html", ctx=ctx, items=items)
 
 
@@ -32,7 +32,7 @@ def new_paid_item_form(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("paid_item:write")),
 ) -> HTMLResponse:
-    accounts = account_service.list_accounts(db, ctx.tenant_id)
+    accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "paid_items/form.html", ctx=ctx, accounts=accounts)
 
 
@@ -51,18 +51,26 @@ def create_paid_item(
         parsed_amount = Decimal(presented_amount)
         parsed_date = date.fromisoformat(presented_date)
     except (InvalidOperation, ValueError):
-        accounts = account_service.list_accounts(db, ctx.tenant_id)
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request, "paid_items/form.html", ctx=ctx, accounts=accounts, error="Invalid amount or date.", status_code=422
         )
 
-    item = ingest_paid_item(
-        db,
-        ctx.tenant_id,
-        PaidItemSubmission(
-            account_id=account_id, check_number=check_number, presented_amount=parsed_amount, presented_date=parsed_date
-        ),
-    )
+    try:
+        item = ingest_paid_item(
+            db,
+            ctx.tenant_id,
+            PaidItemSubmission(
+                account_id=account_id, check_number=check_number, presented_amount=parsed_amount, presented_date=parsed_date
+            ),
+            scoped_customer_id=ctx.customer_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface e.g. an out-of-scope account to the form
+        db.rollback()
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
+        return render_template(
+            request, "paid_items/form.html", ctx=ctx, accounts=accounts, error=f"Could not submit paid item: {exc}", status_code=422
+        )
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -86,7 +94,7 @@ def paid_item_detail(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("paid_item:read")),
 ) -> HTMLResponse:
-    item = PaidItemRepository(db, ctx.tenant_id).get(item_id)
+    item = PaidItemRepository(db, ctx.tenant_id, ctx.customer_id).get(item_id)
     if item is None:
         raise WebNotFound()
     return render_template(request, "paid_items/detail.html", ctx=ctx, item=item)

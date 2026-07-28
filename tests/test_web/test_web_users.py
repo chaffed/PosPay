@@ -103,10 +103,11 @@ def test_bulk_upload_users_csv(client, db_session, tenant_factory):
     assert "1 need" in resp.text
 
     confirm_value = f"{users_other['viewer'].email}::"
-    # extract the security_group_id rendered into the hidden checkbox value
+    # extract the security_group_id rendered into the hidden checkbox value — the value
+    # is "email::security_group_id::customer_id", with customer_id blank here (bank-wide)
     import re
 
-    match = re.search(rf'value="({re.escape(confirm_value)}[0-9a-f-]+)"', resp.text)
+    match = re.search(rf'value="({re.escape(confirm_value)}[0-9a-f-]+::)"', resp.text)
     assert match is not None
 
     confirm_resp = client.post(
@@ -114,3 +115,62 @@ def test_bulk_upload_users_csv(client, db_session, tenant_factory):
     )
     assert confirm_resp.status_code == 200
     assert "1 created" in confirm_resp.text
+
+
+def test_export_csv_requires_permission(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-export-forbidden")
+    _login(client, tenant.slug, users["viewer"].email)
+
+    resp = client.get("/ui/users/export.csv", follow_redirects=False)
+    assert resp.status_code == 403
+
+
+def test_export_csv_contains_expected_rows(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-export-csv")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get("/ui/users/export.csv")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert 'filename="users.csv"' in resp.headers["content-disposition"]
+
+    import csv
+    import io
+
+    rows = list(csv.DictReader(io.StringIO(resp.text)))
+    assert {row["email"] for row in rows} == {u.email for u in users.values()}
+    admin_row = next(row for row in rows if row["email"] == users["admin"].email)
+    assert admin_row["security_group"] == "Admin"
+    assert admin_row["customer"] == "bank-wide"
+    assert admin_row["status"] == "active"
+
+
+def test_export_json_contains_expected_rows(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-export-json")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get("/ui/users/export.json")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/json")
+    assert 'filename="users.json"' in resp.headers["content-disposition"]
+
+    body = resp.json()
+    assert {row["email"] for row in body} == {u.email for u in users.values()}
+    admin_row = next(row for row in body if row["email"] == users["admin"].email)
+    assert admin_row["security_group"] == "Admin"
+    assert admin_row["customer"] == "bank-wide"
+    assert admin_row["status"] == "active"
+
+
+def test_export_reflects_deactivated_status(client, db_session, tenant_factory):
+    from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
+
+    tenant, _account, users = tenant_factory.make(slug="web-users-export-deactivated")
+    _login(client, tenant.slug, users["admin"].email)
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["viewer"].id)[0]
+    user_service.deactivate_membership(db_session, tenant.id, membership.id)
+    db_session.commit()
+
+    body = client.get("/ui/users/export.json").json()
+    viewer_row = next(row for row in body if row["email"] == users["viewer"].email)
+    assert viewer_row["status"] == "deactivated"

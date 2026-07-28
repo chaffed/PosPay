@@ -25,7 +25,10 @@ def create_ach_transaction(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("ach_transaction:write")),
 ) -> AchTransactionRead:
-    txn = ingest_ach_transaction(db, ctx.tenant_id, _to_submission(payload))
+    try:
+        txn = ingest_ach_transaction(db, ctx.tenant_id, _to_submission(payload), scoped_customer_id=ctx.customer_id)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -47,7 +50,7 @@ def create_ach_transactions_bulk(
     ctx: TenantContext = Depends(require_permission("ach_transaction:write")),
 ) -> BulkSubmitResponse:
     submissions = [_to_submission(row) for row in payload]
-    results = ingest_ach_transactions_bulk(db, ctx.tenant_id, submissions)
+    results = ingest_ach_transactions_bulk(db, ctx.tenant_id, submissions, scoped_customer_id=ctx.customer_id)
     for r in results:
         if not r.success:
             continue
@@ -83,7 +86,7 @@ def list_ach_transactions(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("ach_transaction:read")),
 ) -> list[AchTransactionRead]:
-    txns = AchTransactionRepository(db, ctx.tenant_id).list(account_id=account_id)
+    txns = AchTransactionRepository(db, ctx.tenant_id, ctx.customer_id).list(account_id=account_id)
     return [AchTransactionRead.model_validate(t) for t in txns]
 
 
@@ -93,7 +96,7 @@ def get_ach_transaction(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("ach_transaction:read")),
 ) -> AchTransactionRead:
-    txn = AchTransactionRepository(db, ctx.tenant_id).get(transaction_id)
+    txn = AchTransactionRepository(db, ctx.tenant_id, ctx.customer_id).get(transaction_id)
     if txn is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ACH transaction not found")
     return AchTransactionRead.model_validate(txn)

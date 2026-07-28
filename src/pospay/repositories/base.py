@@ -39,3 +39,26 @@ class TenantScopedRepository(Generic[ModelT]):
         obj.tenant_id = self.tenant_id
         self.session.add(obj)
         return obj
+
+
+class CustomerScopedRepository(TenantScopedRepository[ModelT]):
+    """For the six tables that can additionally be scoped to one Customer within a
+    tenant (domain/customer.py, TenantMembership.customer_id): Account, IssuedItem,
+    StopPayment, PaidItem, AchAuthorizationRule, AchTransaction. When customer_id is None
+    (a tenant-wide session), this behaves exactly like TenantScopedRepository — any call
+    site not yet updated to pass one stays correct by default rather than leaking data.
+    When set, every read is additionally filtered to that one customer's rows. Service
+    functions that create a child record are expected to resolve the parent account
+    through here too (not a raw session.get), so "is this account in my scope" and "what
+    customer_id do I stamp on the new row" are the same lookup, not two independent ones
+    that could drift."""
+
+    def __init__(self, session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID | None = None):
+        super().__init__(session, tenant_id)
+        self.customer_id = customer_id
+
+    def query(self) -> Select:
+        stmt = super().query()
+        if self.customer_id is not None:
+            stmt = stmt.where(self.model.customer_id == self.customer_id)
+        return stmt

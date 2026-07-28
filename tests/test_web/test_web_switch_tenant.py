@@ -21,10 +21,10 @@ def test_switch_tenant_page_lists_other_memberships(client, db_session, tenant_f
     _login(client, tenant_a.slug, users_a["admin"].email)
     resp = client.get("/ui/switch-tenant")
     assert resp.status_code == 200
-    assert f'>{tenant_b.name}</button>' in resp.text
+    assert f'>{tenant_b.name} (bank-wide)</button>' in resp.text
     # the current tenant's own name legitimately appears elsewhere on the page (nav
     # brand, title) now that branding shows it — just not as a switch-target button
-    assert f'>{tenant_a.name}</button>' not in resp.text
+    assert f'>{tenant_a.name} (bank-wide)</button>' not in resp.text
 
 
 def test_switch_tenant_without_membership_shows_empty_state(client, tenant_factory):
@@ -40,11 +40,15 @@ def test_switch_tenant_mints_tokens_without_reauth(client, db_session, tenant_fa
     tenant_a, _account_a, users_a = tenant_factory.make(slug="switch-mint-a")
     tenant_b, _account_b, _users_b = tenant_factory.make(slug="switch-mint-b")
     group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Admin")
-    user_service.confirm_cross_tenant_membership(db_session, tenant_b.id, email=users_a["admin"].email, security_group_id=group_b.id)
+    membership_b = user_service.confirm_cross_tenant_membership(
+        db_session, tenant_b.id, email=users_a["admin"].email, security_group_id=group_b.id
+    )
     db_session.commit()
 
     csrf = _login(client, tenant_a.slug, users_a["admin"].email)
-    resp = client.post("/ui/switch-tenant", data={"csrf_token": csrf, "tenant_id": str(tenant_b.id)}, follow_redirects=False)
+    resp = client.post(
+        "/ui/switch-tenant", data={"csrf_token": csrf, "membership_id": str(membership_b.id)}, follow_redirects=False
+    )
     assert resp.status_code == 303
 
     # now operating in tenant_b's context — e.g. tenant_b's security-groups page (Admin
@@ -54,10 +58,14 @@ def test_switch_tenant_mints_tokens_without_reauth(client, db_session, tenant_fa
 
 
 def test_switch_tenant_rejects_non_member_tenant(client, db_session, tenant_factory):
+    import uuid
+
     tenant_a, _account_a, users_a = tenant_factory.make(slug="switch-reject-a")
-    tenant_b, _account_b, _users_b = tenant_factory.make(slug="switch-reject-b")
+    tenant_factory.make(slug="switch-reject-b")
 
     csrf = _login(client, tenant_a.slug, users_a["admin"].email)
-    resp = client.post("/ui/switch-tenant", data={"csrf_token": csrf, "tenant_id": str(tenant_b.id)}, follow_redirects=False)
+    resp = client.post(
+        "/ui/switch-tenant", data={"csrf_token": csrf, "membership_id": str(uuid.uuid4())}, follow_redirects=False
+    )
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/ui/switch-tenant?error")

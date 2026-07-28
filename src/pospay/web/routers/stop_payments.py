@@ -19,7 +19,7 @@ router = APIRouter(prefix="/ui/stop-payments", tags=["web-stop-payments"])
 def list_stop_payments(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("stop_payment:read"))
 ) -> HTMLResponse:
-    stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id)
+    stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "stop_payments/list.html", ctx=ctx, stops=stops)
 
 
@@ -29,7 +29,7 @@ def new_stop_payment_form(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("stop_payment:write")),
 ) -> HTMLResponse:
-    accounts = account_service.list_accounts(db, ctx.tenant_id)
+    accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "stop_payments/form.html", ctx=ctx, accounts=accounts)
 
 
@@ -51,24 +51,37 @@ def create_stop_payment(
         parsed_effective = date.fromisoformat(effective_date)
         parsed_expiration = date.fromisoformat(expiration_date) if expiration_date else None
     except (InvalidOperation, ValueError):
-        accounts = account_service.list_accounts(db, ctx.tenant_id)
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request, "stop_payments/form.html", ctx=ctx, accounts=accounts, error="Invalid amount or date.", status_code=422
         )
 
-    stop = stop_payment_service.create_stop_payment(
-        db,
-        ctx.tenant_id,
-        stop_payment_service.StopPaymentInput(
-            account_id=account_id,
-            check_number=check_number,
-            amount=parsed_amount,
-            effective_date=parsed_effective,
-            expiration_date=parsed_expiration,
-            reason=reason or None,
-        ),
-        created_by_user_id=ctx.user_id,
-    )
+    try:
+        stop = stop_payment_service.create_stop_payment(
+            db,
+            ctx.tenant_id,
+            stop_payment_service.StopPaymentInput(
+                account_id=account_id,
+                check_number=check_number,
+                amount=parsed_amount,
+                effective_date=parsed_effective,
+                expiration_date=parsed_expiration,
+                reason=reason or None,
+            ),
+            created_by_user_id=ctx.user_id,
+            scoped_customer_id=ctx.customer_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface e.g. an out-of-scope account to the form
+        db.rollback()
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
+        return render_template(
+            request,
+            "stop_payments/form.html",
+            ctx=ctx,
+            accounts=accounts,
+            error=f"Could not create stop payment: {exc}",
+            status_code=422,
+        )
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -90,7 +103,7 @@ def cancel_stop_payment(
     ctx: TenantContext = Depends(require_web_permission("stop_payment:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    stop = stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id)
+    stop = stop_payment_service.cancel_stop_payment(db, ctx.tenant_id, stop_id, scoped_customer_id=ctx.customer_id)
     if stop is not None:
         audit_log_service.record_action(
             db,

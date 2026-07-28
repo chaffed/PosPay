@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}New Stop Payment — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Blocks a specific check number on this account from clearing. Leave amount blank to
+  match any amount, and expiration blank for a stop that never lapses on its own.</p>
+{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>New stop payment</h1>

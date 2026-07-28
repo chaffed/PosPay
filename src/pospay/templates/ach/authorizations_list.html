@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block title %}ACH Authorizations — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About ACH authorizations{% endblock %}
+{% block help_body %}
+<p>An authorization is a standing rule pre-approving future debits/credits from one
+  originator against an account — the whitelist ACH transactions are matched against.</p>
+<ul>
+  <li><strong>Receiver scope</strong> — "any (blanket)" covers every receiver from that
+    originator; otherwise it's limited to the one receiver ID shown.</li>
+  <li><strong>Max amount</strong> / <strong>Freq/30d</strong> / <strong>SEC codes</strong>
+    — "no limit"/"any" means that dimension isn't restricted.</li>
+  <li>Revoking is one-way — there's no "un-revoke."</li>
+</ul>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">

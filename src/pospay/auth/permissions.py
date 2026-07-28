@@ -32,7 +32,19 @@ PERMISSION_CATALOG: dict[str, str] = {
     "security_group:manage": "Manage security groups",
     "tenant:manage": "Manage organization branding and settings",
     "audit_log:read": "View the immutable action log",
+    "customer:manage": "Manage customers",
 }
+
+# Masked out of TenantContext.permissions whenever the active membership is
+# customer-scoped (auth/deps.py::decode_and_build_context) — regardless of what the
+# assigned security group nominally contains. These are all tenant-wide/bank-staff
+# concerns (managing other users, other customers, the tenant's own branding/settings,
+# admin ML controls, or the full cross-customer action log); a customer's own staff, or a
+# bank employee acting in a customer-scoped context, must never be able to reach them even
+# via a misconfigured security group.
+CUSTOMER_SCOPE_MASKED_PERMISSIONS: frozenset[str] = frozenset(
+    {"user:manage", "security_group:manage", "tenant:manage", "customer:manage", "admin:manage", "audit_log:read"}
+)
 
 _ALL = list(PERMISSION_CATALOG)
 

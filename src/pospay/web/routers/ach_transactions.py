@@ -17,7 +17,7 @@ from pospay.domain.bulk_upload_file import BulkUploadKind
 from pospay.networks.ach.bulk_import import ingest_ach_rows, ingest_nacha_entries
 from pospay.networks.ach.ingestion import AchTransactionSubmission, ingest_ach_transaction
 from pospay.repositories.ach_transaction_repo import AchTransactionRepository
-from pospay.services import account_service, audit_log_service, bulk_upload_file_service
+from pospay.services import account_service, audit_log_service, bulk_upload_file_service, bulk_upload_reversal_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/ui/ach/transactions", tags=["web-ach-transactions"])
 def list_transactions(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("ach_transaction:read"))
 ) -> HTMLResponse:
-    txns = AchTransactionRepository(db, ctx.tenant_id).list()
+    txns = AchTransactionRepository(db, ctx.tenant_id, ctx.customer_id).list()
     return render_template(request, "ach/transactions_list.html", ctx=ctx, txns=txns)
 
 
@@ -38,7 +38,7 @@ def new_transaction_form(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("ach_transaction:write")),
 ) -> HTMLResponse:
-    accounts = account_service.list_accounts(db, ctx.tenant_id)
+    accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
     return render_template(request, "ach/transaction_form.html", ctx=ctx, accounts=accounts)
 
 
@@ -62,26 +62,34 @@ def create_transaction(
         parsed_amount = Decimal(amount)
         parsed_date = date.fromisoformat(effective_date)
     except (InvalidOperation, ValueError):
-        accounts = account_service.list_accounts(db, ctx.tenant_id)
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request, "ach/transaction_form.html", ctx=ctx, accounts=accounts, error="Invalid amount or date.", status_code=422
         )
 
-    txn = ingest_ach_transaction(
-        db,
-        ctx.tenant_id,
-        AchTransactionSubmission(
-            account_id=account_id,
-            originator_id=originator_id,
-            originator_name=originator_name,
-            receiver_id=receiver_id or None,
-            amount=parsed_amount,
-            transaction_type=transaction_type,
-            sec_code=sec_code.upper(),
-            trace_number=trace_number,
-            effective_date=parsed_date,
-        ),
-    )
+    try:
+        txn = ingest_ach_transaction(
+            db,
+            ctx.tenant_id,
+            AchTransactionSubmission(
+                account_id=account_id,
+                originator_id=originator_id,
+                originator_name=originator_name,
+                receiver_id=receiver_id or None,
+                amount=parsed_amount,
+                transaction_type=transaction_type,
+                sec_code=sec_code.upper(),
+                trace_number=trace_number,
+                effective_date=parsed_date,
+            ),
+            scoped_customer_id=ctx.customer_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface e.g. an out-of-scope account to the form
+        db.rollback()
+        accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
+        return render_template(
+            request, "ach/transaction_form.html", ctx=ctx, accounts=accounts, error=f"Could not submit transaction: {exc}", status_code=422
+        )
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -148,7 +156,9 @@ async def bulk_upload_transactions(
                 status_code=422,
                 upload_record=upload_record,
             )
-        results = ingest_nacha_entries(db, ctx.tenant_id, entries, auto_create_accounts=create_missing_accounts)
+        results = ingest_nacha_entries(
+            db, ctx.tenant_id, entries, auto_create_accounts=create_missing_accounts, scoped_customer_id=ctx.customer_id
+        )
     else:
         try:
             rows = parse_tabular_file(upload_file.filename or "upload.csv", content)
@@ -170,7 +180,9 @@ async def bulk_upload_transactions(
                 status_code=422,
                 upload_record=upload_record,
             )
-        results = ingest_ach_rows(db, ctx.tenant_id, rows, auto_create_accounts=create_missing_accounts)
+        results = ingest_ach_rows(
+            db, ctx.tenant_id, rows, auto_create_accounts=create_missing_accounts, scoped_customer_id=ctx.customer_id
+        )
 
     for r in results:
         if not r.success:
@@ -184,6 +196,9 @@ async def bulk_upload_transactions(
             summary=f"ACH transaction created via bulk upload ({r.row_label})",
             resource_type="ach_transaction",
             resource_id=r.created_id,
+        )
+        bulk_upload_reversal_service.track_created_record(
+            db, ctx.tenant_id, upload_record.id, resource_type="ach_transaction", resource_id=r.created_id, row_label=r.row_label
         )
     bulk_upload_file_service.set_result_counts(
         db, upload_record, succeeded_count=sum(r.success for r in results), failed_count=sum(not r.success for r in results)
@@ -207,7 +222,7 @@ def transaction_detail(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("ach_transaction:read")),
 ) -> HTMLResponse:
-    txn = AchTransactionRepository(db, ctx.tenant_id).get(transaction_id)
+    txn = AchTransactionRepository(db, ctx.tenant_id, ctx.customer_id).get(transaction_id)
     if txn is None:
         raise WebNotFound()
     return render_template(request, "ach/transaction_detail.html", ctx=ctx, txn=txn)

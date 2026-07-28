@@ -14,6 +14,11 @@ class ExceptionStatus(str, enum.Enum):
     PAY = "pay"
     RETURN = "return"
     ESCALATED = "escalated"
+    # Set only by services/bulk_upload_reversal_service.py when the underlying paid_item
+    # is backed out and this exception hadn't been decided yet (still OPEN or
+    # PENDING_APPROVAL) — an already-PAY/RETURN/ESCALATED exception is never overridden
+    # this way, since a human decision already happened.
+    WITHDRAWN = "withdrawn"
 
 
 class ExceptionItem(Base):

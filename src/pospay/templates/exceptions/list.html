@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Exceptions — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About the exceptions queue{% endblock %}
+{% block help_body %}
+<p>An exception is a presented check or ACH transaction that didn't match cleanly
+  against what was expected — a reviewer decides pay or return.</p>
+<ul>
+  <li><strong>ML score</strong> — a model-estimated likelihood of "return," where
+    enough decision history exists to train one; otherwise "no model yet."</li>
+  <li><strong>Status</strong> — open (needs review) → pending_approval (a maker
+    recommended, awaiting a different checker's approval, dual-control tenants only) →
+    pay/return (final) or escalated. "Withdrawn" means the underlying item was backed
+    out via a bulk-upload reversal before anyone decided it.</li>
+</ul>
+{% endblock %}
 {% block content %}
 <div class="card">
   <h1>Exceptions Queue</h1>
@@ -14,7 +27,7 @@
     <label style="max-width:220px;">Status
       <select name="status" onchange="this.form.submit()">
         <option value="">All</option>
-        {% for s in ["open", "pending_approval", "pay", "return", "escalated"] %}
+        {% for s in ["open", "pending_approval", "pay", "return", "escalated", "withdrawn"] %}
         <option value="{{ s }}" {{ "selected" if status_filter and status_filter.value == s else "" }}>{{ s }}</option>
         {% endfor %}
       </select>
@@ -32,7 +45,7 @@
         <td>{{ row.summary.amount }}</td>
         <td>{{ row.exception.exception_types.replace(",", ", ") }}</td>
         <td>{% if row.exception.ml_score is not none %}{{ "%.2f"|format(row.exception.ml_score) }}{% else %}<span class="badge">no model yet</span>{% endif %}</td>
-        <td><span class="badge {{ 'badge-ok' if row.exception.status.value == 'pay' else 'badge-danger' if row.exception.status.value in ['return','escalated'] else 'badge-warn' }}">{{ row.exception.status.value }}</span></td>
+        <td><span class="badge {{ 'badge-ok' if row.exception.status.value == 'pay' else 'badge-danger' if row.exception.status.value in ['return','escalated'] else '' if row.exception.status.value == 'withdrawn' else 'badge-warn' }}">{{ row.exception.status.value }}</span></td>
       </tr>
       {% endfor %}
     </tbody>

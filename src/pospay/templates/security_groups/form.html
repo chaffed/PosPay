@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ "Edit" if group else "New" }} Security Group — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>Check every permission this group should grant. A handful of tenant-admin-only
+  permissions (managing users, security groups, customers, organization settings, the
+  audit log) are automatically stripped out for any customer-scoped membership using
+  this group, no matter what's checked here — so a customer-scoped login can never
+  reach bank-admin actions even via a misconfigured group.</p>
+{% endblock %}
 {% block content %}
-<div class="card card-narrow">
+<div class="card">
   <h1>{{ "Edit" if group else "New" }} security group</h1>
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
   <form method="post" action="{{ '/ui/security-groups/' ~ group.id if group else '/ui/security-groups' }}">

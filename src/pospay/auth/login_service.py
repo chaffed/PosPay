@@ -36,11 +36,35 @@ def authenticate_password(session: Session, tenant_slug: str, email: str, passwo
     if user is None or not user.is_active or not verify_password(password, user.hashed_password):
         return None
 
-    membership = session.execute(
-        select(TenantMembership).where(TenantMembership.user_id == user.id, TenantMembership.tenant_id == tenant.id)
-    ).scalar_one_or_none()
-    if membership is None or not membership.is_active:
+    # A user can now hold several memberships in the same tenant (one per customer, or a
+    # tenant-wide one plus per-customer overrides — domain/tenant_membership.py), so this
+    # is no longer a single-row lookup. Login picks a default rather than asking the user
+    # to disambiguate here: the tenant-wide membership if they have one (the only kind
+    # that existed before customers did, so this keeps today's single-membership case
+    # byte-for-byte unchanged), else the earliest-created customer membership. Reaching
+    # any other one is what "Switch organization" is for post-login — a full login-time
+    # disambiguation step across several customer scopes is deliberately out of scope.
+    active_memberships = [
+        m
+        for m in session.execute(
+            select(TenantMembership).where(TenantMembership.user_id == user.id, TenantMembership.tenant_id == tenant.id)
+        )
+        .scalars()
+        .all()
+        if m.is_active
+    ]
+    if not active_memberships:
         return None
+    # created_at alone isn't a safe sort key: SQLite's CURRENT_TIMESTAMP only has
+    # one-second resolution, so two memberships created in the same second (e.g. from a
+    # single bulk CSV upload) would tie, and without a secondary key the "earliest" pick
+    # would depend on incidental row-fetch order rather than being deterministic. id is an
+    # arbitrary but stable tiebreaker — not truly "earliest" on a tie, but at least
+    # reproducible for a given dataset.
+    membership = next(
+        (m for m in active_memberships if m.customer_id is None),
+        sorted(active_memberships, key=lambda m: (m.created_at, m.id))[0],
+    )
 
     mfa_required = user_has_webauthn_credentials(session, tenant.id, user.id)
     return AuthenticatedIdentity(user=user, tenant=tenant, membership=membership, mfa_required=mfa_required)

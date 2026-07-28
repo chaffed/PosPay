@@ -1,10 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Check Images — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About check images{% endblock %}
+{% block help_body %}
+<p>A scanned image of a presented check, optionally linked to the paid item it
+  corresponds to. Uploading one queues OCR in the background to extract the payee
+  name and amount — if the extracted payee doesn't match what was expected, its linked
+  paid item can retroactively flip to an exception even after it already matched.</p>
+<p>"Bulk upload" loads a whole batch of checks (a ZIP manifest, or a native X9.37 cash
+  letter) — each row/item creates both the paid item <em>and</em> its image together,
+  unlike the single-image form which only ever attaches to a paid item that already
+  exists.</p>
+{% endblock %}
 {% block content %}
 <div class="card">
   <div class="toolbar">
     <h1>Check Images</h1>
     {% if can(ctx, "check_image:write") %}<a href="/ui/check-images/upload" class="button">Upload check image</a>{% endif %}
+    {% if can(ctx, "check_image:write") and can(ctx, "paid_item:write") %}<a href="/ui/check-images/bulk" class="button">Bulk upload</a>{% endif %}
   </div>
   {% if images %}
   <table data-sortable>

@@ -101,6 +101,90 @@ a direct edit of the file on disk) shows up as a mismatch, and the original file
 downloaded byte-for-byte from there. Gated by the same permission that gated the original
 upload (`issued_item:write` / `ach_transaction:write` / `user:manage`).
 
+## Bulk-loading check images
+
+`/ui/check-images/bulk` (gated by **both** `paid_item:write` and `check_image:write` —
+stricter than every other bulk import in this app, since this one creates two different
+resource types in a single step, unlike the single-image upload above, which only ever
+links to a paid item that already exists) accepts two formats. **Both create a new
+`paid_item` per check** — running it through the same matching engine as any other
+presented item — **and** attach its image in the same step, rather than requiring the
+paid item to already exist: a real image cash letter *is* the presentment, not a
+follow-up step.
+
+- **ZIP file** (`bulk_import/zip_import.py`): a zip containing exactly one manifest file
+  (CSV/TSV/Excel — columns `account_number`, `check_number`, `amount`, `presented_date`,
+  `front_image_filename`, optional `back_image_filename`) plus the image files it
+  references by filename (matched by basename, case-insensitively, anywhere in the
+  archive). Supported image formats: single- or 2-page TIFF, JPG, PNG
+  (`bulk_import/images.py`) — a 2-page TIFF is split automatically (page 1 = front, page
+  2 = back) unless `back_image_filename` is given explicitly, which always wins.
+- **X9.37 image cash letter** (`bulk_import/x937.py`): a real Check 21 cash letter file.
+  **Lenient by design**, matching this app's existing NACHA parser's philosophy: supports
+  the common ASCII, line-delimited "variable format" variant with embedded TIFF/JPEG
+  images in Image View Data (Type 52) records; does not support the alternate
+  fixed-length undelimited binary variant, EBCDIC encoding, return/adjustment cash
+  letters, credit reconcilement records, or file/cash-letter/bundle control-total
+  validation. Account number and check number come from each check detail record's On-Us
+  and Auxiliary On-Us MICR fields respectively — a common real-world convention (the
+  check's own serial number in Auxiliary On-Us, the payor's account number in On-Us), not
+  a standard-mandated split, so a bank whose files use a different layout won't resolve
+  correctly here; the ZIP+CSV format above is the explicit-column fallback for that case.
+
+Every incoming image, regardless of source format, is decoded and re-encoded to PNG
+before storage (`bulk_import/images.py`) — this is what makes the front/back download
+links on a check image's detail page (`/ui/check-images/<id>/front` and `/back`) and
+downstream OCR work identically no matter what format the original file arrived in.
+Same per-row/per-item transaction isolation as every other bulk importer (one bad check
+doesn't roll back the batch), and the same signed-original-file audit trail
+(`BulkUploadKind.CHECK_IMAGES`) described above.
+
+## Backing out a bulk upload
+
+Every bulk upload (issued items, ACH transactions, users, accounts, check images) can be
+undone from its detail page (`/ui/bulk-uploads/<id>`, "Back out this upload"), reusing
+the same signed-file/audit infrastructure described above. This is only possible for
+uploads processed **after** this feature shipped — `bulk_upload_created_record` (new)
+durably links a `BulkUploadFile` to every row it successfully created, something no
+earlier version of this app tracked; an older upload's detail page shows "nothing can be
+automatically backed out" instead of the button.
+
+Backing out is **one-way** (matching every other void/cancel/revoke action's own
+one-way design — nothing here supports "undo the undo") and, per resource type, either
+really reverses what was created or is a record-only annotation, depending on whether
+this app has any reversible concept for that resource at all:
+
+- **Issued items**: voided (the same `void_issued_item` a manual void uses) — skipped,
+  not an error, if already voided or already paid (voiding a paid item would leave its
+  matching paid item in an inconsistent state).
+- **Users**: the membership created deactivates (the same `deactivate_membership` the
+  manual button uses) — skipped if already inactive. Only memberships created directly
+  by the bulk file are tracked; one confirmed later via the separate cross-tenant
+  confirmation step is a deliberate, independent admin action and isn't automatically
+  backed out (it can still be deactivated individually, same as any other membership).
+- **Accounts / ACH transactions**: **record-only.** Neither has any deactivation or
+  reversal concept in this app at all (no `Account.is_active`, no `AchTransaction`
+  status field) — backing these out marks the tracking record and logs an audit entry,
+  without inventing new account-lifecycle or ACH-reversal behavior that wasn't asked
+  for.
+- **Check images**: the hardest case, since a bulk check-image row's real object is the
+  `paid_item` it created (see above), which can have already changed *other* rows.
+  Reversing it flips a matched `PaidItem.settlement_status` to a new `REVERSED` value
+  (excluded from duplicate-payment detection, same as `RETURNED`); if it had flipped a
+  linked issued item to `PAID`, that reverts to `OUTSTANDING` — but only if nothing else
+  changed that issued item's status since (left alone and noted otherwise). If it had
+  spawned an exception in the review queue that's still `OPEN`/`PENDING_APPROVAL`, that
+  exception is auto-withdrawn (new `ExceptionStatus.WITHDRAWN` — shown in the exceptions
+  queue, and rejected by the recommend/decide routes with a clear message rather than
+  the generic "already decided" one); one that's already been paid/returned/escalated by
+  a human is left untouched and noted, never silently overridden.
+
+Requires the same permission that gated the original upload
+(`issued_item:write`/`ach_transaction:write`/`user:manage`/`account:write`), plus, for
+check images specifically, **both** `paid_item:write` and `check_image:write` — matching
+that upload route's own stricter dual-permission gate, since backing one out can touch
+both resource types.
+
 ## Users, security groups, and cross-tenant access
 
 Access control is a set of per-tenant **security groups** (`auth/permissions.py`,
@@ -137,6 +221,89 @@ WebAuthn credentials are still registered **per tenant-membership**, not once fo
 whole identity — a user with memberships in two tenants currently registers a security key
 separately in each. Unifying that to one identity-wide credential set is a reasonable
 fast-follow, deliberately out of scope for the cross-tenant-membership work.
+
+## Querying and exporting users (access recertification)
+
+`GET /api/v1/users` (gated by `user:manage`) returns the same data `/ui/users` shows —
+one row per `TenantMembership` (email, security group, customer scope or "bank-wide",
+active/deactivated status, when the membership was created, and `last_login_at`) — built
+by reusing `user_service.list_tenant_users` directly, so the API and the web page can
+never drift apart. A user with several memberships in one tenant (bank-wide plus
+per-customer scopes) correctly appears once per membership, matching how access is
+actually granted; this is meant for an access-review/recertification process that needs
+to answer "who has access to what, and have they actually used it."
+
+`User.last_login_at` is now actually populated — it existed as a column before this but
+nothing ever set it. It's stamped at the moment a login *completes* (password-only, or
+after WebAuthn MFA finishes), on both the web and API channels; token refresh and
+"switch organization" don't count as a fresh login and don't touch it.
+
+The same list can be exported straight from `/ui/users` as **CSV** or **JSON**
+(`/ui/users/export.csv` / `.json`, same permission, same underlying data — no separate
+filtering, it exports exactly what the page shows).
+
+## Customers: segregating a tenant's own business clients
+
+A `Tenant` is the bank; a `Customer` (`/ui/customers`, gated by a dedicated
+`customer:manage` permission) is one of the bank's own business clients within that
+tenant — e.g. "Acme Corp," a company whose accounts and check/ACH activity the bank
+processes. Customers are optional: accounts created without one are "house" accounts,
+visible only to tenant-wide staff exactly as before this feature existed, so an existing
+installation with no customers behaves identically to today.
+
+**One mechanism serves two use cases.** `TenantMembership` gains an optional
+`customer_id`: `NULL` is today's exact behavior (tenant-wide staff, sees everything in the
+tenant), and a real value scopes that membership's security group to just that one
+customer's data. The same field expresses both "a bank employee restricted to servicing
+specific customers" and "a customer's own employee logging in to see only their own
+company's data" — there's no separate portal or permission catalog, just a narrower scope
+on an ordinary membership. A person can hold several memberships in the same tenant (one
+tenant-wide, plus overrides per customer, or several customer-scoped ones with no
+tenant-wide membership at all) —**"Switch organization"** (`/ui/switch-tenant`) doubles as
+"switch customer scope," listing every membership and which customer (or "bank-wide") each
+is scoped to. Logging in still takes just a slug + email + password; if more than one
+membership exists for that tenant, login defaults to the tenant-wide one if present, else
+the earliest-created customer membership, and the switcher reaches any other one — a
+login-time picker for the (rare) multi-membership case is a reasonable fast-follow,
+deliberately out of scope here.
+
+**Segregation is denormalized, not just joined.** `customer_id` is stamped onto `account`
+and onto every table that hangs off an account — `issued_item`, `stop_payment`,
+`paid_item`, `ach_authorization_rule`, `ach_transaction` — the same way `tenant_id`
+already is, always derived server-side from the referenced account at creation time, never
+trusted from a request. `repositories/base.py::CustomerScopedRepository` is the
+enforcement point: when a session's `customer_id` is set, every read on those six tables
+is additionally filtered to it; when it's `None` (tenant-wide), it behaves exactly like
+plain tenant scoping. A customer-scoped caller referencing another customer's `account_id`
+directly — not just through a filtered dropdown — gets a clean 404, the same
+anti-enumeration posture as cross-tenant isolation, because every service that creates a
+child record resolves the parent account through this same repository rather than a raw
+lookup.
+
+**No new "what" permissions — only "whose."** A security group's permissions
+(`Preparer`, `Approver`, etc.) mean the same thing whether a membership is tenant-wide or
+customer-scoped; scoping only narrows *whose* data they apply to. One hard-coded exception:
+`user:manage`, `security_group:manage`, `tenant:manage`, `customer:manage`,
+`admin:manage`, and `audit_log:read` are unconditionally stripped from the resolved
+permission set whenever a membership is customer-scoped
+(`auth/permissions.py::CUSTOMER_SCOPE_MASKED_PERMISSIONS`, enforced in
+`auth/deps.py::decode_and_build_context`) — regardless of what the underlying security
+group nominally contains, so even a customer-scoped membership using the full "Admin"
+group can never reach tenant-admin surfaces like `/ui/users` or `/ui/audit-log`.
+
+**Bulk loading** extends the existing CSV infrastructure rather than adding a new one:
+accounts (`/ui/accounts/bulk`, columns `account_number`, `name`, optional
+`customer_number`, optional `ach_debit_block_mode`) and users
+(`/ui/users/bulk`, existing columns plus an optional `customer_number`) both resolve a
+human-readable customer number to the tenant's internal customer record the same way
+issued-item/ACH bulk uploads already resolve account numbers. A customer-scoped uploader
+can only ever create rows in their own scope — a `customer_number` column that names a
+different customer is rejected, not silently reassigned.
+
+Not yet done, documented as an accepted v1 limitation: Postgres RLS policies on the six
+customer-scoped tables enforce `tenant_id` only, not `customer_id` — the repository layer
+above is the primary, tested enforcement point, same posture as tenant isolation's own RLS
+today.
 
 ## Per-tenant branding
 

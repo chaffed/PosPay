@@ -1,0 +1,47 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from pospay.db.base import Base, new_uuid
+
+
+class Customer(Base):
+    """A bank tenant's own business client — the sub-organization each Account, and every
+    record that hangs off one (issued_item, stop_payment, paid_item,
+    ach_authorization_rule, ach_transaction — see their customer_id columns), can be
+    assigned to. Segregating access by customer is layered entirely on top of the
+    existing tenant model: TenantMembership.customer_id (see that module) is what
+    restricts a login to just this customer's data, whether the person is the bank's own
+    staff assigned to this client or the client's own employee. No hard delete —
+    deactivate via is_active, consistent with this app's philosophy elsewhere."""
+
+    __tablename__ = "customer"
+    __table_args__ = (UniqueConstraint("tenant_id", "customer_number", name="uq_customer_tenant_number"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), nullable=False, index=True)
+    customer_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Cross-reference to an identifier from an outside system (e.g. a core-banking CIF
+    # number) — distinct from customer_number above, which is this app's own tenant-scoped
+    # identifier that bulk files already match against.
+    external_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tax_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    primary_contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)

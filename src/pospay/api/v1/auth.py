@@ -11,6 +11,7 @@ from pospay.db.session import get_db
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.schemas.auth import LoginRequest, LoginResponse, RefreshRequest, TokenResponse
+from pospay.services import user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,19 +25,34 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
 
     if identity.mfa_required:
         mfa_token = create_token(
-            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="mfa_pending"
+            user_id=user.id,
+            tenant_id=tenant.id,
+            security_group_id=membership.security_group_id,
+            customer_id=membership.customer_id,
+            token_type="mfa_pending",
         )
         return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
-    return LoginResponse(
+    response = LoginResponse(
         mfa_required=False,
         access_token=create_token(
-            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="access"
+            user_id=user.id,
+            tenant_id=tenant.id,
+            security_group_id=membership.security_group_id,
+            customer_id=membership.customer_id,
+            token_type="access",
         ),
         refresh_token=create_token(
-            user_id=user.id, tenant_id=tenant.id, security_group_id=membership.security_group_id, token_type="refresh"
+            user_id=user.id,
+            tenant_id=tenant.id,
+            security_group_id=membership.security_group_id,
+            customer_id=membership.customer_id,
+            token_type="refresh",
         ),
     )
+    user_service.record_login(db, user.id)
+    db.commit()
+    return response
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -51,6 +67,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
 
     user_id = uuid.UUID(claims["sub"])
     tenant_id = uuid.UUID(claims["tenant_id"])
+    customer_id = uuid.UUID(claims["customer_id"]) if claims.get("customer_id") else None
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
@@ -59,18 +76,32 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
     # Re-derived from the current membership (not the token's own security_group_id
     # claim) so a group reassignment since the refresh token was issued takes effect here
     # — the same "always reflects current state" property this already had for role
-    # changes before security groups replaced roles.
+    # changes before security groups replaced roles. customer_id is part of the lookup
+    # (not just user_id/tenant_id) because one user can hold several memberships in the
+    # same tenant now — see domain/tenant_membership.py.
     membership = db.execute(
-        select(TenantMembership).where(TenantMembership.user_id == user_id, TenantMembership.tenant_id == tenant_id)
+        select(TenantMembership).where(
+            TenantMembership.user_id == user_id,
+            TenantMembership.tenant_id == tenant_id,
+            TenantMembership.customer_id == customer_id,
+        )
     ).scalar_one_or_none()
     if membership is None or not membership.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Membership no longer active")
 
     return TokenResponse(
         access_token=create_token(
-            user_id=user.id, tenant_id=tenant_id, security_group_id=membership.security_group_id, token_type="access"
+            user_id=user.id,
+            tenant_id=tenant_id,
+            security_group_id=membership.security_group_id,
+            customer_id=customer_id,
+            token_type="access",
         ),
         refresh_token=create_token(
-            user_id=user.id, tenant_id=tenant_id, security_group_id=membership.security_group_id, token_type="refresh"
+            user_id=user.id,
+            tenant_id=tenant_id,
+            security_group_id=membership.security_group_id,
+            customer_id=customer_id,
+            token_type="refresh",
         ),
     )

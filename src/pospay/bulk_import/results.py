@@ -15,6 +15,10 @@ class BulkFileRowResult:
     success: bool
     created_id: uuid.UUID | None = None
     error: str | None = None
+    # Set only on a successful row that still has something worth telling the user about
+    # (e.g. bulk_upload_reversal_service reverting a paid item whose linked issued item
+    # had already changed status since) -- every other bulk-import path leaves this None.
+    note: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,3 +35,6 @@ class UserBulkRowResult:
     email: str | None = None
     security_group_id: uuid.UUID | None = None
     error: str | None = None
+    # Set only when outcome == "created" -- the membership row this call produced, so
+    # services/bulk_upload_reversal_service.py can track and later back it out.
+    membership_id: uuid.UUID | None = None
