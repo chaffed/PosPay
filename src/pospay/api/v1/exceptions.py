@@ -23,7 +23,9 @@ def list_exceptions(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("exception:read")),
 ) -> list[ExceptionRead]:
-    items = exception_service.list_exceptions(db, ctx.tenant_id, network_code=network_code, status=status_filter)
+    items = exception_service.list_exceptions(
+        db, ctx.tenant_id, network_code=network_code, status=status_filter, customer_id=ctx.customer_id
+    )
     return [ExceptionRead.from_orm_row(i) for i in items]
 
 
@@ -33,7 +35,7 @@ def get_exception(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("exception:read")),
 ) -> ExceptionRead:
-    item = exception_service.get_exception(db, ctx.tenant_id, exception_id)
+    item = exception_service.get_exception(db, ctx.tenant_id, exception_id, customer_id=ctx.customer_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Exception not found")
     return ExceptionRead.from_orm_row(item)

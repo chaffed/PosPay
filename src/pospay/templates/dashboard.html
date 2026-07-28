@@ -9,6 +9,14 @@
   customer, you'll only ever see that customer's own data throughout the app.</p>
 {% endblock %}
 {% block content %}
+{% if show_getting_started %}
+<div class="card">
+  <div class="toolbar">
+    <p>Finish setting up your organization to get the most out of PosPay.</p>
+    <a href="/ui/wizard/bank" class="button">Getting Started checklist</a>
+  </div>
+</div>
+{% endif %}
 <div class="card">
   <h1>Dashboard</h1>
   <p>Logged in as <strong>{{ ctx.role }}</strong>.</p>

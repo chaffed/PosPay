@@ -41,7 +41,7 @@ def submit_recommendation(
     reason_code: str,
     notes: str | None,
 ) -> ServiceResult:
-    repo = ExceptionRepository(session, tenant_id)
+    repo = ExceptionRepository(session, tenant_id, ctx.customer_id)
     exception = repo.get(exception_id)
     if exception is None:
         return ServiceResult(None, None, DecisionError.NOT_FOUND)
@@ -73,7 +73,7 @@ def decide(
     dual-control tenants, requires a prior recommend() from a *different* user (maker !=
     checker is enforced here, not just in the UI)."""
     tenant = session.get(Tenant, tenant_id)
-    exception_repo = ExceptionRepository(session, tenant_id)
+    exception_repo = ExceptionRepository(session, tenant_id, ctx.customer_id)
     exception = exception_repo.get(exception_id)
     if exception is None:
         return ServiceResult(None, None, DecisionError.NOT_FOUND)
@@ -110,7 +110,13 @@ def decide(
     return ServiceResult(decision, exception, None)
 
 
-def get_decision_for_exception(session: Session, tenant_id: uuid.UUID, exception_id: uuid.UUID) -> Decision | None:
+def get_decision_for_exception(
+    session: Session, tenant_id: uuid.UUID, exception_id: uuid.UUID, *, customer_id: uuid.UUID | None = None
+) -> Decision | None:
+    # Verify the exception is in scope first — a customer-scoped caller must not be able
+    # to fetch another customer's decision just by knowing its exception_id.
+    if ExceptionRepository(session, tenant_id, customer_id).get(exception_id) is None:
+        return None
     repo = DecisionRepository(session, tenant_id)
     results = repo.list(exception_item_id=exception_id)
     return results[0] if results else None

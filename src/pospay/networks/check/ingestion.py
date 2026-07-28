@@ -76,6 +76,7 @@ def ingest_paid_item(
         exception_item = ExceptionItem(
             tenant_id=tenant_id,
             network_code="check",
+            customer_id=paid_item.customer_id,
             source_item_id=paid_item.id,
             related_reference_id=result.related_reference_id,
             exception_types=",".join(result.exception_types),

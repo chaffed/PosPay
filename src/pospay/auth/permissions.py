@@ -36,6 +36,7 @@ PERMISSION_CATALOG: dict[str, str] = {
     "tenant:manage": "Manage organization branding and settings",
     "audit_log:read": "View the immutable action log",
     "customer:manage": "Manage customers",
+    "data_export:run": "Export all tenant/customer data for migration or offboarding",
 }
 
 # Masked out of TenantContext.permissions whenever the active membership is
@@ -49,7 +50,16 @@ CUSTOMER_SCOPE_MASKED_PERMISSIONS: frozenset[str] = frozenset(
     {"user:manage", "security_group:manage", "tenant:manage", "customer:manage", "admin:manage", "audit_log:read"}
 )
 
-_ALL = list(PERMISSION_CATALOG)
+# Deliberately excluded from _ALL/Admin's automatic grant — every OTHER permission in
+# this catalog is included in "Admin" purely by construction (_ALL = every catalog key),
+# but a full data export is a different class of risk (a single action that can move
+# everything a tenant or customer has to an outside party), so even a tenant's own Admin
+# group must be explicitly edited to add it via /ui/security-groups, rather than getting
+# it "for free" like every other permission does today. This is a one-off exception, not
+# a pattern to extend casually — most new permissions should still join Admin normally.
+_NOT_ADMIN_DEFAULT = {"data_export:run"}
+
+_ALL = [key for key in PERMISSION_CATALOG if key not in _NOT_ADMIN_DEFAULT]
 
 # audit_log:read is deliberately excluded from the general read-permission bucket below —
 # every other *:read key lands in Preparer/Approver/Viewer by default (they already see
@@ -75,4 +85,24 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
     ],
     "Approver": [*_READS, "exception:decide"],
     "Viewer": [*_READS],
+    # For an outside bookkeeper who services one or more customers (of this bank, and
+    # possibly of other banks too, via their own separate memberships in those tenants —
+    # see services/user_service.py::grant_multi_customer_access): every transactional
+    # permission, but nothing management-related (no user/security-group/tenant/customer
+    # management, no admin ML controls, no audit log, no data export). Deliberately
+    # explicit (not computed from _ALL minus something) so a future new permission key
+    # never lands here without a conscious decision, same as Preparer/Approver/Viewer.
+    # Holding both exception:recommend and exception:decide doesn't bypass maker/checker
+    # segregation — decision_service.decide() already blocks deciding one's own
+    # recommendation whenever a tenant requires dual control.
+    "Bookkeeper": [
+        "account:read", "account:write",
+        "issued_item:read", "issued_item:write",
+        "stop_payment:read", "stop_payment:write",
+        "paid_item:read", "paid_item:write",
+        "check_image:read", "check_image:write",
+        "ach_authorization:read", "ach_authorization:write",
+        "ach_transaction:read", "ach_transaction:write",
+        "exception:read", "exception:recommend", "exception:decide",
+    ],
 }

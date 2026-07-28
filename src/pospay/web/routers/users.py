@@ -332,12 +332,22 @@ def bulk_confirm_users(
     ctx: TenantContext = Depends(require_web_permission("user:manage")),
     _csrf: None = Depends(verify_csrf),
 ) -> HTMLResponse:
-    confirmations: list[tuple[str, uuid.UUID, uuid.UUID | None]] = []
+    # "email::security_group_id::customer_id::require_webauthn" — the last segment is
+    # only ever populated by /ui/users/access/grant's checkbox; the plain CSV bulk-user
+    # upload flow's 3-segment values (no trailing "::flag") parse with it defaulting to
+    # False, so both producers of `confirm` values keep working through this one route.
+    confirmations: list[tuple[str, uuid.UUID, uuid.UUID | None, bool]] = []
     for value in confirm:
-        email, _, rest = value.partition("::")
-        group_id_str, _, customer_id_str = rest.partition("::")
+        parts = value.split("::")
+        if len(parts) < 2:
+            continue
+        email, group_id_str = parts[0], parts[1]
+        customer_id_str = parts[2] if len(parts) > 2 else ""
+        require_webauthn = bool(parts[3]) if len(parts) > 3 else False
         if email and group_id_str:
-            confirmations.append((email, uuid.UUID(group_id_str), uuid.UUID(customer_id_str) if customer_id_str else None))
+            confirmations.append(
+                (email, uuid.UUID(group_id_str), uuid.UUID(customer_id_str) if customer_id_str else None, require_webauthn)
+            )
 
     results = user_service.confirm_users_bulk(db, ctx.tenant_id, confirmations)
     # confirm_users_bulk already committed each grant individually (per-row isolation,
@@ -360,6 +370,83 @@ def bulk_confirm_users(
         )
     db.commit()
     return render_template(request, "users/bulk_result.html", ctx=ctx, results=results, pending=[])
+
+
+@router.get("/access")
+def access_lookup(
+    request: Request,
+    email: str = "",
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+) -> HTMLResponse:
+    rows = user_service.get_access_for_email(db, ctx.tenant_id, email) if email else []
+    groups = security_group_service.list_security_groups(db, ctx.tenant_id)
+    customers = customer_service.list_customers(db, ctx.tenant_id)
+    return render_template(
+        request, "users/access.html", ctx=ctx, email=email, rows=rows, groups=groups, customers=customers
+    )
+
+
+@router.post("/access/grant")
+def access_grant(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(""),
+    security_group_id: uuid.UUID = Form(...),
+    customer_ids: list[str] = Form([]),
+    require_webauthn: bool = Form(False),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    groups = security_group_service.list_security_groups(db, ctx.tenant_id)
+    customers = customer_service.list_customers(db, ctx.tenant_id)
+
+    if not customer_ids:
+        return render_template(
+            request, "users/access.html", ctx=ctx, email=email, rows=user_service.get_access_for_email(db, ctx.tenant_id, email),
+            groups=groups, customers=customers, status_code=422,
+            error="Select at least one customer (or bank-wide) to grant access to.",
+        )
+
+    resolved_ids: list[uuid.UUID | None] = [uuid.UUID(c) if c else None for c in customer_ids]
+    pairs = user_service.grant_multi_customer_access(
+        db,
+        ctx.tenant_id,
+        email=email,
+        password=password,
+        security_group_id=security_group_id,
+        customer_ids=resolved_ids,
+        require_webauthn=require_webauthn,
+    )
+
+    group = security_group_service.get_security_group(db, ctx.tenant_id, security_group_id)
+    customer_names = {c.id: c.name for c in customers}
+
+    results = []
+    pending = []
+    for customer_id, result in pairs:
+        row_label = customer_names.get(customer_id, "—") if customer_id else "bank-wide"
+        results.append({"outcome": result.outcome, "row_label": row_label, "error": result.error})
+        if result.outcome == "created":
+            created_user = UserRepository(db).get_by_email(email)
+            audit_log_service.record_action(
+                db, ctx.tenant_id, actor_user_id=ctx.user_id, channel="web", action="user.create",
+                summary=f"Added user {email} ({row_label}, multi-customer grant)", resource_type="user",
+                resource_id=created_user.id if created_user else None,
+            )
+        elif result.outcome == "needs_confirmation":
+            flag = "1" if require_webauthn else ""
+            pending.append(
+                {
+                    "email": email,
+                    "group_name": group.name if group else "",
+                    "value": f"{email}::{security_group_id}::{customer_id or ''}::{flag}",
+                }
+            )
+
+    db.commit()
+    return render_template(request, "users/bulk_result.html", ctx=ctx, results=results, pending=pending, upload_record=None)
 
 
 # NOTE: /{membership_id} (bare, no suffix) must be registered after every literal path

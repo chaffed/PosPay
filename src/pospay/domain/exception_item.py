@@ -36,6 +36,12 @@ class ExceptionItem(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), nullable=False, index=True)
     network_code: Mapped[str] = mapped_column(ForeignKey("payment_network.code"), nullable=False, index=True)
 
+    # Denormalized from the source item's own customer_id at creation time — see
+    # issued_item.py's customer_id for the full rationale (same pattern on every
+    # customer-scoped table). Also what per-customer ML training/scoring (ml/train.py,
+    # ml/predict.py) groups on.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
+
     source_item_id: Mapped[uuid.UUID] = mapped_column(nullable=False, index=True)
     related_reference_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
 

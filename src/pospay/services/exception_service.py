@@ -15,11 +15,14 @@ def list_exceptions(
     *,
     network_code: str | None = None,
     status: ExceptionStatus | None = None,
+    customer_id: uuid.UUID | None = None,
 ) -> list[ExceptionItem]:
-    repo = ExceptionRepository(session, tenant_id)
+    repo = ExceptionRepository(session, tenant_id, customer_id)
     return repo.list(network_code=network_code, status=status)
 
 
-def get_exception(session: Session, tenant_id: uuid.UUID, exception_id: uuid.UUID) -> ExceptionItem | None:
-    repo = ExceptionRepository(session, tenant_id)
+def get_exception(
+    session: Session, tenant_id: uuid.UUID, exception_id: uuid.UUID, *, customer_id: uuid.UUID | None = None
+) -> ExceptionItem | None:
+    repo = ExceptionRepository(session, tenant_id, customer_id)
     return repo.get(exception_id)

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -28,13 +29,17 @@ class TrainResult:
     metrics: dict[str, float]
 
 
-def _load_labeled_decisions(session: Session, network_code: str) -> list[Decision]:
+def _load_labeled_decisions(
+    session: Session, network_code: str, customer_id: uuid.UUID | None = None
+) -> list[Decision]:
     stmt = (
         select(Decision)
         .join(ExceptionItem, Decision.exception_item_id == ExceptionItem.id)
         .where(ExceptionItem.network_code == network_code, Decision.features_json.is_not(None))
         .order_by(Decision.decided_at)
     )
+    if customer_id is not None:
+        stmt = stmt.where(ExceptionItem.customer_id == customer_id)
     return list(session.execute(stmt).scalars().all())
 
 
@@ -52,11 +57,17 @@ def _safe_metrics(y_true: list[int], y_pred_proba, y_pred: list[int]) -> dict[st
     return metrics
 
 
-def train_model(session: Session, network_code: str) -> TrainResult:
-    decisions = _load_labeled_decisions(session, network_code)
+def train_model(session: Session, network_code: str, *, customer_id: uuid.UUID | None = None) -> TrainResult:
+    """customer_id=None (the default) trains the global, network-wide model exactly as
+    before. A customer_id scopes both the training data and the resulting model row to
+    that one customer — see ml/registry.py's get_active_model_row/activate_model for how
+    a customer's own model and the global model are kept as independent "slots" that
+    never retire each other."""
+    decisions = _load_labeled_decisions(session, network_code, customer_id)
     if len(decisions) < MIN_DECISIONS_TO_TRAIN:
+        scope = f"customer_id={customer_id!r}" if customer_id else "the global model"
         raise InsufficientTrainingData(
-            f"Only {len(decisions)} labeled decisions for network_code={network_code!r}, "
+            f"Only {len(decisions)} labeled decisions for network_code={network_code!r} ({scope}), "
             f"need at least {MIN_DECISIONS_TO_TRAIN}."
         )
 
@@ -76,18 +87,20 @@ def train_model(session: Session, network_code: str) -> TrainResult:
     metrics = _safe_metrics(y_holdout, holdout_proba, holdout_pred)
 
     existing_model_count = session.execute(
-        select(MlModel).where(MlModel.network_code == network_code)
+        select(MlModel).where(MlModel.network_code == network_code, MlModel.customer_id == customer_id)
     ).scalars().all()
     version = f"v{len(existing_model_count) + 1}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
 
-    artifact_path = ArtifactStore().save(model, key=f"{network_code}_{version}")
+    artifact_key = f"{network_code}_{customer_id}_{version}" if customer_id else f"{network_code}_{version}"
+    artifact_path = ArtifactStore().save(model, key=artifact_key)
 
-    current_active = get_active_model_row(session, network_code)
+    current_active = get_active_model_row(session, network_code, customer_id)
     promote = current_active is None or metrics.get("auc", 0.0) >= (current_active.metrics_json or {}).get("auc", 0.0)
 
     model_row = create_model_row(
         session,
         network_code=network_code,
+        customer_id=customer_id,
         version=version,
         algorithm="logistic_regression",
         artifact_path=artifact_path,

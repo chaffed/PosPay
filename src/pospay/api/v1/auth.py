@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pospay.auth.login_service import authenticate_password
+from pospay.auth.login_service import PasswordLoginOutcome, authenticate_password
 from pospay.auth.security import create_token, decode_token
 from pospay.db.session import get_db
 from pospay.domain.tenant_membership import TenantMembership
@@ -21,9 +21,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
-    identity = authenticate_password(db, payload.tenant_slug, payload.email, payload.password)
-    if identity is None:
+    result = authenticate_password(db, payload.tenant_slug, payload.email, payload.password)
+    if result.outcome == PasswordLoginOutcome.SSO_REQUIRED:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This organization requires single sign-on")
+    if result.outcome != PasswordLoginOutcome.SUCCESS or result.identity is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    identity = result.identity
     user, tenant, membership = identity.user, identity.tenant, identity.membership
 
     if identity.mfa_required:

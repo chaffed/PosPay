@@ -43,4 +43,11 @@ class TenantMembership(Base):
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
     security_group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("security_group.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # When true, this membership may authenticate with a password even if the tenant or
+    # customer otherwise requires SSO (auth/login_service.py::_scope_allows_password_login)
+    # — but only alongside a mandatory WebAuthn key, re-verified on every login and on
+    # every /ui/switch-tenant into this membership (never just opt-in like the ordinary
+    # WebAuthn second factor). See services/user_service.py::grant_multi_customer_access,
+    # the only place this is currently settable.
+    require_webauthn: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

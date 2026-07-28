@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.tenant import Tenant
 from pospay.services import audit_log_service
-from pospay.services.tenant_service import InvalidBrandingInput, update_tenant_branding
+from pospay.services.tenant_service import InvalidBrandingInput, set_require_dual_control, update_tenant_branding
 from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -17,10 +18,12 @@ router = APIRouter(prefix="/ui/settings", tags=["web-tenant-settings"])
 
 @router.get("")
 def settings_form(
-    request: Request, ctx: TenantContext = Depends(require_web_permission("tenant:manage"))
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("tenant:manage"))
 ) -> HTMLResponse:
+    tenant = db.get(Tenant, ctx.tenant_id)
     return render_template(
-        request, "settings/form.html", ctx=ctx, tenant_display_name=ctx.tenant_name, accent_color=ctx.accent_color or ""
+        request, "settings/form.html", ctx=ctx, tenant_display_name=ctx.tenant_name, accent_color=ctx.accent_color or "",
+        require_dual_control=tenant.require_dual_control,
     )
 
 
@@ -67,6 +70,29 @@ async def update_settings(
             channel="web",
             action="tenant.update_settings",
             summary=f"Updated organization settings (name: {tenant.name})",
+            resource_type="tenant",
+            resource_id=ctx.tenant_id,
+        )
+    db.commit()
+    return RedirectResponse("/ui/settings?flash=Settings+updated.", status_code=303)
+
+
+@router.post("/dual-control")
+def update_dual_control(
+    require_dual_control: bool = Form(False),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    tenant = set_require_dual_control(db, ctx.tenant_id, require_dual_control)
+    if tenant is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="tenant.update_dual_control",
+            summary=f"{'Enabled' if require_dual_control else 'Disabled'} dual control",
             resource_type="tenant",
             resource_id=ctx.tenant_id,
         )

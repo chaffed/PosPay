@@ -20,12 +20,20 @@ class MlModelStatus(str, enum.Enum):
 
 class MlModel(Base):
     """Model registry, one row per trained artifact. Separate models per network_code
-    (check vs ach feature spaces barely overlap) — never assume a single global model."""
+    (check vs ach feature spaces barely overlap) — never assume a single global model.
+
+    customer_id is None for the global, network-wide model (the original and still
+    default meaning of this table) or set to scope a row to one customer's own model for
+    that network (see ml/train.py, ml/predict.py). A given (network_code, customer_id)
+    pair can have at most one ACTIVE row at a time — enforced in ml/registry.py, not a DB
+    constraint, since TRAINING/RETIRED/FAILED rows for the same pair are expected to
+    coexist as history."""
 
     __tablename__ = "ml_model"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     network_code: Mapped[str] = mapped_column(ForeignKey("payment_network.code"), nullable=False, index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
 
     version: Mapped[str] = mapped_column(String(64), nullable=False)
     algorithm: Mapped[str] = mapped_column(String(64), nullable=False)

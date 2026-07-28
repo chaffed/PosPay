@@ -66,3 +66,39 @@ def create_token(
 def decode_token(token: str, *, settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
     return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+
+
+_SSO_STATE_EXPIRE_MINUTES = 10
+
+
+def create_sso_state_token(
+    *, connection_id: uuid.UUID, tenant_id: uuid.UUID, nonce: str, next_path: str, settings: Settings | None = None
+) -> str:
+    """Carries the SSO login-in-progress state across the redirect to the IdP and back —
+    this app has no server-side session store, so (like mfa_pending) it round-trips
+    through a short-lived, signed cookie instead. A dedicated `type="sso_state"` claim
+    means this can never be accepted anywhere a real access/refresh/mfa_pending token is
+    (auth/deps.py never checks for this type). Carrying `tenant_id` here (established
+    once, at /start, when the login page's own tenant is already known) means the
+    callback never needs an unscoped cross-tenant DB lookup to find it again — it can go
+    straight to a normal tenant-scoped query, RLS included."""
+    settings = settings or get_settings()
+    now = datetime.now(timezone.utc)
+    payload = {
+        "connection_id": str(connection_id),
+        "tenant_id": str(tenant_id),
+        "nonce": nonce,
+        "next_path": next_path,
+        "type": "sso_state",
+        "iat": now,
+        "exp": now + timedelta(minutes=_SSO_STATE_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_sso_state_token(token: str, *, settings: Settings | None = None) -> dict:
+    settings = settings or get_settings()
+    payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    if payload.get("type") != "sso_state":
+        raise jwt.InvalidTokenError("Not an sso_state token")
+    return payload

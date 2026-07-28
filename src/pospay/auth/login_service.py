@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import enum
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from pospay.auth.security import verify_password
 from pospay.auth.webauthn_service import user_has_webauthn_credentials
+from pospay.domain.customer import Customer
 from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
@@ -19,34 +21,50 @@ class AuthenticatedIdentity:
     tenant: Tenant
     membership: TenantMembership
     mfa_required: bool
+    # True only when membership.require_webauthn is set and this identity has no
+    # WebAuthn credential registered in this tenant yet — the caller must route to a
+    # forced-registration ceremony instead of the ordinary challenge page (see
+    # web/routers/auth.py's /login/webauthn/setup* routes).
+    needs_webauthn_enrollment: bool = False
 
 
-def authenticate_password(session: Session, tenant_slug: str, email: str, password: str) -> AuthenticatedIdentity | None:
+class PasswordLoginOutcome(str, enum.Enum):
+    SUCCESS = "success"
+    # Unknown tenant/user, wrong password, or no active membership at all — collapsed
+    # into one outcome so neither caller is tempted into a response that reveals which
+    # part was wrong.
+    INVALID_CREDENTIALS = "invalid_credentials"
+    # The password was CORRECT, but every membership this identity holds in this tenant
+    # is in a scope (the tenant itself, or a specific customer) that currently requires
+    # SSO — see Tenant.password_login_enabled / Customer.password_login_enabled and
+    # services/sso_service.py's lockout-guarded toggle for that setting.
+    SSO_REQUIRED = "sso_required"
+
+
+@dataclass(frozen=True, slots=True)
+class PasswordLoginResult:
+    outcome: PasswordLoginOutcome
+    identity: AuthenticatedIdentity | None = None
+
+
+def authenticate_password(session: Session, tenant_slug: str, email: str, password: str) -> PasswordLoginResult:
     """Shared by the JSON API (api/v1/auth.py) and the web login form
     (web/routers/auth.py) so credential-checking logic exists in exactly one place.
-    Returns None on ANY failure (unknown tenant, unknown/inactive user, wrong password,
-    no active membership in this tenant) — deliberately collapsed into a single outcome
-    so neither caller is tempted into a response that reveals which part was wrong.
 
     `email` resolves a User globally now (see domain/user.py) rather than within this one
     tenant — the same identity can hold a TenantMembership (and therefore log in) in more
     than one tenant, each with its own security group."""
     tenant = session.execute(select(Tenant).where(Tenant.slug == tenant_slug)).scalar_one_or_none()
     if tenant is None or not tenant.is_active:
-        return None
+        return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)
 
     user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None or not user.is_active or not verify_password(password, user.hashed_password):
-        return None
+        return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)
 
     # A user can now hold several memberships in the same tenant (one per customer, or a
     # tenant-wide one plus per-customer overrides — domain/tenant_membership.py), so this
-    # is no longer a single-row lookup. Login picks a default rather than asking the user
-    # to disambiguate here: the tenant-wide membership if they have one (the only kind
-    # that existed before customers did, so this keeps today's single-membership case
-    # byte-for-byte unchanged), else the earliest-created customer membership. Reaching
-    # any other one is what "Switch organization" is for post-login — a full login-time
-    # disambiguation step across several customer scopes is deliberately out of scope.
+    # is no longer a single-row lookup.
     active_memberships = [
         m
         for m in session.execute(
@@ -57,17 +75,53 @@ def authenticate_password(session: Session, tenant_slug: str, email: str, passwo
         if m.is_active
     ]
     if not active_memberships:
-        return None
-    # created_at alone isn't a safe sort key: SQLite's CURRENT_TIMESTAMP only has
-    # one-second resolution, so two memberships created in the same second (e.g. from a
-    # single bulk CSV upload) would tie, and without a secondary key the "earliest" pick
-    # would depend on incidental row-fetch order rather than being deterministic. id is an
-    # arbitrary but stable tiebreaker — not truly "earliest" on a tie, but at least
-    # reproducible for a given dataset.
+        return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)
+
+    # Password correctness is already confirmed above — only NOW do we distinguish
+    # "no access at all" (already handled) from "access exists, but this scope requires
+    # SSO," so a wrong guess never reveals which scopes require SSO for this identity.
+    password_allowed_memberships = [m for m in active_memberships if _scope_allows_password_login(session, tenant, m)]
+    if not password_allowed_memberships:
+        return PasswordLoginResult(PasswordLoginOutcome.SSO_REQUIRED)
+
+    # Login picks a default rather than asking the user to disambiguate here: the
+    # tenant-wide membership if they have one (the only kind that existed before
+    # customers did, so this keeps today's single-membership case byte-for-byte
+    # unchanged), else the earliest-created customer membership. Reaching any other one
+    # is what "Switch organization" is for post-login — a full login-time disambiguation
+    # step across several customer scopes is deliberately out of scope.
     membership = next(
-        (m for m in active_memberships if m.customer_id is None),
-        sorted(active_memberships, key=lambda m: (m.created_at, m.id))[0],
+        (m for m in password_allowed_memberships if m.customer_id is None),
+        # created_at alone isn't a safe sort key: SQLite's CURRENT_TIMESTAMP only has
+        # one-second resolution, so two memberships created in the same second (e.g. from
+        # a single bulk CSV upload) would tie, and without a secondary key the "earliest"
+        # pick would depend on incidental row-fetch order rather than being
+        # deterministic. id is an arbitrary but stable tiebreaker — not truly "earliest"
+        # on a tie, but at least reproducible for a given dataset.
+        sorted(password_allowed_memberships, key=lambda m: (m.created_at, m.id))[0],
     )
 
-    mfa_required = user_has_webauthn_credentials(session, tenant.id, user.id)
-    return AuthenticatedIdentity(user=user, tenant=tenant, membership=membership, mfa_required=mfa_required)
+    has_key = user_has_webauthn_credentials(session, tenant.id, user.id)
+    mfa_required = has_key or membership.require_webauthn
+    needs_webauthn_enrollment = membership.require_webauthn and not has_key
+    identity = AuthenticatedIdentity(
+        user=user,
+        tenant=tenant,
+        membership=membership,
+        mfa_required=mfa_required,
+        needs_webauthn_enrollment=needs_webauthn_enrollment,
+    )
+    return PasswordLoginResult(PasswordLoginOutcome.SUCCESS, identity=identity)
+
+
+def _scope_allows_password_login(session: Session, tenant: Tenant, membership: TenantMembership) -> bool:
+    # A membership explicitly flagged to require WebAuthn may use a password even where
+    # the tenant/customer otherwise mandates SSO — the mandatory key (not group-mapped
+    # SSO) is the compensating control for this specific membership. See
+    # domain/tenant_membership.py::require_webauthn.
+    if membership.require_webauthn:
+        return True
+    if membership.customer_id is None:
+        return tenant.password_login_enabled
+    customer = session.get(Customer, membership.customer_id)
+    return customer is not None and customer.password_login_enabled

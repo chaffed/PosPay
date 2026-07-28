@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Getting Started — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this checklist{% endblock %}
+{% block help_body %}
+<p>A guided checklist for setting up this one customer — each step links to the real
+  page where you actually do it, scoped to just this customer. Steps with a green check
+  are detected automatically from the data; steps with a checkbox have no single "done"
+  fact to detect and you mark them yourself. Optional steps don't need to be completed
+  for the checklist to be considered done.</p>
+<p>See <code>RUNBOOK.md</code> in the project repository for the same
+  checklist as a standalone document.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Getting Started — {{ customer.name }}</h1>
+    <a href="/ui/customers/{{ customer.id }}" class="button secondary">Back to customer</a>
+  </div>
+  <p>{{ required_done }} of {{ required_total }} required steps complete.</p>
+  <table>
+    <tbody>
+      {% for view in steps %}
+      <tr>
+        <td style="width:2rem;">
+          {% if view.is_complete %}
+          <span class="badge badge-ok">✓</span>
+          {% elif view.step.optional %}
+          <span class="badge">optional</span>
+          {% else %}
+          <span class="badge badge-danger">•</span>
+          {% endif %}
+        </td>
+        <td>
+          <strong>{{ view.step.title }}</strong>
+          <p>{{ view.step.description }}</p>
+          <p>
+            <a href="{{ view.step.link_url }}">{{ view.step.link_text }}</a>
+            {% if view.step.auto_check is none %}
+            {% if view.is_complete %}
+            <form method="post" action="/ui/customers/{{ customer.id }}/wizard/{{ view.step.key }}/unacknowledge" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="link-button">— mark not done</button>
+            </form>
+            {% else %}
+            <form method="post" action="/ui/customers/{{ customer.id }}/wizard/{{ view.step.key }}/acknowledge" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="link-button">— mark done</button>
+            </form>
+            {% endif %}
+            {% endif %}
+          </p>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

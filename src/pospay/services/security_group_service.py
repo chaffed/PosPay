@@ -26,9 +26,9 @@ def _clean_permissions(permissions: list[str]) -> list[str]:
 
 def seed_default_security_groups(session: Session, tenant_id: uuid.UUID) -> dict[str, SecurityGroup]:
     """Called once when a tenant is created (provisioning_service.py, tests'
-    TenantFactory) so every tenant starts with the same 4 groups the old fixed
-    Admin/Preparer/Approver/Viewer roles provided — fully editable from there. Kept in
-    one place so the two callers can never seed different defaults."""
+    TenantFactory) so every tenant starts with the same default groups
+    (Admin/Preparer/Approver/Viewer/Bookkeeper) — fully editable from there. Kept in one
+    place so the two callers can never seed different defaults."""
     repo = SecurityGroupRepository(session, tenant_id)
     groups: dict[str, SecurityGroup] = {}
     for name, permissions in DEFAULT_SECURITY_GROUPS.items():

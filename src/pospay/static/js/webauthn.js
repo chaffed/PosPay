@@ -76,9 +76,10 @@ async function loginWebAuthn(nextPath, onError) {
   }
 }
 
-async function registerWebAuthn(nickname, onSuccess, onError) {
+async function registerWebAuthn(nickname, onSuccess, onError, endpointBase) {
+  const base = endpointBase || "/ui/security/webauthn/register";
   try {
-    const optionsResp = await fetch("/ui/security/webauthn/register/options", {
+    const optionsResp = await fetch(`${base}/options`, {
       method: "POST",
       headers: csrfHeaders(),
     });
@@ -108,7 +109,7 @@ async function registerWebAuthn(nickname, onSuccess, onError) {
       },
     };
 
-    const verifyResp = await fetch("/ui/security/webauthn/register/verify", {
+    const verifyResp = await fetch(`${base}/verify`, {
       method: "POST",
       headers: csrfHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ credential, nickname }),

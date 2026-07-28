@@ -44,13 +44,17 @@ def create_account(
     account_number: str = Form(...),
     name: str = Form(...),
     customer_id: str = Form(""),
+    external_account_id: str = Form(""),
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("account:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     resolved_customer_id = ctx.customer_id if ctx.customer_id is not None else (uuid.UUID(customer_id) if customer_id else None)
     account = account_service.create_account(
-        db, ctx.tenant_id, account_service.AccountInput(account_number=account_number, name=name, customer_id=resolved_customer_id)
+        db, ctx.tenant_id, account_service.AccountInput(
+            account_number=account_number, name=name, customer_id=resolved_customer_id,
+            external_account_id=external_account_id or None,
+        )
     )
     audit_log_service.record_action(
         db,

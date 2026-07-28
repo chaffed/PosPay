@@ -2,8 +2,8 @@
 # Copyright (C) 2026 Chaffed
 
 from pospay.domain.exception_item import ExceptionItem
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class ExceptionRepository(TenantScopedRepository[ExceptionItem]):
+class ExceptionRepository(CustomerScopedRepository[ExceptionItem]):
     model = ExceptionItem

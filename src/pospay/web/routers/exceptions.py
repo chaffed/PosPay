@@ -58,7 +58,9 @@ def list_exceptions(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("exception:read")),
 ) -> HTMLResponse:
-    items = exception_service.list_exceptions(db, ctx.tenant_id, network_code=network_code, status=status)
+    items = exception_service.list_exceptions(
+        db, ctx.tenant_id, network_code=network_code, status=status, customer_id=ctx.customer_id
+    )
     rows = []
     for item in items:
         adapter = get_adapter(item.network_code)
@@ -79,14 +81,14 @@ def exception_detail(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("exception:read")),
 ) -> HTMLResponse:
-    item = exception_service.get_exception(db, ctx.tenant_id, exception_id)
+    item = exception_service.get_exception(db, ctx.tenant_id, exception_id, customer_id=ctx.customer_id)
     if item is None:
         raise WebNotFound()
 
     adapter = get_adapter(item.network_code)
     source_item = adapter.load_source_item(db, item.source_item_id)
     summary = _summarize_source_item(item.network_code, source_item) if source_item else None
-    decision = decision_service.get_decision_for_exception(db, ctx.tenant_id, exception_id)
+    decision = decision_service.get_decision_for_exception(db, ctx.tenant_id, exception_id, customer_id=ctx.customer_id)
 
     return render_template(
         request,

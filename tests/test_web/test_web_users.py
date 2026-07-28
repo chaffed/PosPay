@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
-from pospay.services import security_group_service, user_service
+from pospay.services import customer_service, security_group_service, user_service
 from tests.conftest import TenantFactory
 
 
@@ -296,3 +296,161 @@ def test_edit_entitlements_404s_for_other_tenants_membership(client, db_session,
 
     resp = client.get(f"/ui/users/{membership_a.id}/edit")
     assert resp.status_code == 404
+
+
+def test_access_lookup_requires_permission(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-access-forbidden")
+    _login(client, tenant.slug, users["viewer"].email)
+
+    resp = client.get("/ui/users/access", follow_redirects=False)
+    assert resp.status_code == 403
+
+
+def test_access_lookup_shows_existing_memberships(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-access-lookup")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get(f"/ui/users/access?email={users['viewer'].email}")
+
+    assert resp.status_code == 200
+    assert "Viewer" in resp.text
+    assert "bank-wide" in resp.text
+
+
+def test_access_grant_direct_across_multiple_customers(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-access-grant-multi")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    customer_1 = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    customer_2 = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-2", name="Beta"))
+    db_session.commit()
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Bookkeeper")
+
+    resp = client.post(
+        "/ui/users/access/grant",
+        data={
+            "csrf_token": csrf,
+            "email": "bookkeeper@example.com",
+            "password": "hunter2-hunter2",
+            "security_group_id": str(group.id),
+            "customer_ids": [str(customer_1.id), str(customer_2.id)],
+        },
+    )
+
+    assert resp.status_code == 200
+    assert "2 created" in resp.text
+    memberships = user_service.get_access_for_email(db_session, tenant.id, "bookkeeper@example.com")
+    assert {row.customer_name for row in memberships} == {customer_1.name, customer_2.name}
+    assert all(row.security_group_name == "Bookkeeper" for row in memberships)
+
+
+def test_access_grant_no_customers_selected_shows_error(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-access-grant-empty")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Bookkeeper")
+
+    resp = client.post(
+        "/ui/users/access/grant",
+        data={"csrf_token": csrf, "email": "bookkeeper@example.com", "password": "hunter2-hunter2", "security_group_id": str(group.id)},
+    )
+
+    assert resp.status_code == 422
+    assert "Select at least one customer" in resp.text
+
+
+def test_access_grant_cross_tenant_email_needs_confirmation_then_confirms(client, db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="web-users-access-cross-a")
+    tenant_b, _account_b, users_b = tenant_factory.make(slug="web-users-access-cross-b")
+    csrf = _login(client, tenant_b.slug, users_b["admin"].email)
+    customer_1 = customer_service.create_customer(db_session, tenant_b.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    customer_2 = customer_service.create_customer(db_session, tenant_b.id, customer_service.CustomerInput(customer_number="C-2", name="Beta"))
+    db_session.commit()
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Bookkeeper")
+
+    resp = client.post(
+        "/ui/users/access/grant",
+        data={
+            "csrf_token": csrf,
+            "email": users_a["preparer"].email,
+            "password": "",
+            "security_group_id": str(group_b.id),
+            "customer_ids": [str(customer_1.id), str(customer_2.id)],
+        },
+    )
+
+    assert resp.status_code == 200
+    assert "2 need" in resp.text
+    assert user_service.get_access_for_email(db_session, tenant_b.id, users_a["preparer"].email) == []
+
+    import re
+
+    values = re.findall(r'name="confirm" value="([^"]+)"', resp.text)
+    assert len(values) == 2
+
+    confirm_resp = client.post(
+        "/ui/users/bulk/confirm", data={"csrf_token": csrf, "confirm": values}, follow_redirects=False
+    )
+    assert confirm_resp.status_code == 200
+    granted = user_service.get_access_for_email(db_session, tenant_b.id, users_a["preparer"].email)
+    assert {row.customer_name for row in granted} == {customer_1.name, customer_2.name}
+    assert all(row.security_group_name == "Bookkeeper" for row in granted)
+
+
+def test_access_grant_require_webauthn_checkbox_direct_grant(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-access-grant-webauthn")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    customer = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    db_session.commit()
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Bookkeeper")
+
+    resp = client.post(
+        "/ui/users/access/grant",
+        data={
+            "csrf_token": csrf,
+            "email": "bookkeeper-key@example.com",
+            "password": "hunter2-hunter2",
+            "security_group_id": str(group.id),
+            "customer_ids": [str(customer.id)],
+            "require_webauthn": "true",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert "1 created" in resp.text
+    rows = user_service.get_access_for_email(db_session, tenant.id, "bookkeeper-key@example.com")
+    assert len(rows) == 1
+    assert rows[0].membership.require_webauthn is True
+
+
+def test_access_grant_require_webauthn_checkbox_survives_needs_confirmation(client, db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="web-users-access-webauthn-cross-a")
+    tenant_b, _account_b, users_b = tenant_factory.make(slug="web-users-access-webauthn-cross-b")
+    csrf = _login(client, tenant_b.slug, users_b["admin"].email)
+    customer = customer_service.create_customer(db_session, tenant_b.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    db_session.commit()
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Bookkeeper")
+
+    resp = client.post(
+        "/ui/users/access/grant",
+        data={
+            "csrf_token": csrf,
+            "email": users_a["preparer"].email,
+            "password": "",
+            "security_group_id": str(group_b.id),
+            "customer_ids": [str(customer.id)],
+            "require_webauthn": "true",
+        },
+    )
+    assert resp.status_code == 200
+    assert "1 need" in resp.text
+
+    import re
+
+    values = re.findall(r'name="confirm" value="([^"]+)"', resp.text)
+    assert len(values) == 1
+    assert values[0].endswith("::1")
+
+    confirm_resp = client.post("/ui/users/bulk/confirm", data={"csrf_token": csrf, "confirm": values})
+    assert confirm_resp.status_code == 200
+    granted = user_service.get_access_for_email(db_session, tenant_b.id, users_a["preparer"].email)
+    assert len(granted) == 1
+    assert granted[0].membership.require_webauthn is True

@@ -94,7 +94,7 @@ def get_decision(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("exception:read")),
 ) -> DecisionRead:
-    decision = decision_service.get_decision_for_exception(db, ctx.tenant_id, exception_id)
+    decision = decision_service.get_decision_for_exception(db, ctx.tenant_id, exception_id, customer_id=ctx.customer_id)
     if decision is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No decision recorded for this exception")
     return DecisionRead.model_validate(decision)

@@ -33,8 +33,12 @@ class ArtifactStore:
         return joblib.load(path)
 
 
-def get_active_model_row(session: Session, network_code: str) -> MlModel | None:
-    stmt = select(MlModel).where(MlModel.network_code == network_code, MlModel.status == MlModelStatus.ACTIVE)
+def get_active_model_row(session: Session, network_code: str, customer_id: uuid.UUID | None = None) -> MlModel | None:
+    stmt = select(MlModel).where(
+        MlModel.network_code == network_code,
+        MlModel.customer_id == customer_id,
+        MlModel.status == MlModelStatus.ACTIVE,
+    )
     return session.execute(stmt).scalars().first()
 
 
@@ -48,9 +52,11 @@ def create_model_row(
     trained_from_decision_count: int,
     metrics_json: dict[str, Any],
     status: MlModelStatus,
+    customer_id: uuid.UUID | None = None,
 ) -> MlModel:
     row = MlModel(
         network_code=network_code,
+        customer_id=customer_id,
         version=version,
         algorithm=algorithm,
         artifact_path=artifact_path,
@@ -69,7 +75,10 @@ def activate_model(session: Session, model_id: uuid.UUID) -> MlModel:
     if model is None:
         raise ValueError(f"No ml_model with id={model_id}")
 
-    previous_active = get_active_model_row(session, model.network_code)
+    # Only retires the previous active row for this SAME (network_code, customer_id)
+    # scope — a customer's own model and the global model are independent "slots" and
+    # must never retire each other.
+    previous_active = get_active_model_row(session, model.network_code, model.customer_id)
     if previous_active is not None and previous_active.id != model.id:
         previous_active.status = MlModelStatus.RETIRED
 

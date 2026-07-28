@@ -20,7 +20,7 @@
   <form method="post" action="/ui/switch-tenant" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="membership_id" value="{{ m.membership.id }}">
-    <button type="submit">{{ m.tenant.name }}{{ " — " ~ m.customer_name if m.customer_name else " (bank-wide)" }}</button>
+    <button type="submit">{{ m.tenant.name }}{{ " — " ~ m.customer_name if m.customer_name else " (bank-wide)" }}{{ " (security key required)" if m.membership.require_webauthn else "" }}</button>
   </form>
   {% endfor %}
   {% else %}

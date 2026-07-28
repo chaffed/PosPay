@@ -45,9 +45,10 @@ class TenantScopedRepository(Generic[ModelT]):
 
 
 class CustomerScopedRepository(TenantScopedRepository[ModelT]):
-    """For the six tables that can additionally be scoped to one Customer within a
-    tenant (domain/customer.py, TenantMembership.customer_id): Account, IssuedItem,
-    StopPayment, PaidItem, AchAuthorizationRule, AchTransaction. When customer_id is None
+    """For the tables that can additionally be scoped to one Customer within a tenant
+    (domain/customer.py, TenantMembership.customer_id): Account, IssuedItem,
+    StopPayment, PaidItem, AchAuthorizationRule, AchTransaction, ExceptionItem. When
+    customer_id is None
     (a tenant-wide session), this behaves exactly like TenantScopedRepository — any call
     site not yet updated to pass one stays correct by default rather than leaking data.
     When set, every read is additionally filtered to that one customer's rows. Service

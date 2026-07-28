@@ -28,6 +28,11 @@ class Customer(Base):
     customer_number: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Independent of Tenant.password_login_enabled — a customer's own SSO enforcement is
+    # configured separately from the bank's, same as its own SsoConnection rows are. Only
+    # makes sense set False once this customer has at least one active SsoConnection
+    # (enforced in services/sso_service.py).
+    password_login_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Cross-reference to an identifier from an outside system (e.g. a core-banking CIF

@@ -29,22 +29,30 @@ class InvalidBrandingInput(ValueError):
 @dataclass(frozen=True, slots=True)
 class TenantBranding:
     """What a template needs to render a tenant's branding — never the image bytes
-    themselves (those are served separately, see web/routers/branding.py)."""
+    themselves (those are served separately, see web/routers/branding.py). `id` and
+    `password_login_enabled` are here too (not just cosmetic fields) because the login
+    routes need this same pre-authentication, slug-resolved lookup to know which tenant's
+    SSO connections to offer and whether its password form should even be shown —
+    see web/routers/auth.py."""
 
+    id: uuid.UUID
     slug: str
     name: str
     accent_color: str | None
     has_logo: bool
     has_favicon: bool
+    password_login_enabled: bool
 
 
 def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
     return TenantBranding(
+        id=tenant.id,
         slug=tenant.slug,
         name=tenant.name,
         accent_color=tenant.accent_color,
         has_logo=bool(tenant.logo_path),
         has_favicon=bool(tenant.favicon_path),
+        password_login_enabled=tenant.password_login_enabled,
     )
 
 
@@ -114,5 +122,17 @@ def update_tenant_branding(
         tenant.favicon_path = save_tenant_asset(tenant_id, "favicon", content_type, data)
         tenant.favicon_content_type = content_type
 
+    session.flush()
+    return tenant
+
+
+def set_require_dual_control(session: Session, tenant_id: uuid.UUID, enabled: bool) -> Tenant | None:
+    """The only way to change this after initial provisioning — `require_dual_control`
+    was previously set-once, at tenant creation (services/provisioning_service.py), with
+    no self-service toggle anywhere in the UI."""
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        return None
+    tenant.require_dual_control = enabled
     session.flush()
     return tenant

@@ -5,6 +5,11 @@
 <p>Contact details and every account currently assigned to this customer — a one-to-many
   relationship: one customer can have any number of accounts. Assign more accounts to
   it from the Accounts page.</p>
+{% if can(ctx, "admin:manage") %}
+<p>The scoring card below shows whether this customer's exceptions are scored with the
+  bank-wide model or a model trained only on their own decision history, per payment
+  network.</p>
+{% endif %}
 {% endblock %}
 {% block content %}
 <div class="card">
@@ -34,6 +39,15 @@
 </div>
 
 <div class="card">
+  <div class="toolbar">
+    <h1>Setup checklist</h1>
+    <a href="/ui/customers/{{ customer.id }}/wizard" class="button secondary">Open checklist</a>
+  </div>
+  <p>A guided checklist for setting up this customer's accounts, users, and (optionally)
+    their own single sign-on.</p>
+</div>
+
+<div class="card">
   <h1>Accounts</h1>
   {% if accounts %}
   <table data-sortable>
@@ -53,4 +67,54 @@
   {% endif %}
   <p><a href="/ui/accounts">View all accounts</a></p>
 </div>
+
+<div class="card">
+  <div class="toolbar">
+    <h1>Single sign-on</h1>
+    <a href="/ui/customers/{{ customer.id }}/sso" class="button secondary">Manage</a>
+  </div>
+  {% if sso_connection_count %}
+  <p>{{ sso_connection_count }} SSO connection{{ "s" if sso_connection_count != 1 else "" }} configured for this customer.</p>
+  {% else %}
+  <p>No SSO connections configured — this customer's staff sign in with a password, unless a bank-wide connection also covers them.</p>
+  {% endif %}
+</div>
+
+{% if can(ctx, "data_export:run") %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Data export</h1>
+    <a href="/ui/customers/{{ customer.id }}/data-export" class="button secondary">Manage</a>
+  </div>
+  <p>Generate a downloadable archive of everything scoped to this customer, for
+    migrating away from PosPay.</p>
+</div>
+{% endif %}
+
+{% if ml_summary is not none %}
+<div class="card">
+  <div class="toolbar">
+    <h1>ML scoring</h1>
+    <a href="/ui/admin/customers/{{ customer.id }}/ml" class="button secondary">Manage</a>
+  </div>
+  <table>
+    <thead><tr><th>Network</th><th>Mode</th><th>This customer's model</th></tr></thead>
+    <tbody>
+      {% for row in ml_summary %}
+      <tr>
+        <td>{{ row.network_code }}</td>
+        <td><span class="badge">{{ row.mode.value | capitalize }}</span></td>
+        <td>
+          {% if row.active_customer_model %}
+          <span class="badge badge-ok">active ({{ row.active_customer_model.trained_from_decision_count }} decisions)</span>
+          {% else %}
+          none trained yet — using the global model
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

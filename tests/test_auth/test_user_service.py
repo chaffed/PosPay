@@ -222,3 +222,69 @@ def test_update_membership_raises_on_scope_collision(db_session, tenant_factory)
         user_service.update_membership(
             db_session, tenant.id, scoped_membership.id, security_group_id=preparer_group.id, customer_id=None
         )
+
+
+def test_get_access_for_email_scoped_to_this_tenant_only(db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="user-access-a")
+    tenant_b, _account_b, _users_b = tenant_factory.make(slug="user-access-b")
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Viewer")
+    user_service.confirm_cross_tenant_membership(db_session, tenant_b.id, email=users_a["admin"].email, security_group_id=group_b.id)
+    db_session.commit()
+
+    rows_a = user_service.get_access_for_email(db_session, tenant_a.id, users_a["admin"].email)
+    rows_b = user_service.get_access_for_email(db_session, tenant_b.id, users_a["admin"].email)
+
+    assert len(rows_a) == 1
+    assert len(rows_b) == 1
+    # tenant_a's lookup never sees anything about the user's membership in tenant_b, and vice versa
+    assert rows_a[0].security_group_name == "Admin"
+    assert rows_b[0].security_group_name == "Viewer"
+
+
+def test_get_access_for_email_unknown_email_returns_empty(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="user-access-unknown")
+
+    assert user_service.get_access_for_email(db_session, tenant.id, "ghost@example.com") == []
+
+
+def test_grant_multi_customer_access_direct_grant_across_several_customers(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="user-grant-multi")
+    customer_1 = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    customer_2 = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-2", name="Beta"))
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Bookkeeper")
+
+    pairs = user_service.grant_multi_customer_access(
+        db_session,
+        tenant.id,
+        email="bookkeeper@example.com",
+        password="hunter2-hunter2",
+        security_group_id=group.id,
+        customer_ids=[None, customer_1.id, customer_2.id],
+    )
+    db_session.commit()
+
+    assert [outcome for _cid, outcome in [(c, r.outcome) for c, r in pairs]] == ["created", "created", "created"]
+    user = UserRepository(db_session).get_by_email("bookkeeper@example.com")
+    memberships = TenantMembershipRepository(db_session, tenant.id).list(user_id=user.id)
+    assert {m.customer_id for m in memberships} == {None, customer_1.id, customer_2.id}
+    assert all(m.security_group_id == group.id for m in memberships)
+
+
+def test_grant_multi_customer_access_cross_tenant_email_needs_confirmation(db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="user-grant-cross-a")
+    tenant_b, _account_b, _users_b = tenant_factory.make(slug="user-grant-cross-b")
+    customer_1 = customer_service.create_customer(db_session, tenant_b.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    customer_2 = customer_service.create_customer(db_session, tenant_b.id, customer_service.CustomerInput(customer_number="C-2", name="Beta"))
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Bookkeeper")
+
+    pairs = user_service.grant_multi_customer_access(
+        db_session,
+        tenant_b.id,
+        email=users_a["preparer"].email,
+        password="",
+        security_group_id=group_b.id,
+        customer_ids=[customer_1.id, customer_2.id],
+    )
+
+    assert [result.outcome for _cid, result in pairs] == ["needs_confirmation", "needs_confirmation"]
+    assert TenantMembershipRepository(db_session, tenant_b.id).list(user_id=users_a["preparer"].id) == []

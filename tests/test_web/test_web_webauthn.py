@@ -4,6 +4,7 @@
 import webauthn
 
 from pospay.config import get_settings
+from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from tests.conftest import TenantFactory
 from tests.test_auth.webauthn_helpers import FakeAuthenticator
 
@@ -133,3 +134,48 @@ def test_delete_credential_via_web_form(client, tenant_factory):
 
     page = client.get("/ui/security")
     assert "No security keys registered" in page.text
+
+
+def test_require_webauthn_membership_forces_enrollment_then_full_login_flow(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-webauthn-forced-enroll")
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["admin"].id)[0]
+    membership.require_webauthn = True
+    db_session.commit()
+
+    resp = _web_login(client, tenant.slug, users["admin"].email)
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/ui/login/webauthn/setup")
+    assert "mfa_token" in resp.cookies
+    assert "access_token" not in resp.cookies
+
+    setup_page = client.get("/ui/login/webauthn/setup")
+    assert setup_page.status_code == 200
+
+    fake = FakeAuthenticator(get_settings().webauthn_rp_id, get_settings().webauthn_origin)
+    csrf = client.cookies.get("csrf_token")
+    options_resp = client.post("/ui/login/webauthn/setup/options", headers={"X-CSRF-Token": csrf})
+    assert options_resp.status_code == 200, options_resp.text
+    options = webauthn.helpers.parse_registration_options_json(options_resp.text)
+    credential = fake.create_registration_credential(options.challenge)
+
+    verify_resp = client.post(
+        "/ui/login/webauthn/setup/verify",
+        headers={"X-CSRF-Token": csrf},
+        params={"next": "/ui/"},
+        json={"credential": credential},
+    )
+    assert verify_resp.status_code == 200, verify_resp.text
+    assert verify_resp.json()["redirect"] == "/ui/"
+    assert "access_token" in verify_resp.cookies
+
+    dashboard = client.get("/ui/")
+    assert dashboard.status_code == 200
+
+    # a second login now has a registered key, so it goes through the ordinary
+    # challenge page instead of forced enrollment again
+    logout_csrf = client.cookies.get("csrf_token")
+    client.post("/ui/logout", data={"csrf_token": logout_csrf})
+    second_login = _web_login(client, tenant.slug, users["admin"].email)
+    assert second_login.status_code == 303
+    assert second_login.headers["location"].startswith("/ui/login/webauthn?")
+    assert not second_login.headers["location"].startswith("/ui/login/webauthn/setup")

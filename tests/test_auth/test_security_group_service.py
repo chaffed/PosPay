@@ -9,14 +9,23 @@ def test_seed_default_security_groups_matches_old_role_behavior(db_session, tena
     tenant, _account, _users = tenant_factory.make(slug="sg-seed-defaults")
     groups = {g.name: g for g in security_group_service.list_security_groups(db_session, tenant.id)}
 
-    assert set(groups) == {"Admin", "Preparer", "Approver", "Viewer"}
-    assert set(groups["Admin"].permissions) == set(PERMISSION_CATALOG)
+    assert set(groups) == {"Admin", "Preparer", "Approver", "Viewer", "Bookkeeper"}
+    # Every catalog permission EXCEPT data_export:run, which is deliberately excluded
+    # from Admin's default grant (see auth/permissions.py::_NOT_ADMIN_DEFAULT) — a bank
+    # must explicitly add it to a security group, even its own Admin group.
+    assert set(groups["Admin"].permissions) == set(PERMISSION_CATALOG) - {"data_export:run"}
+    assert "data_export:run" not in groups["Admin"].permissions
     assert "issued_item:write" in groups["Preparer"].permissions
     assert "exception:decide" not in groups["Preparer"].permissions
     assert "exception:decide" in groups["Approver"].permissions
     assert "issued_item:write" not in groups["Approver"].permissions
     assert all(key.endswith(":read") for key in groups["Viewer"].permissions)
     assert "issued_item:write" not in groups["Viewer"].permissions
+    # Bookkeeper: every transactional read/write plus exception recommend/decide, but no
+    # management permissions at all (user/security-group/tenant/customer/admin/audit/export).
+    assert "issued_item:write" in groups["Bookkeeper"].permissions
+    assert "exception:decide" in groups["Bookkeeper"].permissions
+    assert not any(key in groups["Bookkeeper"].permissions for key in ("user:manage", "security_group:manage", "tenant:manage", "customer:manage", "admin:manage", "audit_log:read", "data_export:run"))
 
 
 def test_create_and_update_security_group(db_session, tenant_factory):

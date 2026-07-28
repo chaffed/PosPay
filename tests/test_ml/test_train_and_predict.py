@@ -122,16 +122,16 @@ def test_train_then_score_populates_ml_score_on_new_exceptions(db_session, tenan
 
 
 def test_retrain_job_skips_networks_below_threshold(db_session, tenant_factory, monkeypatch):
-    from pospay.workers.tasks import retrain_job
+    import pospay.workers.tasks as tasks_module
 
     tenant, account, users = tenant_factory.make(slug="ml-retrain-job-skip")
     _make_exception(db_session, tenant, account, users, "9401", "100.00", "999.00")
 
     # Only 1 decision exists, well below the default threshold (20) — must not raise,
-    # just skip. Bind the job to the same in-memory engine the test uses.
-    import pospay.db.session as db_session_module
-
-    monkeypatch.setattr(db_session_module, "get_session_factory", lambda: lambda: db_session)
-    # get_session_factory() normally returns a *callable* that produces a session; patch
-    # it to return a zero-arg callable yielding this test's db_session directly.
-    retrain_job()  # should complete without raising despite no active model / low data
+    # just skip. Bind the job to the same in-memory engine the test uses: patch the name
+    # as workers/tasks.py itself references it (`from pospay.db.session import
+    # get_session_factory`), not pospay.db.session's own attribute — a `from X import Y`
+    # binds Y directly into this module's namespace, so patching X.Y afterward doesn't
+    # affect what workers.tasks already has bound to that name.
+    monkeypatch.setattr(tasks_module, "get_session_factory", lambda: lambda: db_session)
+    tasks_module.retrain_job()  # should complete without raising despite no active model / low data

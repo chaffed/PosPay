@@ -84,6 +84,7 @@ def ingest_ach_transaction(
         exception_item = ExceptionItem(
             tenant_id=tenant_id,
             network_code="ach",
+            customer_id=txn.customer_id,
             source_item_id=txn.id,
             related_reference_id=result.related_reference_id,
             exception_types=",".join(result.exception_types),

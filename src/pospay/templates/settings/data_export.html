@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Data Export — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About data export{% endblock %}
+{% block help_body %}
+<p>Generates a downloadable archive containing every record and file belonging to your
+  organization — accounts, issued items, stop payments, paid items, ACH records,
+  exceptions and decisions, check images, users, SSO configuration, customers, bulk
+  upload files, and the action log. Passwords and SSO client secrets are never included.
+  Building the archive runs in the background — refresh this page to see when it's ready
+  to download.</p>
+<p>This action is intentionally not granted to every admin by default — it's a
+  meaningful way for all of an organization's data to leave the system, so it has its
+  own permission (<code>data_export:run</code>) that must be explicitly added to a
+  security group from the Security Groups page.</p>
+{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Start an export</h1>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/ui/settings/data-export/start">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      <input type="checkbox" name="confirm" value="true" required>
+      I understand this generates a complete, downloadable copy of this organization's
+      data and files.
+    </label>
+    <button type="submit">Start export</button>
+  </form>
+</div>
+
+<div class="card">
+  <h1>Past exports</h1>
+  {% if jobs %}
+  <table data-sortable>
+    <thead><tr><th>Requested</th><th>Status</th><th data-type="number">Size</th><th></th></tr></thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td>{{ job.requested_at }}</td>
+        <td>
+          <span class="badge {{ 'badge-ok' if job.status.value == 'completed' else ('badge-danger' if job.status.value == 'failed' else '') }}">
+            {{ job.status.value }}
+          </span>
+        </td>
+        <td>{{ (job.size_bytes / 1048576) | round(1) ~ ' MB' if job.size_bytes else '—' }}</td>
+        <td>
+          {% if job.status.value == 'completed' %}
+          <a href="/ui/settings/data-export/{{ job.id }}/download">Download</a>
+          {% elif job.status.value == 'failed' %}
+          <span class="flash flash-error" title="{{ job.error_message }}">Failed</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No exports yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -6,6 +6,9 @@
   (reachable at a slug-based URL) before anyone signs in. Uploading a new logo or
   favicon replaces the current one; leaving the file field empty keeps whatever's
   already saved.</p>
+<p>Dual control (maker/checker) means a different person must make the final pay/return
+  decision than the one who recommended it — takes effect immediately for every
+  exception, no re-login needed.</p>
 {% endblock %}
 {% block content %}
 <div class="card card-narrow">
@@ -30,5 +33,17 @@
 
     <button type="submit">Save</button>
   </form>
+
+  <form method="post" action="/ui/settings/dual-control">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      <input type="checkbox" name="require_dual_control" value="true" {{ "checked" if require_dual_control else "" }}>
+      Require dual control (maker/checker) on pay/return decisions
+    </label>
+    <button type="submit">Save</button>
+  </form>
+
+  <p><a href="/ui/settings/sso">Single sign-on (Okta / Azure AD)</a></p>
+  {% if can(ctx, "data_export:run") %}<p><a href="/ui/settings/data-export">Data export</a></p>{% endif %}
 </div>
 {% endblock %}

@@ -17,6 +17,10 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     require_dual_control: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # False only makes sense once at least one active bank-wide SsoConnection exists —
+    # enforced in services/sso_service.py, not here, to keep this a plain column like
+    # every other tenant-level toggle.
+    password_login_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     stale_date_threshold_days: Mapped[int] = mapped_column(Integer, nullable=False, default=180)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

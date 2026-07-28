@@ -106,6 +106,7 @@ def _reevaluate_paid_item_after_ocr(session: Session, paid_item_id: uuid.UUID) -
         exception_item = ExceptionItem(
             tenant_id=paid_item.tenant_id,
             network_code="check",
+            customer_id=paid_item.customer_id,
             source_item_id=paid_item.id,
             related_reference_id=result.related_reference_id,
             exception_types=",".join(result.exception_types),

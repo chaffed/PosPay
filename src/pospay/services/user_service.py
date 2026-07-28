@@ -108,12 +108,17 @@ def create_user_with_membership(
     password: str,
     security_group_id: uuid.UUID,
     customer_id: uuid.UUID | None = None,
+    require_webauthn: bool = False,
 ) -> User:
     user = User(email=email, hashed_password=hash_password(password))
     UserRepository(session).add(user)
     session.flush()
     membership = TenantMembership(
-        user_id=user.id, tenant_id=tenant_id, customer_id=customer_id, security_group_id=security_group_id
+        user_id=user.id,
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        security_group_id=security_group_id,
+        require_webauthn=require_webauthn,
     )
     TenantMembershipRepository(session, tenant_id).add(membership)
     session.flush()
@@ -121,7 +126,13 @@ def create_user_with_membership(
 
 
 def confirm_cross_tenant_membership(
-    session: Session, tenant_id: uuid.UUID, *, email: str, security_group_id: uuid.UUID, customer_id: uuid.UUID | None = None
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    email: str,
+    security_group_id: uuid.UUID,
+    customer_id: uuid.UUID | None = None,
+    require_webauthn: bool = False,
 ) -> TenantMembership | None:
     """Re-resolves the identity BY EMAIL again here, server-side, rather than trusting a
     client-supplied user id — this confirmation step exists precisely so an admin
@@ -138,7 +149,11 @@ def confirm_cross_tenant_membership(
     if existing:
         return existing[0]
     membership = TenantMembership(
-        user_id=user.id, tenant_id=tenant_id, customer_id=customer_id, security_group_id=security_group_id
+        user_id=user.id,
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        security_group_id=security_group_id,
+        require_webauthn=require_webauthn,
     )
     TenantMembershipRepository(session, tenant_id).add(membership)
     session.flush()
@@ -153,6 +168,7 @@ def add_user(
     password: str,
     security_group_id: uuid.UUID,
     customer_id: uuid.UUID | None = None,
+    require_webauthn: bool = False,
 ) -> AddUserResult:
     """Single-user add flow (web/routers/users.py). A brand-new email is created
     immediately with the given password. An email that already belongs to an identity
@@ -167,7 +183,13 @@ def add_user(
         if not password:
             return AddUserResult(outcome="failed", error="A password is required for a new user.")
         new_user = create_user_with_membership(
-            session, tenant_id, email=email, password=password, security_group_id=security_group_id, customer_id=customer_id
+            session,
+            tenant_id,
+            email=email,
+            password=password,
+            security_group_id=security_group_id,
+            customer_id=customer_id,
+            require_webauthn=require_webauthn,
         )
         new_membership = TenantMembershipRepository(session, tenant_id).list(user_id=new_user.id, customer_id=customer_id)[0]
         return AddUserResult(outcome="created", membership_id=new_membership.id)
@@ -178,13 +200,65 @@ def add_user(
 
     if memberships_in_tenant:
         membership = TenantMembership(
-            user_id=existing.id, tenant_id=tenant_id, customer_id=customer_id, security_group_id=security_group_id
+            user_id=existing.id,
+            tenant_id=tenant_id,
+            customer_id=customer_id,
+            security_group_id=security_group_id,
+            require_webauthn=require_webauthn,
         )
         TenantMembershipRepository(session, tenant_id).add(membership)
         session.flush()
         return AddUserResult(outcome="created", membership_id=membership.id)
 
     return AddUserResult(outcome="needs_confirmation")
+
+
+def get_access_for_email(session: Session, tenant_id: uuid.UUID, email: str) -> list[TenantUserRow]:
+    """Every membership this email currently holds within THIS tenant only — never
+    another tenant's. Deliberately no cross-tenant visibility: a bank must never be able
+    to see what other, unrelated tenants a shared identity (e.g. an outside bookkeeper)
+    also has access to, just by looking up their email. Trivial reuse of the exact same
+    rows list_tenant_users already builds for /ui/users, filtered down to one email —
+    the consolidated view for reviewing/extending one identity's footprint instead of
+    paging through the full tenant user list."""
+    return [row for row in list_tenant_users(session, tenant_id) if row.user.email.lower() == email.lower()]
+
+
+def grant_multi_customer_access(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    email: str,
+    password: str,
+    security_group_id: uuid.UUID,
+    customer_ids: list[uuid.UUID | None],
+    require_webauthn: bool = False,
+) -> list[tuple[uuid.UUID | None, AddUserResult]]:
+    """Grants one email access to several customer scopes (a None entry = bank-wide) in
+    a single action — services/security_group_service.py's "Bookkeeper" preset is the
+    motivating use case, but this works with any security group. Just add_user called
+    once per requested scope, so every outcome it already handles (created /
+    already_member / needs_confirmation / failed) comes through unchanged, with no new
+    branching logic here. `password` only matters for this email's very first
+    successful row in this call — by the second row, add_user already sees the identity
+    as known within this tenant and never re-checks it. `require_webauthn` applies
+    uniformly to every scope granted in this one call — see
+    domain/tenant_membership.py::require_webauthn for what it does."""
+    return [
+        (
+            customer_id,
+            add_user(
+                session,
+                tenant_id,
+                email=email,
+                password=password,
+                security_group_id=security_group_id,
+                customer_id=customer_id,
+                require_webauthn=require_webauthn,
+            ),
+        )
+        for customer_id in customer_ids
+    ]
 
 
 def deactivate_membership(session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID) -> TenantMembership | None:
@@ -320,15 +394,22 @@ def create_users_from_rows(
 
 
 def confirm_users_bulk(
-    session: Session, tenant_id: uuid.UUID, confirmations: list[tuple[str, uuid.UUID, uuid.UUID | None]]
+    session: Session, tenant_id: uuid.UUID, confirmations: list[tuple[str, uuid.UUID, uuid.UUID | None, bool]]
 ) -> list[UserBulkRowResult]:
-    """Follow-up step for the 'needs_confirmation' rows a bulk CSV load produced — the
-    admin reviewed and re-submitted these (email, security_group_id, customer_id) triples
-    explicitly."""
+    """Follow-up step for the 'needs_confirmation' rows a bulk CSV load (or the
+    /ui/users/access/grant multi-customer tool) produced — the admin reviewed and
+    re-submitted these (email, security_group_id, customer_id, require_webauthn)
+    quadruples explicitly. The plain CSV bulk-user-upload flow never sets the last
+    field (always False); only the access-grant tool's checkbox does."""
     results: list[UserBulkRowResult] = []
-    for email, security_group_id, customer_id in confirmations:
+    for email, security_group_id, customer_id, require_webauthn in confirmations:
         membership = confirm_cross_tenant_membership(
-            session, tenant_id, email=email, security_group_id=security_group_id, customer_id=customer_id
+            session,
+            tenant_id,
+            email=email,
+            security_group_id=security_group_id,
+            customer_id=customer_id,
+            require_webauthn=require_webauthn,
         )
         if membership is None:
             session.rollback()

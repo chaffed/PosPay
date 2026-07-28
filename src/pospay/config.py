@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     check_image_storage_dir: str = "./data/check_images"
     tenant_asset_storage_dir: str = "./data/tenant_assets"
     bulk_upload_storage_dir: str = "./data/bulk_uploads"
+    data_export_storage_dir: str = "./data/exports"
 
     check_stale_date_default_days: int = 180
     payee_match_fuzzy_threshold: float = 85.0
@@ -42,6 +43,16 @@ class Settings(BaseSettings):
     ml_artifact_dir: str = "./ml_artifacts"  # NOT inside src/pospay/ — that's installed package code, not a place for runtime output
     enable_ml_scheduler: bool = False  # opt-in: off by default so tests/local dev don't spawn a background thread
     ml_retrain_cron_hour: int = 2  # nightly at 2am when enabled
+
+    # Federated login (auth/oidc_service.py, services/sso_service.py) — fed through a KDF
+    # into a valid Fernet key (auth/crypto.py), so this stays a plain string like every
+    # other *_secret_key setting rather than a hand-generated base64 Fernet key.
+    sso_encryption_key: str = "dev-secret-change-me-32-bytes-minimum-for-sso"
+    oidc_http_timeout_seconds: float = 10.0
+    # Override for the redirect_uri host when a deployment sits behind a proxy that
+    # doesn't forward the original scheme/host correctly — same class of caveat as
+    # webauthn_origin. None (default) derives it from the live request instead.
+    public_base_url: str | None = None
 
 
 @lru_cache

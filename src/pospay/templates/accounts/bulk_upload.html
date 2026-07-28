@@ -21,6 +21,7 @@
       <tr><td>customer_number</td><td>no</td><td>Blank means an unassigned house account</td></tr>
       {% endif %}
       <tr><td>ach_debit_block_mode</td><td>no</td><td>block_all or filter_by_authorization</td></tr>
+      <tr><td>external_account_id</td><td>no</td><td>Your own internal reference for this account — usable in place of account_number in other bulk files</td></tr>
     </tbody>
   </table>
   {% if ctx.customer_id %}<p>Every account in this file will be assigned to <strong>{{ ctx.customer_name }}</strong>.</p>{% endif %}

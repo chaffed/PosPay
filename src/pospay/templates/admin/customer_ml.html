@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}ML scoring — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About per-customer ML scoring{% endblock %}
+{% block help_body %}
+<p>Each network can score this customer's exceptions with either the bank-wide global
+  model or a model trained only on this customer's own decision history. "Auto" (the
+  default) uses this customer's own model automatically once one has been trained and
+  activated, and falls back to the global model until then — no action needed. "Always
+  global" and "Always this customer" override that: pin scoring to one source
+  regardless of what's available. Retraining and activating below work exactly like the
+  bank-wide models on the main ML Models page, just scoped to this one customer.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>ML scoring — {{ customer.name }}</h1>
+    <a href="/ui/customers/{{ customer.id }}">Back to customer</a>
+  </div>
+  <table data-sortable>
+    <thead><tr><th>Network</th><th>Mode</th><th>Active model</th><th>Global model</th><th></th></tr></thead>
+    <tbody>
+      {% for row in summary %}
+      <tr>
+        <td>{{ row.network_code }}</td>
+        <td>
+          <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/mode" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="network_code" value="{{ row.network_code }}">
+            <select name="mode" onchange="this.form.requestSubmit()">
+              {% for m in modes %}
+              <option value="{{ m.value }}" {{ "selected" if m == row.mode else "" }}>{{ m.value | capitalize }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
+        <td>
+          {% if row.active_customer_model %}
+          <span class="badge badge-ok">{{ row.active_customer_model.version }}</span>
+          ({{ row.active_customer_model.trained_from_decision_count }} decisions)
+          {% else %}
+          <span>none trained yet</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if row.active_global_model %}
+          {{ row.active_global_model.version }}
+          {% else %}
+          <span>none trained yet</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/retrain" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="network_code" value="{{ row.network_code }}">
+            <button type="submit" class="secondary">Retrain</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h1>Model history for {{ customer.name }}</h1>
+  {% if models %}
+  <table data-sortable>
+    <thead><tr><th>Network</th><th>Version</th><th>Status</th><th data-type="number">Trained on</th><th>Metrics</th><th></th></tr></thead>
+    <tbody>
+      {% for m in models %}
+      <tr>
+        <td>{{ m.network_code }}</td>
+        <td>{{ m.version }}</td>
+        <td><span class="badge {{ 'badge-ok' if m.status.value == 'active' else '' }}">{{ m.status.value }}</span></td>
+        <td>{{ m.trained_from_decision_count }} decisions</td>
+        <td>{{ m.metrics_json }}</td>
+        <td>
+          {% if m.status.value != "active" %}
+          <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/models/{{ m.id }}/activate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="secondary">Activate</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No models trained for this customer yet — matching/exceptions still work fully,
+    scoring for this customer just uses the global model (or nothing) until enough of
+    their own decisions accumulate.</p>
+  {% endif %}
+</div>
+{% endblock %}

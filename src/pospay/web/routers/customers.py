@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.services import account_service, audit_log_service, customer_service
+from pospay.services import account_service, audit_log_service, customer_ml_service, customer_service, sso_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -109,7 +109,9 @@ def create_customer(
         resource_id=customer.id,
     )
     db.commit()
-    return RedirectResponse("/ui/customers?flash=Customer+created.", status_code=303)
+    # Straight into this customer's own setup checklist rather than the plain list —
+    # see services/wizard_service.py.
+    return RedirectResponse(f"/ui/customers/{customer.id}/wizard?flash=Customer+created.", status_code=303)
 
 
 # NOTE: /new must be registered before /{customer_id} below — FastAPI matches path
@@ -128,7 +130,14 @@ def customer_detail(
     if customer is None:
         raise WebNotFound()
     accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=customer.id)
-    return render_template(request, "customers/detail.html", ctx=ctx, customer=customer, accounts=accounts)
+    ml_summary = (
+        customer_ml_service.get_ml_summary(db, ctx.tenant_id, customer.id) if "admin:manage" in ctx.permissions else None
+    )
+    sso_connection_count = len(sso_service.list_connections(db, ctx.tenant_id, customer_id=customer.id))
+    return render_template(
+        request, "customers/detail.html", ctx=ctx, customer=customer, accounts=accounts, ml_summary=ml_summary,
+        sso_connection_count=sso_connection_count
+    )
 
 
 @router.get("/{customer_id}/edit")

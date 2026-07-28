@@ -22,11 +22,18 @@ class AccountInput:
     # domain/tenant_membership.py::customer_id and CustomerScopedRepository.
     customer_id: uuid.UUID | None = None
     ach_debit_block_mode: AchDebitBlockMode | None = None
+    # A customer's own internal reference for this account — optional, resolved as a
+    # fallback by get_account_by_number below so bulk files can use it instead of the
+    # real account_number.
+    external_account_id: str | None = None
 
 
 def create_account(session: Session, tenant_id: uuid.UUID, data: AccountInput) -> Account:
     repo = AccountRepository(session, tenant_id)
-    account = Account(account_number=data.account_number, name=data.name, customer_id=data.customer_id)
+    account = Account(
+        account_number=data.account_number, name=data.name, customer_id=data.customer_id,
+        external_account_id=data.external_account_id,
+    )
     if data.ach_debit_block_mode is not None:
         account.ach_debit_block_mode = data.ach_debit_block_mode
     repo.add(account)
@@ -42,11 +49,19 @@ def get_account_by_number(
     session: Session, tenant_id: uuid.UUID, account_number: str, *, customer_id: uuid.UUID | None = None
 ) -> Account | None:
     """Used by bulk file imports (issued items, ACH) to resolve a human-readable account
-    number in an uploaded row/entry to this tenant's internal account id — files never
-    carry our UUIDs, only the account number a user would actually recognize.
-    `customer_id` scopes the lookup exactly like any other CustomerScopedRepository read —
-    a customer-scoped bulk upload can only match its own customer's accounts."""
-    matches = AccountRepository(session, tenant_id, customer_id).list(account_number=account_number)
+    reference in an uploaded row/entry to this tenant's internal account id — files never
+    carry our UUIDs, only a reference a user would actually recognize. Tries the real
+    account_number first (so an existing file that already matches by number resolves
+    exactly as it always has, with zero risk of an external ID accidentally shadowing
+    it), then falls back to external_account_id — a customer's own internal reference —
+    if nothing matched. `customer_id` scopes the lookup exactly like any other
+    CustomerScopedRepository read — a customer-scoped bulk upload can only match its own
+    customer's accounts."""
+    repo = AccountRepository(session, tenant_id, customer_id)
+    matches = repo.list(account_number=account_number)
+    if matches:
+        return matches[0]
+    matches = repo.list(external_account_id=account_number)
     return matches[0] if matches else None
 
 
@@ -95,7 +110,9 @@ def _account_input_from_row(
 ) -> AccountInput:
     """Raises RowFieldError on any missing/invalid field. Expected (case/whitespace-
     insensitive) columns: account_number, name, customer_number (optional — blank means
-    an unassigned "house" account), ach_debit_block_mode (optional).
+    an unassigned "house" account), ach_debit_block_mode (optional), external_account_id
+    (optional — a customer's own internal reference for this account, later usable in
+    place of account_number when submitting other bulk files).
 
     When the upload itself is customer-scoped (scoped_customer_id is not None — see
     web/routers/accounts.py), every row is stamped with that customer regardless of
@@ -130,7 +147,8 @@ def _account_input_from_row(
             raise RowFieldError(f"'ach_debit_block_mode' must be one of {valid}, got {mode_raw!r}") from None
 
     return AccountInput(
-        account_number=account_number, name=name, customer_id=customer_id, ach_debit_block_mode=ach_debit_block_mode
+        account_number=account_number, name=name, customer_id=customer_id, ach_debit_block_mode=ach_debit_block_mode,
+        external_account_id=optional_str(row, "external_account_id"),
     )
 
 

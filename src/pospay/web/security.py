@@ -11,11 +11,13 @@ ACCESS_COOKIE_NAME = "access_token"
 REFRESH_COOKIE_NAME = "refresh_token"
 MFA_COOKIE_NAME = "mfa_token"
 CSRF_COOKIE_NAME = "csrf_token"
+SSO_STATE_COOKIE_NAME = "sso_state"
 
 # Narrow paths for the higher-privilege / narrower-purpose cookies — the browser only
 # ever attaches them to requests under these paths, shrinking their exposure surface.
 REFRESH_COOKIE_PATH = "/ui/auth"
 MFA_COOKIE_PATH = "/ui/login/webauthn"
+SSO_STATE_COOKIE_PATH = "/ui/login/sso"
 
 
 def _secure_cookies() -> bool:
@@ -73,6 +75,26 @@ def clear_auth_cookies(response: Response) -> None:
 
 def clear_mfa_cookie(response: Response) -> None:
     response.delete_cookie(MFA_COOKIE_NAME, path=MFA_COOKIE_PATH, secure=_secure_cookies(), samesite="strict")
+
+
+def set_sso_state_cookie(response: Response, token: str) -> None:
+    # Same short-lived-signed-cookie mechanism as the mfa_token cookie, needed because
+    # this flow must survive a real redirect to an external identity provider and back,
+    # and this app has no server-side session store (see auth/security.py's
+    # create_sso_state_token).
+    response.set_cookie(
+        SSO_STATE_COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=_secure_cookies(),
+        samesite="lax",  # "strict" would drop the cookie on the IdP's redirect back (a cross-site GET)
+        path=SSO_STATE_COOKIE_PATH,
+        max_age=10 * 60,
+    )
+
+
+def clear_sso_state_cookie(response: Response) -> None:
+    response.delete_cookie(SSO_STATE_COOKIE_NAME, path=SSO_STATE_COOKIE_PATH, secure=_secure_cookies(), samesite="lax")
 
 
 # --- CSRF: double-submit cookie pattern ---

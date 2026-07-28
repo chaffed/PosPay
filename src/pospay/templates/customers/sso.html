@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Single Sign-On — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this customer's SSO{% endblock %}
+{% block help_body %}
+<p>Configure federated login for this customer's own employees, entirely independent of
+  the bank's own SSO setup on the main Settings page. Every connection requires at least
+  one group mapping — the federated org's current group membership always governs
+  access, checked again on every login, not just the first.</p>
+<p>"Require SSO" hides the password form on this customer's own login link — it can only
+  be turned on once at least one connection has a group mapping configured, so you can
+  never lock this customer's staff out entirely.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Single Sign-On — {{ customer.name }}</h1>
+    <a href="/ui/customers/{{ customer.id }}/sso/new" class="button">Add connection</a>
+  </div>
+  {% if connections %}
+  <table data-sortable>
+    <thead><tr><th>Name</th><th>Provider</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for c in connections %}
+      <tr>
+        <td>{{ c.display_name }}</td>
+        <td>{{ "Okta" if c.provider.value == "okta" else "Azure AD" }}</td>
+        <td><span class="badge {{ 'badge-ok' if c.is_active else 'badge-danger' }}">{{ 'active' if c.is_active else 'deactivated' }}</span></td>
+        <td>
+          <a href="/ui/customers/{{ customer.id }}/sso/{{ c.id }}/edit">Edit</a>
+          {% if c.is_active %}
+          <form method="post" action="/ui/customers/{{ customer.id }}/sso/{{ c.id }}/deactivate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="/ui/customers/{{ customer.id }}/sso/{{ c.id }}/reactivate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">Reactivate</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No SSO connections yet for this customer.</p>
+  {% endif %}
+  <p><a href="/ui/customers/{{ customer.id }}">Back to customer</a></p>
+</div>
+
+<div class="card card-narrow">
+  <h1>Enforcement</h1>
+  <form method="post" action="/ui/customers/{{ customer.id }}/sso/password-login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      <input type="checkbox" name="require_sso" value="true" {{ "checked" if not password_login_enabled else "" }}>
+      Require SSO (disable password login for this customer)
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}

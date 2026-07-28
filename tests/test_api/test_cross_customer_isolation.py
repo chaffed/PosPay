@@ -158,6 +158,69 @@ def test_bank_wide_admin_sees_both_customers(client, db_session, tenant_factory)
     assert client.get(f"/api/v1/issued-items/{item_b['id']}", headers=headers_admin).status_code == 200
 
 
+def test_exceptions_not_visible_or_actionable_across_customers(client, db_session, tenant_factory):
+    """exception_item/decision were not customer-scoped at all until this test was
+    added — see repositories/exception_repo.py (now a CustomerScopedRepository) and
+    exception_item.customer_id (denormalized from the source item, same as every other
+    customer-scoped table)."""
+    tenant, _users, customer_a, customer_b, account_a, _account_b, user_a, user_b = _two_customers(db_session, tenant_factory)
+    headers_a = login_headers(client, tenant.slug, user_a.email)
+    headers_b = login_headers(client, tenant.slug, user_b.email)
+
+    # No prior issued item for this check number — presenting it creates an exception.
+    client.post(
+        "/api/v1/paid-items",
+        headers=headers_a,
+        json={"account_id": str(account_a.id), "check_number": "1", "presented_amount": "10.00", "presented_date": "2026-01-01"},
+    )
+    exception_a = client.get("/api/v1/exceptions", headers=headers_a).json()[0]
+    exception_id = exception_a["id"]
+
+    assert exception_id not in [e["id"] for e in client.get("/api/v1/exceptions", headers=headers_b).json()]
+    assert client.get(f"/api/v1/exceptions/{exception_id}", headers=headers_b).status_code == 404
+    assert (
+        client.post(
+            f"/api/v1/exceptions/{exception_id}/recommend",
+            headers=headers_b,
+            json={"outcome": "pay", "reason_code": "test"},
+        ).status_code
+        == 404
+    )
+
+    # Preparer (user_a/user_b's group) doesn't have exception:decide — use dedicated
+    # Approver-group, customer-scoped users so this actually tests the customer-scoping
+    # gate rather than the pre-existing permission gate.
+    approver_group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Approver")
+    approver_a = user_service.create_user_with_membership(
+        db_session, tenant.id, email="approver-a@xc.example.com", password=TenantFactory.PASSWORD,
+        security_group_id=approver_group.id, customer_id=customer_a.id,
+    )
+    approver_b = user_service.create_user_with_membership(
+        db_session, tenant.id, email="approver-b@xc.example.com", password=TenantFactory.PASSWORD,
+        security_group_id=approver_group.id, customer_id=customer_b.id,
+    )
+    db_session.commit()
+    headers_approver_a = login_headers(client, tenant.slug, approver_a.email)
+    headers_approver_b = login_headers(client, tenant.slug, approver_b.email)
+
+    assert (
+        client.post(
+            f"/api/v1/exceptions/{exception_id}/decide",
+            headers=headers_approver_b,
+            json={"outcome": "pay", "reason_code": "test"},
+        ).status_code
+        == 404
+    )
+
+    # A's own staff CAN decide it — and once decided, B still can't read the decision.
+    decide_resp = client.post(
+        f"/api/v1/exceptions/{exception_id}/decide", headers=headers_approver_a, json={"outcome": "pay", "reason_code": "test"}
+    )
+    assert decide_resp.status_code == 200
+    assert client.get(f"/api/v1/exceptions/{exception_id}/decision", headers=headers_approver_a).status_code == 200
+    assert client.get(f"/api/v1/exceptions/{exception_id}/decision", headers=headers_approver_b).status_code == 404
+
+
 def test_customer_scoped_admin_group_is_still_masked_from_tenant_admin_actions(client, db_session, tenant_factory):
     """A customer-scoped membership can never reach tenant-admin-only actions even if its
     security group nominally contains them (the full "Admin" group here) —

@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import webauthn
+
+from pospay.config import get_settings
 from pospay.services import security_group_service, user_service
 from tests.conftest import TenantFactory
+from tests.test_auth.webauthn_helpers import FakeAuthenticator
 
 
 def _login(client, tenant_slug, email, password=TenantFactory.PASSWORD):
@@ -72,3 +76,81 @@ def test_switch_tenant_rejects_non_member_tenant(client, db_session, tenant_fact
     )
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/ui/switch-tenant?error")
+
+
+def test_switch_tenant_to_require_webauthn_target_with_no_key_redirects_to_setup(client, db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="switch-webauthn-setup-a")
+    tenant_b, _account_b, _users_b = tenant_factory.make(slug="switch-webauthn-setup-b")
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Admin")
+    membership_b = user_service.confirm_cross_tenant_membership(
+        db_session, tenant_b.id, email=users_a["admin"].email, security_group_id=group_b.id, require_webauthn=True
+    )
+    db_session.commit()
+
+    csrf = _login(client, tenant_a.slug, users_a["admin"].email)
+    resp = client.post(
+        "/ui/switch-tenant", data={"csrf_token": csrf, "membership_id": str(membership_b.id)}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/ui/login/webauthn/setup")
+    assert "mfa_token" in resp.cookies
+    assert "access_token" not in resp.cookies
+
+
+def test_switch_tenant_to_require_webauthn_target_with_existing_key_redirects_to_challenge(client, db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="switch-webauthn-challenge-a")
+    tenant_b, _account_b, _users_b = tenant_factory.make(slug="switch-webauthn-challenge-b")
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Admin")
+    membership_b = user_service.confirm_cross_tenant_membership(
+        db_session, tenant_b.id, email=users_a["admin"].email, security_group_id=group_b.id, require_webauthn=True
+    )
+    db_session.commit()
+
+    # register a key in tenant_b (credentials are tenant-scoped) via a normal login there first
+    csrf = _login(client, tenant_a.slug, users_a["admin"].email)
+    switch_resp = client.post(
+        "/ui/switch-tenant", data={"csrf_token": csrf, "membership_id": str(membership_b.id)}, follow_redirects=False
+    )
+    setup_csrf = client.cookies.get("csrf_token")
+    fake = FakeAuthenticator(get_settings().webauthn_rp_id, get_settings().webauthn_origin)
+    options_resp = client.post("/ui/login/webauthn/setup/options", headers={"X-CSRF-Token": setup_csrf})
+    options = webauthn.helpers.parse_registration_options_json(options_resp.text)
+    credential = fake.create_registration_credential(options.challenge)
+    client.post(
+        "/ui/login/webauthn/setup/verify",
+        headers={"X-CSRF-Token": setup_csrf},
+        params={"next": "/ui/"},
+        json={"credential": credential},
+    )
+
+    # switch back to tenant_a, then switch into tenant_b again — now a key already exists there
+    memberships_a = user_service.list_memberships_for_user(db_session, users_a["admin"].id)
+    membership_a = next(m for m in memberships_a if m.tenant.id == tenant_a.id)
+    csrf2 = client.cookies.get("csrf_token")
+    client.post("/ui/switch-tenant", data={"csrf_token": csrf2, "membership_id": str(membership_a.membership.id)}, follow_redirects=False)
+
+    csrf3 = client.cookies.get("csrf_token")
+    resp = client.post(
+        "/ui/switch-tenant", data={"csrf_token": csrf3, "membership_id": str(membership_b.id)}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"].startswith("/ui/login/webauthn?")
+    assert not resp.headers["location"].startswith("/ui/login/webauthn/setup")
+
+
+def test_switch_tenant_between_ordinary_memberships_is_unaffected(client, db_session, tenant_factory):
+    tenant_a, _account_a, users_a = tenant_factory.make(slug="switch-ordinary-a")
+    tenant_b, _account_b, _users_b = tenant_factory.make(slug="switch-ordinary-b")
+    group_b = security_group_service.get_security_group_by_name(db_session, tenant_b.id, "Admin")
+    membership_b = user_service.confirm_cross_tenant_membership(
+        db_session, tenant_b.id, email=users_a["admin"].email, security_group_id=group_b.id
+    )
+    db_session.commit()
+
+    csrf = _login(client, tenant_a.slug, users_a["admin"].email)
+    resp = client.post(
+        "/ui/switch-tenant", data={"csrf_token": csrf, "membership_id": str(membership_b.id)}, follow_redirects=False
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/ui/"
+    assert "access_token" in resp.cookies

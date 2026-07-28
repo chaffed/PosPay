@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Access Lookup — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this page{% endblock %}
+{% block help_body %}
+<p>Look up every membership one email currently holds within this organization, then
+  grant it access to several customers (or bank-wide) in a single submission — handy for
+  an outside bookkeeper who services more than one of your customers. This only ever
+  shows and grants access within this organization; it has no visibility into any other
+  organization the same email might also belong to.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Look up access</h1>
+  <form method="get" action="/ui/users/access">
+    <label>Email <input type="email" name="email" value="{{ email }}" autofocus></label>
+    <button type="submit">Look up</button>
+  </form>
+</div>
+
+{% if email %}
+<div class="card">
+  <h2>Current access for {{ email }}</h2>
+  {% if rows %}
+  <table>
+    <thead><tr><th>Security group</th><th>Customer</th><th>Status</th><th>Security key</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.security_group_name }}</td>
+        <td>{{ row.customer_name or "bank-wide" }}</td>
+        <td><span class="badge {{ 'badge-ok' if row.membership.is_active else 'badge-danger' }}">{{ 'active' if row.membership.is_active else 'deactivated' }}</span></td>
+        <td>{{ "required" if row.membership.require_webauthn else "—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No access in this organization yet.</p>
+  {% endif %}
+</div>
+
+<div class="card card-narrow">
+  <h2>Grant access</h2>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <p>If this email already belongs to a user in another organization, each customer you
+    grant it here will be listed below for confirmation before anything is created —
+    its existing password stays unchanged.</p>
+  <form method="post" action="/ui/users/access/grant">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="email" value="{{ email }}">
+    <label>Password <input type="password" name="password"></label>
+    <p class="hint">Only used if this email doesn't already belong to an existing user.</p>
+    <label>Security group
+      <select name="security_group_id" required>
+        {% for group in groups %}
+        <option value="{{ group.id }}">{{ group.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <fieldset>
+      <legend>Customers</legend>
+      <label><input type="checkbox" name="customer_ids" value=""> — bank-wide (all customers) —</label>
+      {% for customer in customers %}
+      <label><input type="checkbox" name="customer_ids" value="{{ customer.id }}"> {{ customer.name }} ({{ customer.customer_number }})</label>
+      {% endfor %}
+    </fieldset>
+    <label><input type="checkbox" name="require_webauthn" value="true"> Require a security key (WebAuthn)</label>
+    <p class="hint">Allows password login here even where this tenant or customer otherwise
+      requires single sign-on, provided a security key is registered — a fresh key check is
+      also required every time this identity switches into one of these scopes.</p>
+    <button type="submit">Grant access</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

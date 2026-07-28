@@ -30,6 +30,7 @@
         {% if can(ctx, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
         {% if can(ctx, "user:manage") %}<a href="/ui/users">Users</a>{% endif %}
         {% if can(ctx, "security_group:manage") %}<a href="/ui/security-groups">Security Groups</a>{% endif %}
+        {% if can(ctx, "tenant:manage") %}<a href="/ui/wizard/bank">Getting Started</a>{% endif %}
         {% if can(ctx, "tenant:manage") %}<a href="/ui/settings">Settings</a>{% endif %}
         {% if can(ctx, "audit_log:read") %}<a href="/ui/audit-log">Audit Log</a>{% endif %}
       </div>

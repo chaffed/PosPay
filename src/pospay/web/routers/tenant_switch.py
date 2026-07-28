@@ -2,17 +2,19 @@
 # Copyright (C) 2026 Chaffed
 
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from pospay.auth.security import create_token
+from pospay.auth.webauthn_service import user_has_webauthn_credentials
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.services import user_service
 from pospay.web.deps import get_web_context, render_template
-from pospay.web.security import set_access_cookie, set_refresh_cookie, verify_csrf
+from pospay.web.security import set_access_cookie, set_mfa_cookie, set_refresh_cookie, verify_csrf
 
 router = APIRouter(prefix="/ui/switch-tenant", tags=["web-tenant-switch"])
 
@@ -40,16 +42,37 @@ def switch_tenant(
     ctx: TenantContext = Depends(get_web_context),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    """No password or WebAuthn re-entry — the caller already holds a valid session for
-    this identity; this only re-validates that the identity actually holds the target
+    """No password re-entry — the caller already holds a valid session for this
+    identity; this only re-validates that the identity actually holds the target
     membership, then mints tokens scoped to it (tenant, and — new — customer). Keyed on
     the membership's own id rather than tenant_id, since more than one membership can now
-    share a tenant_id (see domain/tenant_membership.py)."""
+    share a tenant_id (see domain/tenant_membership.py).
+
+    A target membership with require_webauthn set is the one exception to "no re-entry":
+    it re-mints an mfa_pending token instead and routes through the same
+    /ui/login/webauthn* challenge (or /setup, if no key exists yet in the TARGET tenant —
+    credentials are tenant-scoped) used at login time, so a hijacked session cookie can't
+    silently pivot into one of these scopes without proving possession of the key again.
+    Switching between two ordinary memberships is unaffected."""
     target = next(
         (m for m in user_service.list_memberships_for_user(db, ctx.user_id) if m.membership.id == membership_id), None
     )
     if target is None:
         return RedirectResponse("/ui/switch-tenant?error=Not+a+member+of+that+organization.", status_code=303)
+
+    if target.membership.require_webauthn:
+        mfa_token = create_token(
+            user_id=ctx.user_id,
+            tenant_id=target.tenant.id,
+            security_group_id=target.membership.security_group_id,
+            customer_id=target.membership.customer_id,
+            token_type="mfa_pending",
+        )
+        has_key = user_has_webauthn_credentials(db, target.tenant.id, ctx.user_id)
+        next_step = "webauthn" if has_key else "webauthn/setup"
+        response = RedirectResponse(f"/ui/login/{next_step}?next={quote('/ui/')}", status_code=303)
+        set_mfa_cookie(response, mfa_token)
+        return response
 
     access_token = create_token(
         user_id=ctx.user_id,

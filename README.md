@@ -7,7 +7,9 @@ feedback loop.
 This README covers local setup and deployment only. For architecture (data model, the
 network-adapter pattern, matching engine rules, ML pipeline design), see the project's
 architecture plan. For the JSON API (`/api/v1/*` — endpoints, auth, permissions,
-schemas), see [API.md](API.md).
+schemas), see [API.md](API.md). For implementing a new bank or a new customer —
+prerequisites and step-by-step setup, also available as an in-app guided checklist at
+`/ui/wizard/bank` and `/ui/customers/{id}/wizard` — see [RUNBOOK.md](RUNBOOK.md).
 
 ## Quickstart
 
