@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from pospay.auth.security import decode_token
+from pospay.config import get_settings
 from tests.conftest import TenantFactory
 
 
@@ -97,6 +99,58 @@ def test_rejects_disallowed_image_type_without_500(client, tenant_factory):
     )
     assert resp.status_code == 422
     assert "Unsupported image type" in resp.text
+
+
+def test_session_timeout_override_reflected_in_issued_token(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-session-timeout")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/session-timeout",
+        data={"csrf_token": csrf, "access_token_expire_minutes": "5", "refresh_token_expire_minutes": "120"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    # Log back in (session-timeout only affects tokens minted after saving) and confirm
+    # the new access token's exp claim reflects the override, not the global default.
+    client.post("/ui/logout", data={"csrf_token": csrf})
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    claims = decode_token(client.cookies.get("access_token"))
+    assert abs((claims["exp"] - claims["iat"]) - 5 * 60) < 2
+
+
+def test_session_timeout_blank_resets_to_global_default(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-session-timeout-reset")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    client.post(
+        "/ui/settings/session-timeout",
+        data={"csrf_token": csrf, "access_token_expire_minutes": "5", "refresh_token_expire_minutes": "120"},
+    )
+
+    resp = client.post(
+        "/ui/settings/session-timeout",
+        data={"csrf_token": csrf, "access_token_expire_minutes": "", "refresh_token_expire_minutes": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    client.post("/ui/logout", data={"csrf_token": csrf})
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    claims = decode_token(client.cookies.get("access_token"))
+    settings = get_settings()
+    assert abs((claims["exp"] - claims["iat"]) - settings.jwt_access_token_expire_minutes * 60) < 2
+
+
+def test_session_timeout_rejects_non_positive_value(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-session-timeout-bad")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/session-timeout",
+        data={"csrf_token": csrf, "access_token_expire_minutes": "0", "refresh_token_expire_minutes": ""},
+    )
+    assert resp.status_code == 422
 
 
 def test_branded_login_page_shows_name_and_logo(client, db_session, tenant_factory):

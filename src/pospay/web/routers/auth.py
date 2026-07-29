@@ -24,6 +24,7 @@ from pospay.auth.webauthn_service import (
 from pospay.config import get_settings
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.tenant import Tenant
 from pospay.domain.user import User
 from pospay.schemas.webauthn import AuthenticationVerifyRequest, RegistrationVerifyRequest
 from pospay.services import audit_log_service, customer_service, sso_service, user_service
@@ -49,6 +50,11 @@ _NOT_PROVISIONED_MESSAGE = "No PosPay account exists for you yet. Ask your admin
 _SSO_REQUIRED_MESSAGE = "This organization requires single sign-on — use the button above."
 
 
+def _locked_message() -> str:
+    minutes = get_settings().login_lockout_minutes
+    return f"Too many failed attempts. Try again in {minutes} minutes, or ask an administrator to unlock your account."
+
+
 @router.get("/login")
 def login_form(request: Request, next: str | None = None) -> HTMLResponse:
     # Unbranded — no tenant is known yet at this URL, so there's nothing to offer SSO
@@ -68,16 +74,21 @@ def login_submit(
 ) -> HTMLResponse:
     next_path = safe_next_path(next)
     result = authenticate_password(db, tenant_slug, email, password)
+    # authenticate_password only flushes (see its docstring) — commit unconditionally,
+    # even on a failed attempt, so the incremented failed_login_attempts/locked_until
+    # actually persist rather than being discarded when this request's session closes.
+    db.commit()
     if result.outcome != PasswordLoginOutcome.SUCCESS or result.identity is None:
         # Best-effort branding lookup by the submitted slug, purely cosmetic — a login
         # link that arrived branded (via /ui/login/{slug}) stays branded through a failed
         # attempt instead of dropping back to the generic form. Never used for the actual
         # auth decision above.
-        message = (
-            _SSO_REQUIRED_MESSAGE
-            if result.outcome == PasswordLoginOutcome.SSO_REQUIRED
-            else "Invalid organization slug, email, or password."
-        )
+        if result.outcome == PasswordLoginOutcome.SSO_REQUIRED:
+            message = _SSO_REQUIRED_MESSAGE
+        elif result.outcome == PasswordLoginOutcome.LOCKED:
+            message = _locked_message()
+        else:
+            message = "Invalid organization slug, email, or password."
         return render_template(
             request,
             "auth/login.html",
@@ -111,6 +122,8 @@ def login_submit(
         security_group_id=membership.security_group_id,
         customer_id=membership.customer_id,
         token_type="access",
+        access_token_expire_minutes=tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
     )
     refresh_token = create_token(
         user_id=user.id,
@@ -118,6 +131,8 @@ def login_submit(
         security_group_id=membership.security_group_id,
         customer_id=membership.customer_id,
         token_type="refresh",
+        access_token_expire_minutes=tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
     )
     user_service.record_login(db, user.id)
     db.commit()
@@ -189,6 +204,8 @@ def login_webauthn_verify(
         security_group_id=ctx.security_group_id,
         customer_id=ctx.customer_id,
         token_type="access",
+        access_token_expire_minutes=ctx.access_token_expire_minutes,
+        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
     )
     refresh_token = create_token(
         user_id=user.id,
@@ -196,6 +213,8 @@ def login_webauthn_verify(
         security_group_id=ctx.security_group_id,
         customer_id=ctx.customer_id,
         token_type="refresh",
+        access_token_expire_minutes=ctx.access_token_expire_minutes,
+        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
     )
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, refresh_token)
@@ -256,6 +275,8 @@ def login_webauthn_setup_verify(
         security_group_id=ctx.security_group_id,
         customer_id=ctx.customer_id,
         token_type="access",
+        access_token_expire_minutes=ctx.access_token_expire_minutes,
+        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
     )
     refresh_token = create_token(
         user_id=user.id,
@@ -263,6 +284,8 @@ def login_webauthn_setup_verify(
         security_group_id=ctx.security_group_id,
         customer_id=ctx.customer_id,
         token_type="refresh",
+        access_token_expire_minutes=ctx.access_token_expire_minutes,
+        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
     )
     set_access_cookie(response, access_token)
     set_refresh_cookie(response, refresh_token)
@@ -394,12 +417,15 @@ def sso_callback(
     db.commit()
 
     next_path = safe_next_path(state_claims.get("next_path"))
+    login_tenant = db.get(Tenant, tenant_id)
     access_token = create_token(
         user_id=user.id,
         tenant_id=tenant_id,
         security_group_id=membership.security_group_id,
         customer_id=membership.customer_id,
         token_type="access",
+        access_token_expire_minutes=login_tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=login_tenant.refresh_token_expire_minutes,
     )
     refresh_token = create_token(
         user_id=user.id,
@@ -407,6 +433,8 @@ def sso_callback(
         security_group_id=membership.security_group_id,
         customer_id=membership.customer_id,
         token_type="refresh",
+        access_token_expire_minutes=login_tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=login_tenant.refresh_token_expire_minutes,
     )
     response = RedirectResponse(next_path, status_code=303)
     set_access_cookie(response, access_token)

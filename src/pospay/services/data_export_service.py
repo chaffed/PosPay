@@ -63,11 +63,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 
 def _check_image_rows(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID | None) -> list:
-    images = CheckImageRepository(session, tenant_id).list()
-    if customer_id is None:
-        return images
-    paid_item_ids = {p.id for p in PaidItemRepository(session, tenant_id, customer_id).list()}
-    return [c for c in images if c.paid_item_id in paid_item_ids]
+    return CheckImageRepository(session, tenant_id, customer_id).list()
 
 
 def _decision_rows(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID | None) -> list:

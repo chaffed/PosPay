@@ -62,7 +62,7 @@ def test_check_image_with_payee_mismatch_escalates_already_matched_paid_item(cli
     upload = client.post(
         "/api/v1/check-images",
         headers=headers,
-        params={"paid_item_id": paid["id"]},
+        data={"paid_item_id": paid["id"]},
         files={"front_image": ("check.png", image_bytes, "image/png")},
     )
     assert upload.status_code == 201, upload.text

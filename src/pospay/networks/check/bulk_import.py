@@ -67,7 +67,9 @@ def _create_paid_item_and_images(
         ),
         scoped_customer_id=scoped_customer_id,
     )
-    create_check_image(session, tenant_id, front_bytes=front_png, back_bytes=back_png, paid_item_id=paid_item.id)
+    create_check_image(
+        session, tenant_id, front_bytes=front_png, back_bytes=back_png, paid_item_id=paid_item.id, customer_id=account.customer_id
+    )
     return paid_item.id
 
 

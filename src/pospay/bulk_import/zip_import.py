@@ -12,6 +12,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
+from pospay.config import get_settings
 
 _MANIFEST_EXTENSIONS = (".csv", ".tsv", ".xlsx", ".xls")
 
@@ -30,6 +31,19 @@ def parse_zip_manifest(content: bytes) -> tuple[list[dict[str, Any]], dict[str, 
         archive = zipfile.ZipFile(io.BytesIO(content))
     except zipfile.BadZipFile as exc:
         raise ZipImportError(f"Not a valid zip file: {exc}") from exc
+
+    # Classic zip-bomb defense: a small compressed upload can still declare an enormous
+    # uncompressed size per entry — check the SUM of every entry's own declared size
+    # before reading (and therefore fully decompressing) any of them. This is a
+    # first-line, declared-size check, not a substitute for the request-body-size
+    # middleware (main.py) that already bounds the compressed upload itself.
+    max_uncompressed = get_settings().max_zip_uncompressed_bytes
+    total_declared_size = sum(info.file_size for info in archive.infolist() if not info.is_dir())
+    if total_declared_size > max_uncompressed:
+        raise ZipImportError(
+            f"This zip's contents would decompress to {total_declared_size:,} bytes, "
+            f"over the {max_uncompressed:,} byte limit."
+        )
 
     manifest_names = []
     images: dict[str, bytes] = {}

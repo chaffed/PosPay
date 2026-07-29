@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pospay.config import get_settings
 from pospay.domain.decision import Decision, DecisionOutcome
 from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.ml_model import MlModel, MlModelStatus
@@ -20,6 +21,22 @@ _HOLDOUT_FRACTION = 0.2
 
 class InsufficientTrainingData(Exception):
     pass
+
+
+class RetrainCooldownActive(Exception):
+    """Raised when this exact (network_code, customer_id) pair was retrained too
+    recently — see config.Settings.ml_retrain_cooldown_seconds. One choke point in
+    train_model itself so it applies uniformly to the web routes, the API route, and the
+    background scheduled job, closing off repeated on-demand retraining as a
+    self-service compute DoS."""
+
+
+def _seconds_since(occurred_at: datetime) -> float:
+    # SQLite drops tzinfo on reload (same caveat audit_log_service.py::_normalize_datetime
+    # documents) — a naive value here is always already-UTC by construction.
+    if occurred_at.tzinfo is None:
+        occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - occurred_at).total_seconds()
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +80,20 @@ def train_model(session: Session, network_code: str, *, customer_id: uuid.UUID |
     that one customer — see ml/registry.py's get_active_model_row/activate_model for how
     a customer's own model and the global model are kept as independent "slots" that
     never retire each other."""
+    cooldown_seconds = get_settings().ml_retrain_cooldown_seconds
+    latest = session.execute(
+        select(MlModel.created_at)
+        .where(MlModel.network_code == network_code, MlModel.customer_id == customer_id)
+        .order_by(MlModel.created_at.desc())
+        .limit(1)
+    ).first()
+    if latest is not None and _seconds_since(latest[0]) < cooldown_seconds:
+        scope = f"customer_id={customer_id!r}" if customer_id else "the global model"
+        raise RetrainCooldownActive(
+            f"network_code={network_code!r} ({scope}) was retrained less than "
+            f"{cooldown_seconds}s ago — wait before retraining again."
+        )
+
     decisions = _load_labeled_decisions(session, network_code, customer_id)
     if len(decisions) < MIN_DECISIONS_TO_TRAIN:
         scope = f"customer_id={customer_id!r}" if customer_id else "the global model"
@@ -110,7 +141,7 @@ def train_model(session: Session, network_code: str, *, customer_id: uuid.UUID |
     )
 
     if promote:
-        activate_model(session, model_row.id)
+        activate_model(session, model_row.id, expected_customer_id=customer_id)
     else:
         model_row.status = MlModelStatus.RETIRED
 

@@ -392,6 +392,45 @@ For the full set of `/api/v1/*` endpoints (issued items, stop payments, paid ite
 check images, ACH, exceptions/decisions, admin, users), the permission each one requires,
 and request/response schemas, see [API.md](API.md).
 
+## Signing keys
+
+Three things get cryptographically signed: JWTs (login sessions), bulk-upload files
+(tamper-evidence), and the immutable audit log (its hash chain — see "Immutable action
+log" below). Each uses its own ECDSA P-256 (ES256) key pair rather than a shared secret
+string, so a leaked key can't also be used to forge the other two, and — unlike a
+guessable string — a real key pair can't accidentally ship as a usable default.
+
+For local dev and the test suite, `dev_keys/` is a checked-in, deliberately public key
+pair set (see `dev_keys/README.md`) — zero setup required. **Never use it for a real
+deployment.** Generate your own before deploying:
+
+```
+python scripts/generate_keys.py --output-dir keys
+```
+
+This prints the six `POSPAY_*_PRIVATE_KEY_PATH`/`POSPAY_*_PUBLIC_KEY_PATH` env vars to
+set. Prefer `openssl` instead? The equivalent for each of the three pairs (`jwt`,
+`file_signing`, `audit_log_signing`) is:
+
+```
+openssl ecparam -genkey -name prime256v1 -noout -out keys/<name>_private.pem
+openssl ec -in keys/<name>_private.pem -pubout -out keys/<name>_public.pem
+```
+
+Then set `POSPAY_ENVIRONMENT=production` — this is what actually turns on the check
+(`config.py::assert_production_safe`, run at app startup): a production deployment
+still pointing at `dev_keys/`, or still using the default `POSPAY_SSO_ENCRYPTION_KEY`
+(a separate, plain random secret — it encrypts stored SSO client secrets rather than
+signing anything, so it stays a string, not a key pair), refuses to start. Local dev
+(`scripts/launcher.py`) and the test suite both explicitly set
+`POSPAY_ENVIRONMENT=development`, so neither is affected by this check.
+
+Rotating a key pair later is a one-time, expected cost, not a bug: rotating the JWT
+key logs out every active session; rotating the file-signing or audit-log key means
+anything signed under the old key stops re-verifying (fine for a pre-launch system with
+no real history yet — a live system's key-rotation strategy is a separate, deliberately
+out-of-scope design question from this initial hardening pass).
+
 ## Postgres
 
 ```bash

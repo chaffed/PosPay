@@ -28,6 +28,26 @@ def _nacha_entry_detail(dfi_account_number, amount_cents="0000015000", transacti
     )
 
 
+_CREDIT_CODES = {"22", "23", "24", "32", "33", "34"}
+
+
+def _nacha_batch_control(*, amount_cents="0000015000", transaction_code="22", receiving_dfi_id="12345678", entry_count=1) -> str:
+    """Every test in this file uses a single entry detail record, so the batch control's
+    own declared totals just need to match that one entry's own field values — see
+    bulk_import/nacha.py's now-enforced batch control validation."""
+    amount = int(amount_cents)
+    is_credit = transaction_code in _CREDIT_CODES
+    return (
+        "8"
+        + "200"
+        + str(entry_count).rjust(6, "0")
+        + str(int(receiving_dfi_id) % (10**10)).rjust(10, "0")
+        + str(0 if is_credit else amount).rjust(12, "0")
+        + str(amount if is_credit else 0).rjust(12, "0")
+        + " " * 50
+    )
+
+
 def test_bulk_upload_form_requires_permission(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-bulk-ach-forbidden")
     _login(client, tenant.slug, users["viewer"].email)
@@ -67,7 +87,7 @@ def test_bulk_upload_nacha_file_creates_transactions(client, tenant_factory):
     lines = [
         _nacha_batch_header(company_id="1234567890", company_name="ACME CORP"),
         _nacha_entry_detail(dfi_account_number=account.account_number, trace_number="123456780000001"),
-        "8" + " " * 93,
+        _nacha_batch_control(),
     ]
     content = "\n".join(lines).encode("ascii")
 
@@ -124,7 +144,7 @@ def test_bulk_upload_nacha_with_checkbox_creates_missing_account(client, tenant_
     lines = [
         _nacha_batch_header(),
         _nacha_entry_detail(dfi_account_number="9402"),
-        "8" + " " * 93,
+        _nacha_batch_control(),
     ]
     content = "\n".join(lines).encode("ascii")
 
@@ -145,7 +165,7 @@ def test_bulk_upload_nacha_with_unmatched_account_reported(client, tenant_factor
     lines = [
         _nacha_batch_header(),
         _nacha_entry_detail(dfi_account_number="0000000000"),
-        "8" + " " * 93,
+        _nacha_batch_control(),
     ]
     content = "\n".join(lines).encode("ascii")
 

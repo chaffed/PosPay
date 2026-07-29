@@ -34,8 +34,9 @@ def create_check_image(
     front_bytes: bytes,
     back_bytes: bytes | None,
     paid_item_id: uuid.UUID | None,
+    customer_id: uuid.UUID | None = None,
 ) -> CheckImage:
-    check_image = CheckImage(tenant_id=tenant_id, paid_item_id=paid_item_id, front_image_path="")
+    check_image = CheckImage(tenant_id=tenant_id, paid_item_id=paid_item_id, customer_id=customer_id, front_image_path="")
     session.add(check_image)
     session.flush()  # assign id, needed for the file name
 

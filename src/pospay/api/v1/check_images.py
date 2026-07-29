@@ -3,7 +3,7 @@
 
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.check_image import OcrStatus
 from pospay.networks.check.ocr_processing import create_check_image, process_check_image_ocr
 from pospay.repositories.check_image_repo import CheckImageRepository
+from pospay.repositories.paid_item_repo import PaidItemRepository
 from pospay.schemas.check_image import CheckImageRead
 from pospay.services import audit_log_service
 
@@ -38,15 +39,25 @@ def upload_check_image(
     background_tasks: BackgroundTasks,
     front_image: UploadFile = File(...),
     back_image: UploadFile | None = File(None),
-    paid_item_id: uuid.UUID | None = None,
+    paid_item_id: uuid.UUID | None = Form(None),
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("check_image:write")),
 ) -> CheckImageRead:
     front_bytes = front_image.file.read()
     back_bytes = back_image.file.read() if back_image is not None else None
 
+    # The linked paid item's own customer_id is authoritative when there is one (same
+    # denormalize-from-the-source-record rule as the bulk import path); an orphaned
+    # image (no paid item yet) falls back to the uploader's own scope.
+    customer_id = ctx.customer_id
+    if paid_item_id is not None:
+        paid_item = PaidItemRepository(db, ctx.tenant_id, ctx.customer_id).get(paid_item_id)
+        if paid_item is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Paid item not found")
+        customer_id = paid_item.customer_id
+
     check_image = create_check_image(
-        db, ctx.tenant_id, front_bytes=front_bytes, back_bytes=back_bytes, paid_item_id=paid_item_id
+        db, ctx.tenant_id, front_bytes=front_bytes, back_bytes=back_bytes, paid_item_id=paid_item_id, customer_id=customer_id
     )
     audit_log_service.record_action(
         db,
@@ -70,7 +81,7 @@ def get_check_image(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("check_image:read")),
 ) -> CheckImageRead:
-    check_image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
+    check_image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).get(check_image_id)
     if check_image is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Check image not found")
     return CheckImageRead.model_validate(check_image)
@@ -83,7 +94,7 @@ def reprocess_check_image(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_permission("check_image:write")),
 ) -> CheckImageRead:
-    check_image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
+    check_image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).get(check_image_id)
     if check_image is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Check image not found")
 

@@ -44,7 +44,7 @@ def _run_ocr_in_background(engine: Engine, check_image_id: uuid.UUID, tenant_id:
 def list_check_images(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("check_image:read"))
 ) -> HTMLResponse:
-    images = CheckImageRepository(db, ctx.tenant_id).list()
+    images = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).list()
     return render_template(request, "check_images/list.html", ctx=ctx, images=images)
 
 
@@ -71,7 +71,19 @@ def upload_check_image(
     front_bytes = front_image.file.read()
     parsed_paid_item_id = uuid.UUID(paid_item_id) if paid_item_id else None
 
-    check_image = create_check_image(db, ctx.tenant_id, front_bytes=front_bytes, back_bytes=None, paid_item_id=parsed_paid_item_id)
+    # The linked paid item's own customer_id is authoritative when there is one (same
+    # denormalize-from-the-source-record rule as the bulk import path); an orphaned
+    # image (no paid item yet) falls back to the uploader's own scope.
+    customer_id = ctx.customer_id
+    if parsed_paid_item_id is not None:
+        paid_item = PaidItemRepository(db, ctx.tenant_id, ctx.customer_id).get(parsed_paid_item_id)
+        if paid_item is None:
+            raise WebNotFound()
+        customer_id = paid_item.customer_id
+
+    check_image = create_check_image(
+        db, ctx.tenant_id, front_bytes=front_bytes, back_bytes=None, paid_item_id=parsed_paid_item_id, customer_id=customer_id
+    )
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
@@ -132,6 +144,7 @@ async def bulk_upload_check_images(
         content_type=upload_file.content_type,
         data=content,
         uploaded_by_user_id=ctx.user_id,
+        customer_id=ctx.customer_id,
     )
     db.commit()
 
@@ -189,7 +202,7 @@ async def bulk_upload_check_images(
         # r.created_id is the new paid_item's id (see networks/check/bulk_import.py); the
         # check_image OCR background task needs its own id, one lookup away via the 1:1
         # link this bulk flow always creates between the two.
-        check_image = CheckImageRepository(db, ctx.tenant_id).list(paid_item_id=r.created_id)
+        check_image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).list(paid_item_id=r.created_id)
         if check_image:
             background_tasks.add_task(_run_ocr_in_background, db.get_bind(), check_image[0].id, ctx.tenant_id)
             bulk_upload_reversal_service.track_created_record(
@@ -217,7 +230,7 @@ def check_image_detail(
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("check_image:read")),
 ) -> HTMLResponse:
-    image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
+    image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).get(check_image_id)
     if image is None:
         raise WebNotFound()
     return render_template(request, "check_images/detail.html", ctx=ctx, image=image)
@@ -231,7 +244,7 @@ def reprocess_check_image(
     ctx: TenantContext = Depends(require_web_permission("check_image:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
+    image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).get(check_image_id)
     if image is None:
         raise WebNotFound()
     image.ocr_status = OcrStatus.PENDING
@@ -267,7 +280,7 @@ def _image_media_type(data: bytes) -> str:
 def download_front_image(
     check_image_id: uuid.UUID, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("check_image:read"))
 ) -> Response:
-    image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
+    image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).get(check_image_id)
     if image is None:
         raise WebNotFound()
     data = read_image(image.front_image_path)
@@ -278,7 +291,7 @@ def download_front_image(
 def download_back_image(
     check_image_id: uuid.UUID, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("check_image:read"))
 ) -> Response:
-    image = CheckImageRepository(db, ctx.tenant_id).get(check_image_id)
+    image = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).get(check_image_id)
     if image is None or image.back_image_path is None:
         raise WebNotFound()
     data = read_image(image.back_image_path)

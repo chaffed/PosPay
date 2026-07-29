@@ -54,3 +54,30 @@ def test_ocr_provider_protocol_compliance():
     provider = TesseractOCRProvider()
     assert isinstance(provider.name, str)
     assert callable(provider.extract)
+
+
+def test_extract_passes_configured_timeout_to_both_pytesseract_calls(monkeypatch):
+    """A pathological image could otherwise hang the tesseract subprocess indefinitely —
+    confirms both calls actually receive the configured timeout, not just that OCR
+    still works (already covered by the other tests here)."""
+    import pospay.ocr.tesseract_provider as provider_module
+    from pospay.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "ocr_timeout_seconds", 5)
+    calls = []
+
+    def fake_image_to_string(image, timeout=0, **kwargs):
+        calls.append(("image_to_string", timeout))
+        return "fake text"
+
+    def fake_image_to_data(image, output_type=None, timeout=0, **kwargs):
+        calls.append(("image_to_data", timeout))
+        return {"conf": [], "text": []}
+
+    monkeypatch.setattr(provider_module.pytesseract, "image_to_string", fake_image_to_string)
+    monkeypatch.setattr(provider_module.pytesseract, "image_to_data", fake_image_to_data)
+
+    image_bytes = make_check_image(payee="Test Vendor", amount="10.00")
+    provider_module.TesseractOCRProvider().extract(image_bytes)
+
+    assert calls == [("image_to_string", 5), ("image_to_data", 5)]

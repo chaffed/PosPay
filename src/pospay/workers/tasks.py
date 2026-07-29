@@ -3,6 +3,7 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -11,8 +12,9 @@ from pospay.config import get_settings
 from pospay.db.session import get_session_factory
 from pospay.domain.decision import Decision
 from pospay.domain.exception_item import ExceptionItem
-from pospay.domain.ml_model import MlModel
-from pospay.ml.train import InsufficientTrainingData, train_model
+from pospay.domain.ml_model import MlModel, MlModelStatus
+from pospay.ml.registry import create_model_row
+from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,39 @@ def _customers_with_labeled_decisions(session: Session, network_code: str) -> di
     return dict(session.execute(stmt).all())
 
 
+def _train_and_log(session: Session, network_code: str, *, customer_id: uuid.UUID | None = None, label: str = "global") -> None:
+    """Runs train_model for one (network_code, customer_id) pair as part of the
+    unattended scheduled job, and never lets a single network/customer's failure abort
+    the rest of the run — unlike the on-demand web/API routes (where a human is watching
+    the request and an HTTP error is enough), an uncaught exception here would otherwise
+    silently skip every network/customer still left in retrain_job()'s loops. An
+    unexpected failure (not just the two already-expected "nothing to do yet" outcomes)
+    is recorded as a FAILED MlModel row so it's visible on the admin models page, not
+    just a server log line nobody looks at."""
+    try:
+        result = train_model(session, network_code, customer_id=customer_id)
+        logger.info("Retrained %s (%s): promoted=%s metrics=%s", network_code, label, result.promoted, result.metrics)
+    except InsufficientTrainingData as exc:
+        logger.info("Skipping retrain for %s (%s): %s", network_code, label, exc)
+    except RetrainCooldownActive as exc:
+        logger.info("Retrain for %s (%s) still in cooldown: %s", network_code, label, exc)
+    except Exception as exc:  # noqa: BLE001 — isolate one network/customer's failure from the rest of the run
+        logger.exception("Retrain failed for %s (%s)", network_code, label)
+        session.rollback()
+        create_model_row(
+            session,
+            network_code=network_code,
+            customer_id=customer_id,
+            version=f"failed_{datetime.now(timezone.utc):%Y%m%dT%H%M%S}",
+            algorithm="logistic_regression",
+            artifact_path="",
+            trained_from_decision_count=0,
+            metrics_json={"error": str(exc)},
+            status=MlModelStatus.FAILED,
+        )
+        session.commit()
+
+
 def retrain_job() -> None:
     """Iterates every registered network and retrains the global model only if enough
     NEW labeled decisions have accumulated since its last training run — avoids
@@ -83,29 +118,13 @@ def retrain_job() -> None:
                     settings.ml_min_new_decisions_for_retrain,
                 )
             else:
-                try:
-                    result = train_model(session, network_code)
-                    logger.info(
-                        "Retrained %s: promoted=%s metrics=%s", network_code, result.promoted, result.metrics
-                    )
-                except InsufficientTrainingData as exc:
-                    logger.info("Skipping global retrain for %s: %s", network_code, exc)
+                _train_and_log(session, network_code)
 
             for customer_id, customer_total in _customers_with_labeled_decisions(session, network_code).items():
                 customer_already_trained_on = _most_recently_trained_count(session, network_code, customer_id)
                 customer_new_decisions = customer_total - customer_already_trained_on
                 if customer_new_decisions < settings.ml_min_new_decisions_for_retrain:
                     continue
-                try:
-                    result = train_model(session, network_code, customer_id=customer_id)
-                    logger.info(
-                        "Retrained %s for customer_id=%s: promoted=%s metrics=%s",
-                        network_code,
-                        customer_id,
-                        result.promoted,
-                        result.metrics,
-                    )
-                except InsufficientTrainingData as exc:
-                    logger.info("Skipping retrain for %s customer_id=%s: %s", network_code, customer_id, exc)
+                _train_and_log(session, network_code, customer_id=customer_id, label=f"customer_id={customer_id}")
     finally:
         session.close()

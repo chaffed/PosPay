@@ -1,16 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
-import hashlib
-import hmac
 import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
 from sqlalchemy.orm import Session
 
+from pospay.auth.keys import load_private_key, load_public_key
 from pospay.config import get_settings
 from pospay.domain.audit_log_entry import AuditChannel, AuditLogEntry
 from pospay.repositories.audit_log_repo import AuditLogRepository
@@ -60,8 +62,20 @@ def _canonical_fields(
 
 
 def _sign(fields_bytes: bytes) -> str:
-    secret = get_settings().audit_log_signing_secret.encode("utf-8")
-    return hmac.new(secret, fields_bytes, hashlib.sha256).hexdigest()
+    private_key = load_private_key(get_settings().audit_log_signing_private_key_path)
+    return private_key.sign(fields_bytes, ec.ECDSA(hashes.SHA256())).hex()
+
+
+def _verify(fields_bytes: bytes, signature: str) -> bool:
+    """ECDSA signatures are non-deterministic (a fresh random nonce every _sign call),
+    so — unlike the old HMAC scheme — this can't recompute-and-compare for equality; it
+    must verify the stored signature against the public key instead."""
+    public_key = load_public_key(get_settings().audit_log_signing_public_key_path)
+    try:
+        public_key.verify(bytes.fromhex(signature), fields_bytes, ec.ECDSA(hashes.SHA256()))
+        return True
+    except (InvalidSignature, ValueError):
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +163,7 @@ def verify_chain(session: Session, tenant_id: uuid.UUID) -> ChainVerificationRes
             metadata=entry.metadata_json,
             prev_entry_hash=entry.prev_entry_hash,
         )
-        if _sign(fields_bytes) != entry.entry_hash:
+        if not _verify(fields_bytes, entry.entry_hash):
             return ChainVerificationResult(valid=False, checked_count=index, broken_at_entry_id=entry.id)
 
         prev_hash = entry.entry_hash

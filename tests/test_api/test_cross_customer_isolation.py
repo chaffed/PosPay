@@ -4,9 +4,9 @@
 """Deliberately attempts to leak every customer-scoped resource type across customers
 within the SAME tenant, and asserts each attempt is blocked — the customer-scoping
 analogue of test_cross_tenant_isolation.py. This is the primary evidence for the riskiest
-part of the customers feature: every repository call site touching the six
-customer-scoped tables (account, issued_item, stop_payment, paid_item,
-ach_authorization_rule, ach_transaction) must pass ctx.customer_id, or this leaks."""
+part of the customers feature: every repository call site touching a customer-scoped
+table (account, issued_item, stop_payment, paid_item, ach_authorization_rule,
+ach_transaction, exception_item, check_image) must pass ctx.customer_id, or this leaks."""
 
 from pospay.services import account_service, customer_service, security_group_service, user_service
 from tests.conftest import TenantFactory, login_headers
@@ -219,6 +219,57 @@ def test_exceptions_not_visible_or_actionable_across_customers(client, db_sessio
     assert decide_resp.status_code == 200
     assert client.get(f"/api/v1/exceptions/{exception_id}/decision", headers=headers_approver_a).status_code == 200
     assert client.get(f"/api/v1/exceptions/{exception_id}/decision", headers=headers_approver_b).status_code == 404
+
+
+def test_check_images_not_visible_across_customers(client, db_session, tenant_factory):
+    """check_image was not customer-scoped at all until this test was added — see
+    repositories/check_image_repo.py (now a CustomerScopedRepository) and
+    check_image.customer_id (denormalized from the resolved account/paid item, same as
+    every other customer-scoped table)."""
+    from pospay.networks.check.ocr_processing import create_check_image
+
+    tenant, _users, customer_a, _customer_b, _account_a, _account_b, user_a, user_b = _two_customers(db_session, tenant_factory)
+    image_a = create_check_image(
+        db_session, tenant.id, front_bytes=b"front-a-bytes", back_bytes=None, paid_item_id=None, customer_id=customer_a.id
+    )
+    db_session.commit()
+
+    headers_a = login_headers(client, tenant.slug, user_a.email)
+    headers_b = login_headers(client, tenant.slug, user_b.email)
+
+    assert client.get(f"/api/v1/check-images/{image_a.id}", headers=headers_a).status_code == 200
+    assert client.get(f"/api/v1/check-images/{image_a.id}", headers=headers_b).status_code == 404
+    assert client.post(f"/api/v1/check-images/{image_a.id}/reprocess", headers=headers_b).status_code == 404
+
+
+def test_check_image_upload_inherits_customer_from_linked_paid_item(client, db_session, tenant_factory):
+    tenant, _users, _customer_a, customer_b, account_a, _account_b, user_a, user_b = _two_customers(db_session, tenant_factory)
+    headers_a = login_headers(client, tenant.slug, user_a.email)
+    headers_b = login_headers(client, tenant.slug, user_b.email)
+
+    paid_item_a = client.post(
+        "/api/v1/paid-items",
+        headers=headers_a,
+        json={"account_id": str(account_a.id), "check_number": "1", "presented_amount": "10.00", "presented_date": "2026-01-01"},
+    ).json()
+
+    # B can't even reference A's paid item to attach an image to it
+    resp = client.post(
+        "/api/v1/check-images",
+        headers=headers_b,
+        files={"front_image": ("front.png", b"fake-bytes", "image/png")},
+        data={"paid_item_id": paid_item_a["id"]},
+    )
+    assert resp.status_code == 404
+
+    created = client.post(
+        "/api/v1/check-images",
+        headers=headers_a,
+        files={"front_image": ("front.png", b"fake-bytes", "image/png")},
+        data={"paid_item_id": paid_item_a["id"]},
+    ).json()
+    assert client.get(f"/api/v1/check-images/{created['id']}", headers=headers_a).status_code == 200
+    assert client.get(f"/api/v1/check-images/{created['id']}", headers=headers_b).status_code == 404
 
 
 def test_customer_scoped_admin_group_is_still_masked_from_tenant_admin_actions(client, db_session, tenant_factory):

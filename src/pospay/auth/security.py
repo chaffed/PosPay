@@ -8,6 +8,7 @@ from typing import Literal
 import bcrypt
 import jwt
 
+from pospay.auth.keys import load_private_key, load_public_key
 from pospay.config import Settings, get_settings
 
 TokenType = Literal["access", "refresh", "mfa_pending"]
@@ -34,6 +35,8 @@ def create_token(
     security_group_id: uuid.UUID,
     token_type: TokenType,
     customer_id: uuid.UUID | None = None,
+    access_token_expire_minutes: int | None = None,
+    refresh_token_expire_minutes: int | None = None,
     settings: Settings | None = None,
 ) -> str:
     """The token only carries the security_group_id, not the permission set itself —
@@ -42,11 +45,22 @@ def create_token(
     membership) takes effect on the next request rather than waiting for this token to
     expire. `customer_id` is omitted (not just null) for a tenant-wide membership — the
     only kind that existed before customers did — so old tokens/callers are unaffected;
-    a real value scopes the whole session to that one customer (domain/tenant_membership.py)."""
+    a real value scopes the whole session to that one customer (domain/tenant_membership.py).
+
+    `access_token_expire_minutes`/`refresh_token_expire_minutes` are the caller's
+    resolved per-tenant override (Tenant.access_token_expire_minutes/
+    refresh_token_expire_minutes, see services/tenant_service.py::set_session_timeouts)
+    — None (the default) falls back to the global setting below. Only consulted for
+    their matching token_type; mfa_pending's expiry is always the fixed global setting,
+    since a bank lengthening session lifetime shouldn't also lengthen how long a WebAuthn
+    ceremony has to complete.
+
+    Signed with an ECDSA key pair (auth/keys.py), not a shared secret — see
+    config.py::assert_production_safe for why this matters."""
     settings = settings or get_settings()
     expire_minutes = {
-        "access": settings.jwt_access_token_expire_minutes,
-        "refresh": settings.jwt_refresh_token_expire_minutes,
+        "access": access_token_expire_minutes if access_token_expire_minutes is not None else settings.jwt_access_token_expire_minutes,
+        "refresh": refresh_token_expire_minutes if refresh_token_expire_minutes is not None else settings.jwt_refresh_token_expire_minutes,
         "mfa_pending": settings.mfa_pending_token_expire_minutes,
     }[token_type]
     now = datetime.now(timezone.utc)
@@ -60,12 +74,14 @@ def create_token(
     }
     if customer_id is not None:
         payload["customer_id"] = str(customer_id)
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    private_key = load_private_key(settings.jwt_private_key_path)
+    return jwt.encode(payload, private_key, algorithm=settings.jwt_algorithm)
 
 
 def decode_token(token: str, *, settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
-    return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    public_key = load_public_key(settings.jwt_public_key_path)
+    return jwt.decode(token, public_key, algorithms=[settings.jwt_algorithm])
 
 
 _SSO_STATE_EXPIRE_MINUTES = 10
@@ -93,12 +109,14 @@ def create_sso_state_token(
         "iat": now,
         "exp": now + timedelta(minutes=_SSO_STATE_EXPIRE_MINUTES),
     }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    private_key = load_private_key(settings.jwt_private_key_path)
+    return jwt.encode(payload, private_key, algorithm=settings.jwt_algorithm)
 
 
 def decode_sso_state_token(token: str, *, settings: Settings | None = None) -> dict:
     settings = settings or get_settings()
-    payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    public_key = load_public_key(settings.jwt_public_key_path)
+    payload = jwt.decode(token, public_key, algorithms=[settings.jwt_algorithm])
     if payload.get("type") != "sso_state":
         raise jwt.InvalidTokenError("Not an sso_state token")
     return payload

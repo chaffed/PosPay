@@ -40,7 +40,7 @@ _EXTRA_BACKOUT_PERMISSION_BY_KIND = {
 
 
 def _get_authorized_record(db: Session, ctx: TenantContext, upload_id: uuid.UUID) -> BulkUploadFile:
-    record = bulk_upload_file_service.get_uploaded_file(db, ctx.tenant_id, upload_id)
+    record = bulk_upload_file_service.get_uploaded_file(db, ctx.tenant_id, upload_id, ctx.customer_id)
     if record is None:
         raise WebNotFound()
     if _PERMISSION_BY_KIND[record.kind] not in ctx.permissions:
@@ -55,7 +55,7 @@ def bulk_upload_detail(
     record = _get_authorized_record(db, ctx, upload_id)
     # Recomputed live on every render — a stale "verified" flag stored at upload time
     # would defeat the entire point, which is detecting a change made SINCE then.
-    verified = bulk_upload_file_service.verify_uploaded_file(db, ctx.tenant_id, upload_id)
+    verified = bulk_upload_file_service.verify_uploaded_file(db, ctx.tenant_id, upload_id, ctx.customer_id)
     tracked_records = bulk_upload_reversal_service.list_created_records(db, ctx.tenant_id, upload_id)
     return render_template(
         request, "bulk_uploads/detail.html", ctx=ctx, record=record, verified=verified, tracked_records=tracked_records

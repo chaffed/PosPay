@@ -279,6 +279,24 @@ def reactivate_membership(session: Session, tenant_id: uuid.UUID, membership_id:
     return membership
 
 
+def unlock_user(session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID) -> User | None:
+    """Manual admin override for auth/login_service.py's auto-expiring lockout — resolved
+    via a membership in the caller's own tenant (same tenant-scoping as
+    deactivate_membership/reactivate_membership above), even though the lockout itself is
+    tracked globally on User, so an admin can only unlock a user through a membership
+    their own tenant actually owns."""
+    membership = TenantMembershipRepository(session, tenant_id).get(membership_id)
+    if membership is None:
+        return None
+    user = session.get(User, membership.user_id)
+    if user is None:
+        return None
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    session.flush()
+    return user
+
+
 def update_membership(
     session: Session,
     tenant_id: uuid.UUID,

@@ -6,7 +6,19 @@ import zipfile
 
 from PIL import Image
 
-from pospay.bulk_import.x937 import _T10_BUSINESS_DATE, _T25_AMOUNT, _T25_AUX_ON_US, _T25_ON_US, _T25_ROUTING_NUMBER
+from pospay.bulk_import.x937 import (
+    _T10_BUSINESS_DATE,
+    _T25_AMOUNT,
+    _T25_AUX_ON_US,
+    _T25_ON_US,
+    _T25_ROUTING_NUMBER,
+    _T90_ITEMS_COUNT,
+    _T90_TOTAL_AMOUNT,
+    _T99_ITEMS_COUNT,
+    _T99_TOTAL_AMOUNT,
+)
+from pospay.repositories.check_image_repo import CheckImageRepository
+from pospay.services import account_service, customer_service, security_group_service, user_service
 from tests.conftest import TenantFactory
 
 
@@ -73,8 +85,20 @@ def _synthetic_x937_file(*, account_number: str, check_number: str, amount_cents
             _fixed_record("50", {}, length=200),
             image_record,
             _fixed_record("70", {}),
-            _fixed_record("90", {}),
-            _fixed_record("99", {}),
+            _fixed_record(
+                "90",
+                {
+                    _T90_ITEMS_COUNT: str(1).zfill(_T90_ITEMS_COUNT.stop - _T90_ITEMS_COUNT.start),
+                    _T90_TOTAL_AMOUNT: str(amount_cents).zfill(_T90_TOTAL_AMOUNT.stop - _T90_TOTAL_AMOUNT.start),
+                },
+            ),
+            _fixed_record(
+                "99",
+                {
+                    _T99_ITEMS_COUNT: str(1).zfill(_T99_ITEMS_COUNT.stop - _T99_ITEMS_COUNT.start),
+                    _T99_TOTAL_AMOUNT: str(amount_cents).zfill(_T99_TOTAL_AMOUNT.stop - _T99_TOTAL_AMOUNT.start),
+                },
+            ),
         ]
     )
 
@@ -160,6 +184,51 @@ def test_bulk_upload_x937_unknown_account_fails_cleanly(client, tenant_factory):
     )
     assert resp.status_code == 200
     assert "No account found" in resp.text
+
+
+def test_bulk_x937_check_image_not_visible_across_customers(client, db_session, tenant_factory):
+    """check_image was not customer-scoped at all until this test was added — see
+    repositories/check_image_repo.py (now a CustomerScopedRepository)."""
+    tenant, _account, users = tenant_factory.make(slug="web-bulk-checkimg-xc")
+    customer_a = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-A", name="A Co"))
+    customer_b = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-B", name="B Co"))
+    account_a = account_service.create_account(
+        db_session, tenant.id, account_service.AccountInput(account_number="A-1", name="A Account", customer_id=customer_a.id)
+    )
+    preparer_group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+    user_a = user_service.create_user_with_membership(
+        db_session, tenant.id, email="staff-a@bulk-checkimg-xc.example.com", password=TenantFactory.PASSWORD,
+        security_group_id=preparer_group.id, customer_id=customer_a.id,
+    )
+    user_b = user_service.create_user_with_membership(
+        db_session, tenant.id, email="staff-b@bulk-checkimg-xc.example.com", password=TenantFactory.PASSWORD,
+        security_group_id=preparer_group.id, customer_id=customer_b.id,
+    )
+    db_session.commit()
+
+    csrf_a = _login(client, tenant.slug, user_a.email)
+    content = _synthetic_x937_file(
+        account_number=account_a.account_number, check_number="7001", amount_cents=2500, image_bytes=_single_page_jpeg()
+    )
+    resp = client.post(
+        "/ui/check-images/bulk",
+        data={"csrf_token": csrf_a, "format": "x937"},
+        files={"upload_file": ("cashletter.x937", content, "application/octet-stream")},
+    )
+    assert "1 of 1 succeeded" in resp.text
+
+    db_session.expire_all()
+    image = CheckImageRepository(db_session, tenant.id).list()[0]
+    assert image.customer_id == customer_a.id
+
+    _login(client, tenant.slug, user_b.email)
+    assert "No check images uploaded yet" in client.get("/ui/check-images").text
+    assert client.get(f"/ui/check-images/{image.id}").status_code == 404
+    assert client.get(f"/ui/check-images/{image.id}/front").status_code == 404
+
+    _login(client, tenant.slug, users["admin"].email)
+    assert "No check images uploaded yet" not in client.get("/ui/check-images").text
+    assert client.get(f"/ui/check-images/{image.id}").status_code == 200
 
 
 def test_check_image_download_routes_serve_normalized_png(client, db_session, tenant_factory):

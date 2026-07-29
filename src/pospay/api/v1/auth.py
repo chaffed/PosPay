@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from pospay.auth.login_service import PasswordLoginOutcome, authenticate_password
 from pospay.auth.security import create_token, decode_token
 from pospay.db.session import get_db
+from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.schemas.auth import LoginRequest, LoginResponse, RefreshRequest, TokenResponse
@@ -22,8 +23,14 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     result = authenticate_password(db, payload.tenant_slug, payload.email, payload.password)
+    # authenticate_password only flushes (see its docstring) — commit unconditionally,
+    # even on a failed attempt, so the incremented failed_login_attempts/locked_until
+    # actually persist rather than being discarded when this request's session closes.
+    db.commit()
     if result.outcome == PasswordLoginOutcome.SSO_REQUIRED:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "This organization requires single sign-on")
+    if result.outcome == PasswordLoginOutcome.LOCKED:
+        raise HTTPException(status.HTTP_423_LOCKED, "Too many failed attempts — account is temporarily locked")
     if result.outcome != PasswordLoginOutcome.SUCCESS or result.identity is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     identity = result.identity
@@ -47,6 +54,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             security_group_id=membership.security_group_id,
             customer_id=membership.customer_id,
             token_type="access",
+            access_token_expire_minutes=tenant.access_token_expire_minutes,
+            refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
         ),
         refresh_token=create_token(
             user_id=user.id,
@@ -54,6 +63,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
             security_group_id=membership.security_group_id,
             customer_id=membership.customer_id,
             token_type="refresh",
+            access_token_expire_minutes=tenant.access_token_expire_minutes,
+            refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
         ),
     )
     user_service.record_login(db, user.id)
@@ -95,6 +106,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
     if membership is None or not membership.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Membership no longer active")
 
+    tenant = db.get(Tenant, tenant_id)
     return TokenResponse(
         access_token=create_token(
             user_id=user.id,
@@ -102,6 +114,8 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
             security_group_id=membership.security_group_id,
             customer_id=customer_id,
             token_type="access",
+            access_token_expire_minutes=tenant.access_token_expire_minutes,
+            refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
         ),
         refresh_token=create_token(
             user_id=user.id,
@@ -109,5 +123,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResp
             security_group_id=membership.security_group_id,
             customer_id=customer_id,
             token_type="refresh",
+            access_token_expire_minutes=tenant.access_token_expire_minutes,
+            refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
         ),
     )

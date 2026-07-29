@@ -71,11 +71,11 @@
       <tr>
         <td>{{ m.network_code }}</td>
         <td>{{ m.version }}</td>
-        <td><span class="badge {{ 'badge-ok' if m.status.value == 'active' else '' }}">{{ m.status.value }}</span></td>
+        <td><span class="badge {{ 'badge-ok' if m.status.value == 'active' else 'badge-danger' if m.status.value == 'failed' else '' }}">{{ m.status.value }}</span></td>
         <td>{{ m.trained_from_decision_count }} decisions</td>
         <td>{{ m.metrics_json }}</td>
         <td>
-          {% if m.status.value != "active" %}
+          {% if m.status.value not in ["active", "failed"] %}
           <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/models/{{ m.id }}/activate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="secondary">Activate</button>

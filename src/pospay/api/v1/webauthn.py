@@ -111,10 +111,20 @@ def login_verify(
 
     tokens = TokenResponse(
         access_token=create_token(
-            user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="access"
+            user_id=user.id,
+            tenant_id=ctx.tenant_id,
+            security_group_id=ctx.security_group_id,
+            token_type="access",
+            access_token_expire_minutes=ctx.access_token_expire_minutes,
+            refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
         ),
         refresh_token=create_token(
-            user_id=user.id, tenant_id=ctx.tenant_id, security_group_id=ctx.security_group_id, token_type="refresh"
+            user_id=user.id,
+            tenant_id=ctx.tenant_id,
+            security_group_id=ctx.security_group_id,
+            token_type="refresh",
+            access_token_expire_minutes=ctx.access_token_expire_minutes,
+            refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
         ),
     )
     user_service.record_login(db, user.id)

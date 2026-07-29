@@ -5,11 +5,17 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from pospay.config import get_settings
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.tenant import Tenant
 from pospay.services import audit_log_service
-from pospay.services.tenant_service import InvalidBrandingInput, set_require_dual_control, update_tenant_branding
+from pospay.services.tenant_service import (
+    InvalidTenantSettingsInput,
+    set_require_dual_control,
+    set_session_timeouts,
+    update_tenant_branding,
+)
 from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -21,9 +27,14 @@ def settings_form(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("tenant:manage"))
 ) -> HTMLResponse:
     tenant = db.get(Tenant, ctx.tenant_id)
+    settings = get_settings()
     return render_template(
         request, "settings/form.html", ctx=ctx, tenant_display_name=ctx.tenant_name, accent_color=ctx.accent_color or "",
         require_dual_control=tenant.require_dual_control,
+        access_token_expire_minutes=tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
+        default_access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+        default_refresh_token_expire_minutes=settings.jwt_refresh_token_expire_minutes,
     )
 
 
@@ -50,7 +61,7 @@ async def update_settings(
         tenant = update_tenant_branding(
             db, ctx.tenant_id, name=name, accent_color=accent_color or None, logo=logo_data, favicon=favicon_data
         )
-    except InvalidBrandingInput as exc:
+    except InvalidTenantSettingsInput as exc:
         db.rollback()
         return render_template(
             request,
@@ -70,6 +81,71 @@ async def update_settings(
             channel="web",
             action="tenant.update_settings",
             summary=f"Updated organization settings (name: {tenant.name})",
+            resource_type="tenant",
+            resource_id=ctx.tenant_id,
+        )
+    db.commit()
+    return RedirectResponse("/ui/settings?flash=Settings+updated.", status_code=303)
+
+
+def _parse_optional_minutes(raw: str) -> int | None:
+    """Blank input means "use the global default" (None); anything else must be a
+    plain integer — a non-numeric value is treated as invalid, same as a non-positive
+    one, and both are reported through InvalidTenantSettingsInput."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        raise InvalidTenantSettingsInput(f"{raw!r} is not a whole number of minutes") from None
+
+
+@router.post("/session-timeout")
+def update_session_timeout(
+    request: Request,
+    access_token_expire_minutes: str = Form(""),
+    refresh_token_expire_minutes: str = Form(""),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    try:
+        access_minutes = _parse_optional_minutes(access_token_expire_minutes)
+        refresh_minutes = _parse_optional_minutes(refresh_token_expire_minutes)
+        tenant = set_session_timeouts(
+            db, ctx.tenant_id, access_token_expire_minutes=access_minutes, refresh_token_expire_minutes=refresh_minutes
+        )
+    except InvalidTenantSettingsInput as exc:
+        db.rollback()
+        current = db.get(Tenant, ctx.tenant_id)
+        settings = get_settings()
+        return render_template(
+            request,
+            "settings/form.html",
+            ctx=ctx,
+            tenant_display_name=ctx.tenant_name,
+            accent_color=ctx.accent_color or "",
+            require_dual_control=current.require_dual_control,
+            access_token_expire_minutes=current.access_token_expire_minutes,
+            refresh_token_expire_minutes=current.refresh_token_expire_minutes,
+            default_access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+            default_refresh_token_expire_minutes=settings.jwt_refresh_token_expire_minutes,
+            error=str(exc),
+            status_code=422,
+        )
+
+    if tenant is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="tenant.update_session_timeout",
+            summary=(
+                f"Updated session timeout (access: {tenant.access_token_expire_minutes or 'default'} min, "
+                f"refresh: {tenant.refresh_token_expire_minutes or 'default'} min)"
+            ),
             resource_type="tenant",
             resource_id=ctx.tenant_id,
         )

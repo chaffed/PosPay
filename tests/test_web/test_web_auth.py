@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from pospay.config import get_settings
 from tests.conftest import TenantFactory
 
 
@@ -81,6 +82,40 @@ def test_login_wrong_password_rerenders_form_with_error(client, tenant_factory):
 
     assert resp.status_code == 401
     assert "Invalid" in resp.text
+
+
+def test_login_locks_after_max_failed_attempts_and_blocks_correct_password(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-login-lockout")
+    max_attempts = get_settings().login_max_failed_attempts
+
+    csrf = client.get("/ui/login").cookies.get("csrf_token")
+    for _ in range(max_attempts):
+        resp = client.post(
+            "/ui/login",
+            data={
+                "tenant_slug": tenant.slug,
+                "email": users["admin"].email,
+                "password": "wrong-password",
+                "csrf_token": csrf,
+                "next": "/ui/",
+            },
+        )
+    assert resp.status_code == 401
+    assert "too many failed attempts" in resp.text.lower()
+
+    resp = client.post(
+        "/ui/login",
+        data={
+            "tenant_slug": tenant.slug,
+            "email": users["admin"].email,
+            "password": TenantFactory.PASSWORD,
+            "csrf_token": csrf,
+            "next": "/ui/",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 401
+    assert "too many failed attempts" in resp.text.lower()
 
 
 def test_login_missing_csrf_token_rejected(client, tenant_factory):

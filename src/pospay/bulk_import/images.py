@@ -46,6 +46,12 @@ def normalize_and_split_image(data: bytes, filename: str, *, back_data: bytes | 
         image.load()
     except UnidentifiedImageError:
         raise UnsupportedImageError(f"{filename!r} is not a readable TIFF, JPEG, or PNG image") from None
+    except Image.DecompressionBombError as exc:
+        # Pillow's own default decompression-bomb guard (Image.MAX_IMAGE_PIXELS, never
+        # overridden anywhere in this app) already blocks a small-on-disk, huge-when-
+        # decoded image — this just gives that the same clean, per-row error shape as
+        # every other rejection here, instead of a raw Pillow exception.
+        raise UnsupportedImageError(f"{filename!r} is too large to process safely: {exc}") from None
     except OSError as exc:
         raise UnsupportedImageError(f"{filename!r} could not be decoded: {exc}") from None
 
@@ -68,6 +74,8 @@ def normalize_and_split_image(data: bytes, filename: str, *, back_data: bytes | 
             back_image.load()
         except UnidentifiedImageError:
             raise UnsupportedImageError("back image is not a readable TIFF, JPEG, or PNG image") from None
+        except Image.DecompressionBombError as exc:
+            raise UnsupportedImageError(f"back image is too large to process safely: {exc}") from None
         except OSError as exc:
             raise UnsupportedImageError(f"back image could not be decoded: {exc}") from None
         if back_image.format not in _SUPPORTED_FORMATS:

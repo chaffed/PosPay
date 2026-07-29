@@ -14,7 +14,7 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.customer_ml_setting import MlScoringMode
 from pospay.domain.ml_model import MlModel
 from pospay.ml.registry import activate_model
-from pospay.ml.train import InsufficientTrainingData, train_model
+from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
 from pospay.services import customer_ml_service, customer_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
@@ -46,7 +46,7 @@ def retrain(
 ) -> RedirectResponse:
     try:
         result = train_model(db, network_code)
-    except InsufficientTrainingData as exc:
+    except (InsufficientTrainingData, RetrainCooldownActive) as exc:
         return RedirectResponse(f"/ui/admin?error={quote(str(exc))}", status_code=303)
     flash = f"Retrained {network_code}: promoted={result.promoted}, metrics={result.metrics}"
     return RedirectResponse(f"/ui/admin?flash={quote(flash)}", status_code=303)
@@ -60,7 +60,7 @@ def activate(
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     try:
-        activate_model(db, model_id)
+        activate_model(db, model_id, expected_customer_id=None)
     except ValueError as exc:
         db.rollback()
         return RedirectResponse(f"/ui/admin?error={quote(str(exc))}", status_code=303)
@@ -122,7 +122,7 @@ def retrain_customer_model(
     _get_customer_or_404(db, ctx.tenant_id, customer_id)
     try:
         result = train_model(db, network_code, customer_id=customer_id)
-    except InsufficientTrainingData as exc:
+    except (InsufficientTrainingData, RetrainCooldownActive) as exc:
         return RedirectResponse(f"/ui/admin/customers/{customer_id}/ml?error={quote(str(exc))}", status_code=303)
     flash = f"Retrained {network_code}: promoted={result.promoted}, metrics={result.metrics}"
     return RedirectResponse(f"/ui/admin/customers/{customer_id}/ml?flash={quote(flash)}", status_code=303)
@@ -138,7 +138,7 @@ def activate_customer_model(
 ) -> RedirectResponse:
     _get_customer_or_404(db, ctx.tenant_id, customer_id)
     try:
-        activate_model(db, model_id)
+        activate_model(db, model_id, expected_customer_id=customer_id)
     except ValueError as exc:
         db.rollback()
         return RedirectResponse(f"/ui/admin/customers/{customer_id}/ml?error={quote(str(exc))}", status_code=303)

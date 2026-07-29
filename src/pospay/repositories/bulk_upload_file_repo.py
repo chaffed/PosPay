@@ -2,8 +2,8 @@
 # Copyright (C) 2026 Chaffed
 
 from pospay.domain.bulk_upload_file import BulkUploadFile
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class BulkUploadFileRepository(TenantScopedRepository[BulkUploadFile]):
+class BulkUploadFileRepository(CustomerScopedRepository[BulkUploadFile]):
     model = BulkUploadFile

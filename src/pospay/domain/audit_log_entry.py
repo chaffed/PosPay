@@ -19,13 +19,14 @@ class AuditChannel(str, enum.Enum):
 class AuditLogEntry(Base):
     """One entry per state-changing action, taken through either the web UI or the JSON
     API (`channel`) — see services/audit_log_service.py. Entries form a hash chain: each
-    row's `entry_hash` is an HMAC-SHA256 (server-held `audit_log_signing_secret`, distinct
-    from every other signing secret in this app) over its own fields plus the previous
-    entry's hash. That's what makes the log tamper-*evident* — editing, deleting, or
-    reordering any entry breaks the chain from that point forward, detectable by
-    recomputing it (verify_chain), not by trusting a stored flag. `occurred_at` is set in
-    Python at call time rather than a DB server_default, because the hash must be
-    computable — and the row's own id/timestamp already fixed — before insert."""
+    row's `entry_hash` is an ECDSA-P256/SHA256 signature (server-held
+    `audit_log_signing_private_key_path`, a key pair distinct from every other signing
+    key in this app) over its own fields plus the previous entry's hash. That's what
+    makes the log tamper-*evident* — editing, deleting, or reordering any entry breaks
+    the chain from that point forward, detectable by re-verifying it (verify_chain), not
+    by trusting a stored flag. `occurred_at` is set in Python at call time rather than a
+    DB server_default, because the signature must be computable — and the row's own
+    id/timestamp already fixed — before insert."""
 
     __tablename__ = "audit_log_entry"
 
@@ -41,5 +42,7 @@ class AuditLogEntry(Base):
     resource_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    prev_entry_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    entry_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Widened from String(64) (a SHA-256 hex digest) to fit a hex-encoded ECDSA P-256
+    # DER signature, which can run up to ~144 hex chars.
+    prev_entry_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    entry_hash: Mapped[str] = mapped_column(String(200), nullable=False)

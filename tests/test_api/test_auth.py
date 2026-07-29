@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from pospay.config import get_settings
+
+
 def test_login_succeeds_with_correct_credentials(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="login-ok")
 
@@ -41,6 +44,31 @@ def test_login_rejects_wrong_password(client, tenant_factory):
     )
 
     assert resp.status_code == 401
+
+
+def test_login_locks_account_after_max_failed_attempts(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-lockout-api")
+    max_attempts = get_settings().login_max_failed_attempts
+
+    for _ in range(max_attempts - 1):
+        resp = client.post(
+            "/api/v1/auth/login",
+            json={"tenant_slug": tenant.slug, "email": users["admin"].email, "password": "wrong"},
+        )
+        assert resp.status_code == 401
+
+    resp = client.post(
+        "/api/v1/auth/login",
+        json={"tenant_slug": tenant.slug, "email": users["admin"].email, "password": "wrong"},
+    )
+    assert resp.status_code == 423
+
+    # Even the correct password is now rejected until the lockout expires or an admin unlocks it.
+    resp = client.post(
+        "/api/v1/auth/login",
+        json={"tenant_slug": tenant.slug, "email": users["admin"].email, "password": tenant_factory.PASSWORD},
+    )
+    assert resp.status_code == 423
 
 
 def test_login_rejects_unknown_tenant(client):

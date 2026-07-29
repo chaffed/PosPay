@@ -113,7 +113,7 @@ def test_export_includes_check_image_and_bulk_upload_files(db_session, tenant_fa
     storage_path = save_uploaded_file(tenant.id, upload_id, "rows.csv", b"email,security_group\na@b.com,Viewer\n")
     upload = BulkUploadFile(
         id=upload_id, tenant_id=tenant.id, kind=BulkUploadKind.USERS, original_filename="rows.csv", content_type="text/csv",
-        storage_path=storage_path, size_bytes=10, sha256_hex="0" * 64, hmac_signature_hex="0" * 64, uploaded_by_user_id=users["admin"].id,
+        storage_path=storage_path, size_bytes=10, sha256_hex="0" * 64, signature_hex="0" * 64, uploaded_by_user_id=users["admin"].id,
     )
     db_session.add(upload)
     db_session.commit()
@@ -131,6 +131,39 @@ def test_export_includes_check_image_and_bulk_upload_files(db_session, tenant_fa
         assert zf.read(f"files/check_images/{check_image.id}_front.png") == b"front-image-bytes"
         bulk_files = [n for n in names if n.startswith("files/bulk_uploads/")]
         assert len(bulk_files) == 1
+
+
+def test_customer_scoped_export_includes_orphaned_check_image_and_excludes_other_customers(db_session, tenant_factory):
+    """Before check_image had its own customer_id, a customer-scoped export filtered
+    check images by joining through paid_item_id — which silently missed any image not
+    yet linked to a paid item. Now it's a direct filter, so an orphaned image (no
+    paid_item_id) still correctly shows up for its own customer, and never for another."""
+    tenant, _account, users = tenant_factory.make(slug="export-orphan-check-image")
+    customer_a = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-A", name="A Co"))
+    customer_b = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-B", name="B Co"))
+    orphan_image = create_check_image(
+        db_session, tenant.id, front_bytes=b"orphan-front-bytes", back_bytes=None, paid_item_id=None, customer_id=customer_a.id
+    )
+    db_session.commit()
+
+    job_a = data_export_service.request_export(db_session, tenant.id, users["admin"].id, customer_id=customer_a.id)
+    db_session.commit()
+    _run_job_sync(db_session, job_a)
+    db_session.expire_all()
+    job_a = db_session.get(type(job_a), job_a.id)
+
+    with zipfile.ZipFile(job_a.archive_path) as zf:
+        check_images = _read_json(zf, "data/check_images.json")
+        assert [c["id"] for c in check_images] == [str(orphan_image.id)]
+
+    job_b = data_export_service.request_export(db_session, tenant.id, users["admin"].id, customer_id=customer_b.id)
+    db_session.commit()
+    _run_job_sync(db_session, job_b)
+    db_session.expire_all()
+    job_b = db_session.get(type(job_b), job_b.id)
+
+    with zipfile.ZipFile(job_b.archive_path) as zf:
+        assert _read_json(zf, "data/check_images.json") == []
 
 
 def test_customer_scoped_export_excludes_other_customers_and_tenant_wide_only_data(db_session, tenant_factory):

@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Chaffed
 
 import uuid
+from pathlib import Path
 
 from pospay.bulk_import.file_storage import read_uploaded_file, save_uploaded_file
 
@@ -26,3 +27,27 @@ def test_different_tenants_do_not_collide():
     assert path_a != path_b
     assert read_uploaded_file(path_a) == b"a"
     assert read_uploaded_file(path_b) == b"b"
+
+
+def test_path_traversal_shaped_filename_is_stored_safely(tmp_path, monkeypatch):
+    from pospay.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "bulk_upload_storage_dir", str(tmp_path))
+    tenant_id = uuid.uuid4()
+    upload_id = uuid.uuid4()
+
+    path = save_uploaded_file(tenant_id, upload_id, "../../../../../../tmp/pwned.txt", b"malicious content")
+
+    stored_path = Path(path)
+    # stored safely under the intended tenant directory, not escaped to /tmp
+    assert stored_path.parent == tmp_path / str(tenant_id)
+    assert read_uploaded_file(path) == b"malicious content"
+    assert not (Path("/tmp") / "pwned.txt").exists()
+
+
+def test_filename_with_no_usable_basename_falls_back_to_a_default(tmp_path, monkeypatch):
+    from pospay.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "bulk_upload_storage_dir", str(tmp_path))
+    path = save_uploaded_file(uuid.uuid4(), uuid.uuid4(), "../../", b"data")
+    assert read_uploaded_file(path) == b"data"

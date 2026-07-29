@@ -151,6 +151,7 @@ async def bulk_upload_issued_items(
         content_type=upload_file.content_type,
         data=content,
         uploaded_by_user_id=ctx.user_id,
+        customer_id=ctx.customer_id,
     )
     db.commit()
 

@@ -70,9 +70,14 @@ def create_model_row(
     return row
 
 
-def activate_model(session: Session, model_id: uuid.UUID) -> MlModel:
+def activate_model(session: Session, model_id: uuid.UUID, *, expected_customer_id: uuid.UUID | None) -> MlModel:
     model = session.get(MlModel, model_id)
     if model is None:
+        raise ValueError(f"No ml_model with id={model_id}")
+    if model.customer_id != expected_customer_id:
+        # A stale/unrelated/another-customer's model must never be swappable into a
+        # scope it wasn't trained for — keyword-only, no default, so every caller states
+        # which scope it expects rather than silently skipping the check.
         raise ValueError(f"No ml_model with id={model_id}")
 
     # Only retires the previous active row for this SAME (network_code, customer_id)

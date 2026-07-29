@@ -58,6 +58,21 @@ def _export_row(row: user_service.TenantUserRow) -> dict:
     }
 
 
+_FORMULA_LEADING_CHARS = ("=", "+", "-", "@")
+
+
+def _csv_safe(value: object) -> object:
+    """Neutralizes CSV/spreadsheet formula injection: a cell whose value starts with
+    =/+/-/@ can execute as a formula the moment this file is opened in Excel/Sheets.
+    Prefixing a literal apostrophe is the standard mitigation both accept as "force this
+    cell to plain text." Only applied to the CSV export — export_users_json's data isn't
+    opened in a spreadsheet, so it's untouched (this must never alter what that route
+    actually returns)."""
+    if isinstance(value, str) and value.startswith(_FORMULA_LEADING_CHARS):
+        return f"'{value}"
+    return value
+
+
 @router.get("/export.csv")
 def export_users_csv(
     db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("user:manage"))
@@ -67,7 +82,7 @@ def export_users_csv(
     writer = csv.DictWriter(buffer, fieldnames=_EXPORT_COLUMNS)
     writer.writeheader()
     for row in rows:
-        writer.writerow(_export_row(row))
+        writer.writerow({key: _csv_safe(value) for key, value in _export_row(row).items()})
     return Response(
         content=buffer.getvalue(),
         media_type="text/csv",
@@ -233,6 +248,33 @@ def reactivate_user(
     return RedirectResponse("/ui/users?flash=Access+restored.", status_code=303)
 
 
+@router.post("/{membership_id}/unlock")
+def unlock_user(
+    membership_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    """Manual override for auth/login_service.py's auto-expiring lockout — see
+    services/user_service.py::unlock_user."""
+    unlocked = user_service.unlock_user(db, ctx.tenant_id, membership_id)
+    if unlocked is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="user.unlock",
+            summary=f"Unlocked account for {unlocked.email}",
+            resource_type="user",
+            resource_id=unlocked.id,
+        )
+    db.commit()
+    if unlocked is None:
+        return RedirectResponse("/ui/users?error=User+not+found.", status_code=303)
+    return RedirectResponse("/ui/users?flash=Account+unlocked.", status_code=303)
+
+
 @router.get("/bulk")
 def bulk_upload_form(
     request: Request, ctx: TenantContext = Depends(require_web_permission("user:manage"))
@@ -261,6 +303,7 @@ async def bulk_upload_users(
         content_type=upload_file.content_type,
         data=content,
         uploaded_by_user_id=ctx.user_id,
+        customer_id=ctx.customer_id,
     )
     db.commit()
 

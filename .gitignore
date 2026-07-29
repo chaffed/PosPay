@@ -9,3 +9,6 @@ ml_artifacts/
 *.egg-info/
 data/
 .pospay-run/
+# scripts/generate_keys.py's default output dir for real signing keys — never commit
+# these. dev_keys/ (the checked-in, deliberately public test key pair) is NOT ignored.
+/keys/

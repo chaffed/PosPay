@@ -25,11 +25,23 @@ side is inferred from order, matching the standard duplex-scan convention).
 Deliberately NOT supported, matching this app's existing NACHA parser's "lenient,
 documented subset" philosophy (bulk_import/nacha.py): the alternate fixed-length
 undelimited binary X9.37 variant, EBCDIC-encoded files, return/adjustment cash letters,
-credit reconcilement records, and file/cash-letter/bundle control-total (item count /
-dollar total) cross-validation — header and control records (types 01, 20, 70, 90, 99)
-are only read far enough to skip over them. The one exception is the Cash Letter Header
-(Type 10), whose Business Date field is read so bulk-loaded items carry a real
-presented_date instead of always defaulting to today.
+credit reconcilement records, and bundle-level (Type 70) control-total validation —
+PosPay doesn't track bundle boundaries as a concept at all (checks flow through
+regardless of which bundle they're in), so validating at that finer grain would need a
+boundary-tracking concept the app doesn't otherwise need. Cash Letter Control (Type 90)
+and File Control (Type 99) item-count and total-dollar-amount ARE validated against what
+was actually parsed (see _validate_cash_letter_control/_validate_file_control below) —
+header records (types 01, 20, 70) are still only read far enough to skip over them. The
+one other exception is the Cash Letter Header (Type 10), whose Business Date field is
+read so bulk-loaded items carry a real presented_date instead of always defaulting to
+today.
+
+The Type 90/99 field positions below are this module's own best-effort, documented
+convention — same caveat the test suite's own docstring already discloses for the rest
+of this parser: X9.37 control-record layouts vary more across real-world implementations
+than NACHA's rigidly standardized 94-character format, and this repo has no real sample
+cash-letter file to verify byte-for-byte against. If a real file from your processor
+gets rejected on a control-total mismatch that looks wrong, check these positions first.
 """
 
 from dataclasses import dataclass
@@ -83,7 +95,19 @@ _T52_HEADER_BEFORE_LENGTH_FIELD = 116
 _T52_LENGTH_FIELD_LEN = 10
 _T52_HEADER_LEN = _T52_HEADER_BEFORE_LENGTH_FIELD + _T52_LENGTH_FIELD_LEN
 
-_SKIP_RECORD_TYPES = {"01", "20", "26", "27", "28", "31", "32", "33", "34", "70", "90", "99"}
+# Type 90 - Cash Letter Control Record (80 bytes). Only Items Count and Total Amount are
+# read; everything else (bundle count, imaged items count, ...) is skipped. See the
+# module docstring for the "own best-effort convention, not verified against a real
+# file" caveat.
+_T90_ITEMS_COUNT = slice(8, 16)
+_T90_TOTAL_AMOUNT = slice(16, 30)
+
+# Type 99 - File Control Record (80 bytes). Same two fields, file-wide instead of
+# per-cash-letter.
+_T99_ITEMS_COUNT = slice(16, 24)
+_T99_TOTAL_AMOUNT = slice(24, 39)
+
+_SKIP_RECORD_TYPES = {"01", "20", "26", "27", "28", "31", "32", "33", "34", "70"}
 
 
 def _parse_business_date(raw: str) -> date:
@@ -97,6 +121,22 @@ def _skip_separators(content: bytes, cursor: int) -> int:
     while cursor < len(content) and content[cursor] in (0x0D, 0x0A):
         cursor += 1
     return cursor
+
+
+def _parse_declared_int(raw: bytes, *, field_name: str, cursor: int) -> int:
+    text = raw.decode("ascii", errors="replace").strip()
+    try:
+        return int(text) if text else 0
+    except ValueError:
+        raise X937ParseError(f"Control record at byte {cursor} has a non-numeric {field_name} field: {text!r}") from None
+
+
+def _compare_control_total(*, field_name: str, declared: int, actual: int, cursor: int, scope: str) -> None:
+    if declared != actual:
+        raise X937ParseError(
+            f"{scope} Control record at byte {cursor}: declared {field_name} ({declared}) doesn't match "
+            f"what was actually parsed ({actual})"
+        )
 
 
 def parse_x937_file(content: bytes) -> list[X937CheckItem]:
@@ -117,6 +157,11 @@ def parse_x937_file(content: bytes) -> list[X937CheckItem]:
     current_amount: Decimal | None = None
     current_images: list[bytes] = []
     current_business_date = date.today()
+
+    cash_letter_items = 0
+    cash_letter_amount_cents = 0
+    file_items = 0
+    file_amount_cents = 0
 
     def _flush_current() -> None:
         if current_amount is None:
@@ -153,11 +198,16 @@ def parse_x937_file(content: bytes) -> list[X937CheckItem]:
             current_check_number = record[_T25_AUX_ON_US].decode("ascii", errors="replace").strip()
             amount_raw = record[_T25_AMOUNT].decode("ascii", errors="replace").strip()
             try:
-                current_amount = Decimal(int(amount_raw or "0")) / Decimal(100)
+                amount_cents = int(amount_raw or "0")
+                current_amount = Decimal(amount_cents) / Decimal(100)
             except (InvalidOperation, ValueError):
                 raise X937ParseError(
                     f"Check Detail Record #{item_number} at byte {cursor} has a non-numeric amount field: {amount_raw!r}"
                 ) from None
+            cash_letter_items += 1
+            cash_letter_amount_cents += amount_cents
+            file_items += 1
+            file_amount_cents += amount_cents
 
             cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
 
@@ -166,6 +216,28 @@ def parse_x937_file(content: bytes) -> list[X937CheckItem]:
                 raise X937ParseError(f"Truncated Cash Letter Header Record (Type 10) at byte {cursor}")
             record = content[cursor : cursor + _STANDARD_RECORD_LEN]
             current_business_date = _parse_business_date(record[_T10_BUSINESS_DATE].decode("ascii", errors="replace").strip())
+            cash_letter_items = 0
+            cash_letter_amount_cents = 0
+            cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
+
+        elif record_type == "90":
+            if remaining < _STANDARD_RECORD_LEN:
+                raise X937ParseError(f"Truncated Cash Letter Control Record (Type 90) at byte {cursor}")
+            record = content[cursor : cursor + _STANDARD_RECORD_LEN]
+            declared_items = _parse_declared_int(record[_T90_ITEMS_COUNT], field_name="items count", cursor=cursor)
+            declared_amount = _parse_declared_int(record[_T90_TOTAL_AMOUNT], field_name="total amount", cursor=cursor)
+            _compare_control_total(field_name="items count", declared=declared_items, actual=cash_letter_items, cursor=cursor, scope="Cash Letter")
+            _compare_control_total(field_name="total amount", declared=declared_amount, actual=cash_letter_amount_cents, cursor=cursor, scope="Cash Letter")
+            cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
+
+        elif record_type == "99":
+            if remaining < _STANDARD_RECORD_LEN:
+                raise X937ParseError(f"Truncated File Control Record (Type 99) at byte {cursor}")
+            record = content[cursor : cursor + _STANDARD_RECORD_LEN]
+            declared_items = _parse_declared_int(record[_T99_ITEMS_COUNT], field_name="items count", cursor=cursor)
+            declared_amount = _parse_declared_int(record[_T99_TOTAL_AMOUNT], field_name="total amount", cursor=cursor)
+            _compare_control_total(field_name="items count", declared=declared_items, actual=file_items, cursor=cursor, scope="File")
+            _compare_control_total(field_name="total amount", declared=declared_amount, actual=file_amount_cents, cursor=cursor, scope="File")
             cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
 
         elif record_type == "50":

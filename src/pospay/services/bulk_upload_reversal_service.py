@@ -204,10 +204,9 @@ def back_out_upload(
     if the upload doesn't exist, has nothing tracked (predates this feature, or nothing
     it created ever succeeded), or has already been backed out — callers turn that into
     a 404/flash message, not a results page. `scoped_customer_id` constrains every
-    per-row lookup the same way every other write path in this app does, so a
-    customer-scoped caller can't reach across customer boundaries even though
-    `BulkUploadFile` itself isn't customer-scoped."""
-    upload = BulkUploadFileRepository(session, tenant_id).get(upload_id)
+    per-row lookup (and the upload record itself) the same way every other write path in
+    this app does, so a customer-scoped caller can't reach across customer boundaries."""
+    upload = BulkUploadFileRepository(session, tenant_id, scoped_customer_id).get(upload_id)
     if upload is None or upload.backed_out_at is not None:
         return None
 

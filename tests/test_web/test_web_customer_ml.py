@@ -198,6 +198,32 @@ def test_activate_customer_model_via_web(client, db_session, tenant_factory):
     assert first_row.status == MlModelStatus.RETIRED
 
 
+def test_activate_customer_model_rejects_another_customers_model(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-cust-ml-activate-xcust")
+    customer_a, _account_a = _make_customer(db_session, tenant, "C-A")
+    customer_b, _account_b = _make_customer(db_session, tenant, "C-B")
+    other_customers_model = create_model_row(
+        db_session, network_code="check", customer_id=customer_b.id, version="v1", algorithm="logistic_regression",
+        artifact_path="/tmp/fake.joblib", trained_from_decision_count=12, metrics_json={}, status=MlModelStatus.TRAINING,
+    )
+    db_session.commit()
+
+    _login(client, tenant.slug, users["admin"].email)
+    client.get(f"/ui/admin/customers/{customer_a.id}/ml")
+
+    resp = client.post(
+        f"/ui/admin/customers/{customer_a.id}/ml/models/{other_customers_model.id}/activate",
+        data={"csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "error" in resp.headers["location"]
+
+    db_session.expire_all()
+    db_session.refresh(other_customers_model)
+    assert other_customers_model.status == MlModelStatus.TRAINING
+
+
 def test_customer_detail_page_shows_ml_scoring_card_for_admin_only(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-cust-ml-card")
     customer, _account2 = _make_customer(db_session, tenant)

@@ -109,3 +109,33 @@ def test_non_admin_cannot_trigger_retrain(client, tenant_factory):
     resp = client.post("/api/v1/admin/ml/retrain", headers=headers, params={"network_code": "check"})
 
     assert resp.status_code == 403
+
+
+def test_immediate_reretrain_is_rejected_by_cooldown(client, db_session, tenant_factory):
+    tenant, account, users = tenant_factory.make(slug="admin-ml-cooldown")
+    _seed_labeled_decisions(db_session, tenant, account, users)
+    headers = login_headers(client, tenant.slug, users["admin"].email)
+
+    first = client.post("/api/v1/admin/ml/retrain", headers=headers, params={"network_code": "check"})
+    assert first.status_code == 200
+
+    second = client.post("/api/v1/admin/ml/retrain", headers=headers, params={"network_code": "check"})
+    assert second.status_code == 409
+
+
+def test_activate_rejects_a_customer_scoped_model_via_the_bank_wide_route(client, db_session, tenant_factory):
+    from pospay.domain.ml_model import MlModelStatus
+    from pospay.ml.registry import create_model_row
+    from pospay.services import customer_service
+
+    tenant, _account, users = tenant_factory.make(slug="admin-ml-activate-scope")
+    customer = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    row = create_model_row(
+        db_session, network_code="check", version="v1", algorithm="logistic_regression", artifact_path="/tmp/fake.joblib",
+        trained_from_decision_count=10, metrics_json={"auc": 0.9}, status=MlModelStatus.TRAINING, customer_id=customer.id,
+    )
+    db_session.commit()
+    headers = login_headers(client, tenant.slug, users["admin"].email)
+
+    resp = client.patch(f"/api/v1/admin/ml/models/{row.id}/activate", headers=headers)
+    assert resp.status_code == 404

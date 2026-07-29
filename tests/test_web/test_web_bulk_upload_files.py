@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pospay.domain.bulk_upload_file import BulkUploadKind
 from pospay.repositories.bulk_upload_file_repo import BulkUploadFileRepository
+from pospay.services import account_service, customer_service, security_group_service, user_service
 from tests.conftest import TenantFactory
 
 
@@ -167,3 +168,39 @@ def test_detail_and_download_404_for_unknown_upload_id(client, tenant_factory):
 
     resp = client.get(f"/ui/bulk-uploads/{uuid.uuid4()}", follow_redirects=False)
     assert resp.status_code == 404
+
+
+def test_bulk_upload_file_not_visible_across_customers(client, db_session, tenant_factory):
+    """bulk_upload_file was not customer-scoped at all until this test was added — see
+    repositories/bulk_upload_file_repo.py (now a CustomerScopedRepository) and
+    bulk_upload_file.customer_id (set from the uploader's own scope at upload time)."""
+    tenant, _account, users = tenant_factory.make(slug="bulk-file-xc")
+    customer_a = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-A", name="A Co"))
+    customer_b = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-B", name="B Co"))
+    account_a = account_service.create_account(
+        db_session, tenant.id, account_service.AccountInput(account_number="A-1", name="A Account", customer_id=customer_a.id)
+    )
+    preparer_group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+    user_a = user_service.create_user_with_membership(
+        db_session, tenant.id, email="staff-a@bulk-xc.example.com", password=TenantFactory.PASSWORD,
+        security_group_id=preparer_group.id, customer_id=customer_a.id,
+    )
+    user_b = user_service.create_user_with_membership(
+        db_session, tenant.id, email="staff-b@bulk-xc.example.com", password=TenantFactory.PASSWORD,
+        security_group_id=preparer_group.id, customer_id=customer_b.id,
+    )
+    db_session.commit()
+
+    csrf_a = _login(client, tenant.slug, user_a.email)
+    content = f"account_number,check_number,amount,payee_name,issue_date\n{account_a.account_number},1,10.00,X,2026-01-01\n".encode()
+    resp = client.post(
+        "/ui/issued-items/bulk", data={"csrf_token": csrf_a}, files={"upload_file": ("items.csv", content, "text/csv")}
+    )
+    detail_link = _extract_detail_link(resp.text)
+
+    _login(client, tenant.slug, user_b.email)
+    assert client.get(detail_link, follow_redirects=False).status_code == 404
+    assert client.get(f"{detail_link}/download", follow_redirects=False).status_code == 404
+
+    _login(client, tenant.slug, users["admin"].email)
+    assert client.get(detail_link, follow_redirects=False).status_code == 200

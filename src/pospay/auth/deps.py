@@ -111,6 +111,8 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         has_favicon=branding.has_favicon,
         customer_id=customer_id,
         customer_name=customer_name,
+        access_token_expire_minutes=branding.access_token_expire_minutes,
+        refresh_token_expire_minutes=branding.refresh_token_expire_minutes,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting

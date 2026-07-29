@@ -24,6 +24,10 @@ from pospay.bulk_import.x937 import (
     _T50_LEN,
     _T52_HEADER_BEFORE_LENGTH_FIELD,
     _T52_LENGTH_FIELD_LEN,
+    _T90_ITEMS_COUNT,
+    _T90_TOTAL_AMOUNT,
+    _T99_ITEMS_COUNT,
+    _T99_TOTAL_AMOUNT,
     X937ParseError,
     parse_x937_file,
 )
@@ -77,12 +81,24 @@ def _bundle_control() -> bytes:
     return _fixed_record("70", {})
 
 
-def _cash_letter_control() -> bytes:
-    return _fixed_record("90", {})
+def _cash_letter_control(*, items: int = 1, amount_cents: int = 0) -> bytes:
+    return _fixed_record(
+        "90",
+        {
+            _T90_ITEMS_COUNT: str(items).zfill(_T90_ITEMS_COUNT.stop - _T90_ITEMS_COUNT.start),
+            _T90_TOTAL_AMOUNT: str(amount_cents).zfill(_T90_TOTAL_AMOUNT.stop - _T90_TOTAL_AMOUNT.start),
+        },
+    )
 
 
-def _file_control() -> bytes:
-    return _fixed_record("99", {})
+def _file_control(*, items: int = 1, amount_cents: int = 0) -> bytes:
+    return _fixed_record(
+        "99",
+        {
+            _T99_ITEMS_COUNT: str(items).zfill(_T99_ITEMS_COUNT.stop - _T99_ITEMS_COUNT.start),
+            _T99_TOTAL_AMOUNT: str(amount_cents).zfill(_T99_TOTAL_AMOUNT.stop - _T99_TOTAL_AMOUNT.start),
+        },
+    )
 
 
 def test_parses_a_single_check_with_front_and_back_images():
@@ -99,8 +115,8 @@ def test_parses_a_single_check_with_front_and_back_images():
             _image_view_detail(),
             _image_view_data(back),
             _bundle_control(),
-            _cash_letter_control(),
-            _file_control(),
+            _cash_letter_control(items=1, amount_cents=15000),
+            _file_control(items=1, amount_cents=15000),
         ]
     )
 
@@ -129,8 +145,8 @@ def test_parses_multiple_checks_in_one_cash_letter():
             _image_view_detail(),
             _image_view_data(b"front-2"),
             _bundle_control(),
-            _cash_letter_control(),
-            _file_control(),
+            _cash_letter_control(items=2, amount_cents=17599),
+            _file_control(items=2, amount_cents=17599),
         ]
     )
 
@@ -149,7 +165,7 @@ def test_check_with_no_image_pair_gets_empty_front_bytes():
             _bundle_header(),
             _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100),
             _bundle_control(),
-            _file_control(),
+            _file_control(items=1, amount_cents=100),
         ]
     )
     items = parse_x937_file(content)
@@ -165,7 +181,7 @@ def test_tolerates_crlf_between_records():
             _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100),
             _image_view_detail(),
             _image_view_data(b"front"),
-            _file_control(),
+            _file_control(items=1, amount_cents=100),
         ]
     )
     items = parse_x937_file(content)
@@ -213,7 +229,70 @@ def test_blank_business_date_falls_back_to_today_without_raising():
         _file_header()
         + _cash_letter_header("        ")
         + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
-        + _file_control()
+        + _file_control(items=1, amount_cents=100)
     )
     items = parse_x937_file(content)
     assert items[0].presented_date is not None
+
+
+def test_cash_letter_control_item_count_mismatch_raises():
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _cash_letter_control(items=2, amount_cents=100)
+        + _file_control(items=1, amount_cents=100)
+    )
+    with pytest.raises(X937ParseError, match="items count"):
+        parse_x937_file(content)
+
+
+def test_cash_letter_control_total_amount_mismatch_raises():
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _cash_letter_control(items=1, amount_cents=999)
+        + _file_control(items=1, amount_cents=100)
+    )
+    with pytest.raises(X937ParseError, match="total amount"):
+        parse_x937_file(content)
+
+
+def test_file_control_item_count_mismatch_raises():
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _file_control(items=2, amount_cents=100)
+    )
+    with pytest.raises(X937ParseError, match="items count"):
+        parse_x937_file(content)
+
+
+def test_file_control_total_amount_mismatch_raises():
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _file_control(items=1, amount_cents=999)
+    )
+    with pytest.raises(X937ParseError, match="total amount"):
+        parse_x937_file(content)
+
+
+def test_cash_letter_totals_reset_between_cash_letters():
+    """Two cash letters in one file: each cash letter control validates only its own
+    items, but the file control validates the sum across both."""
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _cash_letter_control(items=1, amount_cents=100)
+        + _cash_letter_header()
+        + _check_detail(routing="12345678", on_us="1002", aux_on_us="5002", amount_cents=200)
+        + _cash_letter_control(items=1, amount_cents=200)
+        + _file_control(items=2, amount_cents=300)
+    )
+    items = parse_x937_file(content)
+    assert len(items) == 2

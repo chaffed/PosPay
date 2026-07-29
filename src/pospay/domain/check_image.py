@@ -24,6 +24,12 @@ class CheckImage(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), nullable=False, index=True)
     paid_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("paid_item.id"), nullable=True, index=True)
+    # NULL = bank-wide (no customer scope known/assigned yet); a real value scopes this
+    # image to that one customer, same nullable-FK pattern as Account/IssuedItem/etc.
+    # (repositories/base.py::CustomerScopedRepository). Denormalized from the resolved
+    # Account/PaidItem at creation time, not blindly the uploader's own scope — see
+    # networks/check/bulk_import.py and web/routers/check_images.py::upload_check_image.
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
 
     front_image_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     back_image_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)

@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from datetime import datetime, timedelta, timezone
+
 from pospay.auth.login_service import PasswordLoginOutcome, authenticate_password
+from pospay.config import get_settings
 from pospay.domain.webauthn_credential import WebauthnCredential
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.webauthn_credential_repo import WebauthnCredentialRepository
-from pospay.services import sso_service
+from pospay.services import sso_service, user_service
 from tests.conftest import TenantFactory
 from tests.test_web.test_web_sso_login import _make_mapped_connection
 
@@ -65,3 +68,73 @@ def test_ordinary_membership_unaffected_by_require_webauthn_default(db_session, 
     assert result.identity is not None
     assert result.identity.mfa_required is False
     assert result.identity.needs_webauthn_enrollment is False
+
+
+def test_account_locks_after_max_failed_attempts(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-svc-lockout")
+    max_attempts = get_settings().login_max_failed_attempts
+
+    for _ in range(max_attempts - 1):
+        result = authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+        assert result.outcome == PasswordLoginOutcome.INVALID_CREDENTIALS
+    db_session.commit()
+
+    result = authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+    db_session.commit()
+    assert result.outcome == PasswordLoginOutcome.LOCKED
+    assert users["admin"].locked_until is not None
+
+
+def test_locked_account_rejects_even_the_correct_password(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-svc-lockout-correct-pw")
+    max_attempts = get_settings().login_max_failed_attempts
+    for _ in range(max_attempts):
+        authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+    db_session.commit()
+
+    result = authenticate_password(db_session, tenant.slug, users["admin"].email, TenantFactory.PASSWORD)
+
+    assert result.outcome == PasswordLoginOutcome.LOCKED
+
+
+def test_successful_login_resets_failed_attempt_counter(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-svc-lockout-reset")
+    authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+    db_session.commit()
+    assert users["admin"].failed_login_attempts == 1
+
+    result = authenticate_password(db_session, tenant.slug, users["admin"].email, TenantFactory.PASSWORD)
+
+    assert result.outcome == PasswordLoginOutcome.SUCCESS
+    assert users["admin"].failed_login_attempts == 0
+    assert users["admin"].locked_until is None
+
+
+def test_expired_lock_allows_login_again(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-svc-lockout-expired")
+    users["admin"].locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db_session.commit()
+
+    result = authenticate_password(db_session, tenant.slug, users["admin"].email, TenantFactory.PASSWORD)
+
+    assert result.outcome == PasswordLoginOutcome.SUCCESS
+
+
+def test_unlock_user_clears_lockout(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-svc-manual-unlock")
+    max_attempts = get_settings().login_max_failed_attempts
+    for _ in range(max_attempts):
+        authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+    db_session.commit()
+    assert users["admin"].locked_until is not None
+
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["admin"].id)[0]
+    unlocked = user_service.unlock_user(db_session, tenant.id, membership.id)
+    db_session.commit()
+
+    assert unlocked is not None
+    assert unlocked.failed_login_attempts == 0
+    assert unlocked.locked_until is None
+
+    result = authenticate_password(db_session, tenant.slug, users["admin"].email, TenantFactory.PASSWORD)
+    assert result.outcome == PasswordLoginOutcome.SUCCESS

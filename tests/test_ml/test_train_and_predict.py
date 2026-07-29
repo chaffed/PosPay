@@ -135,3 +135,93 @@ def test_retrain_job_skips_networks_below_threshold(db_session, tenant_factory, 
     # affect what workers.tasks already has bound to that name.
     monkeypatch.setattr(tasks_module, "get_session_factory", lambda: lambda: db_session)
     tasks_module.retrain_job()  # should complete without raising despite no active model / low data
+
+
+def test_retrain_cooldown_rejects_immediate_reretrain(db_session, tenant_factory):
+    from pospay.ml.train import RetrainCooldownActive, train_model
+
+    tenant, account, users = tenant_factory.make(slug="ml-cooldown", require_dual_control=False)
+    for i in range(12):
+        exception = _make_exception(db_session, tenant, account, users, f"93{i:02d}", "100.00", "999.00" if i % 2 == 0 else "888.00")
+        outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
+        _decide(db_session, tenant, users, exception, outcome)
+
+    train_model(db_session, "check")
+
+    with pytest.raises(RetrainCooldownActive):
+        train_model(db_session, "check")
+
+
+def test_retrain_cooldown_lifts_after_the_window_elapses(db_session, tenant_factory, monkeypatch):
+    from pospay.config import get_settings
+    from pospay.ml.train import train_model
+
+    monkeypatch.setattr(get_settings(), "ml_retrain_cooldown_seconds", 0)
+    tenant, account, users = tenant_factory.make(slug="ml-cooldown-lifted", require_dual_control=False)
+    for i in range(12):
+        exception = _make_exception(db_session, tenant, account, users, f"94{i:02d}", "100.00", "999.00" if i % 2 == 0 else "888.00")
+        outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
+        _decide(db_session, tenant, users, exception, outcome)
+
+    train_model(db_session, "check")
+    second = train_model(db_session, "check")  # cooldown is 0s, so this must succeed, not raise
+    assert second.model_row.version != None
+
+
+def test_retrain_job_continues_and_records_failure_after_unexpected_error(db_session, tenant_factory, monkeypatch):
+    import pospay.workers.tasks as tasks_module
+    from pospay.domain.ml_model import MlModel, MlModelStatus
+    from pospay.ml.model import LogisticRegressionScoringModel
+    from pospay.ml.registry import get_active_model_row
+    from pospay.services import account_service, customer_service
+    from sqlalchemy import select
+
+    tenant, account, users = tenant_factory.make(slug="ml-retrain-resilience")
+    customer = customer_service.create_customer(db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme"))
+    customer_account = account_service.create_account(
+        db_session, tenant.id, account_service.AccountInput(account_number="9999", name="Cust Acct", customer_id=customer.id)
+    )
+
+    # retrain_job()'s own per-scope gate (settings.ml_min_new_decisions_for_retrain,
+    # default 20) is stricter than train_model's internal minimum (10) — need enough of
+    # each so BOTH the global and the customer-scoped retrain actually get attempted.
+    for i in range(22):
+        exception = _make_exception(db_session, tenant, account, users, f"81{i:02d}", "100.00", "999.00" if i % 2 == 0 else "888.00")
+        outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
+        _decide(db_session, tenant, users, exception, outcome)
+    for i in range(22):
+        exception = _make_exception(db_session, tenant, customer_account, users, f"82{i:02d}", "100.00", "999.00" if i % 2 == 0 else "888.00")
+        outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
+        _decide(db_session, tenant, users, exception, outcome)
+
+    customer_id = customer.id  # captured before retrain_job's internal rollback expires/detaches this instance
+    monkeypatch.setattr(tasks_module, "get_session_factory", lambda: lambda: db_session)
+
+    call_count = {"n": 0}
+    real_fit = LogisticRegressionScoringModel.fit
+
+    def flaky_fit(self, X, y):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("simulated training crash")
+        return real_fit(self, X, y)
+
+    monkeypatch.setattr(LogisticRegressionScoringModel, "fit", flaky_fit)
+
+    tasks_module.retrain_job()  # must not raise despite the first fit() call failing
+
+    db_session.expire_all()
+    failed_rows = [
+        m
+        for m in db_session.execute(
+            select(MlModel).where(MlModel.network_code == "check", MlModel.customer_id.is_(None))
+        ).scalars().all()
+        if m.status == MlModelStatus.FAILED
+    ]
+    assert len(failed_rows) == 1
+    assert "simulated training crash" in failed_rows[0].metrics_json["error"]
+
+    # the customer's own retrain, later in the same loop iteration, still ran — proof
+    # the global failure didn't abort the rest of retrain_job().
+    customer_active = get_active_model_row(db_session, "check", customer_id)
+    assert customer_active is not None

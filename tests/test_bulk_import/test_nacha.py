@@ -7,6 +7,10 @@ import pytest
 
 from pospay.bulk_import.nacha import NachaParseError, parse_nacha_file, transaction_type_for_code
 
+_ENTRY_HASH_MODULUS = 10**10
+_CREDIT_CODES = {"22", "23", "24", "32", "33", "34"}
+_DEBIT_CODES = {"27", "28", "29", "37", "38", "39"}
+
 
 def _batch_header(*, company_name="ACME CORP", company_id="1234567890", sec_code="PPD", effective_date="260115") -> str:
     return (
@@ -29,6 +33,7 @@ def _batch_header(*, company_name="ACME CORP", company_id="1234567890", sec_code
 def _entry_detail(
     *,
     transaction_code="22",
+    receiving_dfi_id="12345678",
     dfi_account_number="000123456789",
     amount_cents="0000015000",
     individual_id="EMP001",
@@ -37,7 +42,7 @@ def _entry_detail(
     return (
         "6"
         + transaction_code
-        + "12345678"  # receiving DFI id, 8 chars
+        + receiving_dfi_id.rjust(8, "0")[:8]
         + "1"  # check digit
         + dfi_account_number.ljust(17)[:17]
         + amount_cents.rjust(10, "0")[:10]
@@ -49,16 +54,56 @@ def _entry_detail(
     )
 
 
-def _batch_control() -> str:
-    return "8" + " " * 93
+def _entry_spec(*, transaction_code="22", receiving_dfi_id="12345678", amount_cents="0000015000") -> dict:
+    """Tracks exactly what a matching _entry_detail(...) call needs for control-total
+    computation below, so a test never has to hand-calculate an entry hash or dollar
+    total — it's derived from the same values passed to _entry_detail."""
+    return {"transaction_code": transaction_code, "receiving_dfi_id": receiving_dfi_id, "amount_cents": int(amount_cents)}
+
+
+def _control_totals(entries: list[dict]) -> dict:
+    return {
+        "count": len(entries),
+        "hash": sum(int(e["receiving_dfi_id"]) for e in entries) % _ENTRY_HASH_MODULUS,
+        "debit": sum(e["amount_cents"] for e in entries if e["transaction_code"] in _DEBIT_CODES),
+        "credit": sum(e["amount_cents"] for e in entries if e["transaction_code"] in _CREDIT_CODES),
+    }
+
+
+def _batch_control(entries: list[dict], **overrides) -> str:
+    totals = {**_control_totals(entries), **overrides}
+    return (
+        "8"
+        + "200"
+        + str(totals["count"]).rjust(6, "0")
+        + str(totals["hash"]).rjust(10, "0")
+        + str(totals["debit"]).rjust(12, "0")
+        + str(totals["credit"]).rjust(12, "0")
+        + " " * 50
+    )
+
+
+def _file_control(entries: list[dict], **overrides) -> str:
+    totals = {**_control_totals(entries), **overrides}
+    return (
+        "9"
+        + "000001"
+        + "000001"
+        + str(totals["count"]).rjust(8, "0")
+        + str(totals["hash"]).rjust(10, "0")
+        + str(totals["debit"]).rjust(12, "0")
+        + str(totals["credit"]).rjust(12, "0")
+        + " " * 39
+    )
 
 
 def test_parses_single_batch_single_entry():
-    lines = [_batch_header(), _entry_detail(), _batch_control()]
-    entries = parse_nacha_file("\n".join(lines).encode("ascii"))
+    entries = [_entry_spec()]
+    lines = [_batch_header(), _entry_detail(), _batch_control(entries)]
+    entries_out = parse_nacha_file("\n".join(lines).encode("ascii"))
 
-    assert len(entries) == 1
-    entry = entries[0]
+    assert len(entries_out) == 1
+    entry = entries_out[0]
     assert entry.company_id == "1234567890"
     assert entry.company_name == "ACME CORP"
     assert entry.sec_code == "PPD"
@@ -71,11 +116,15 @@ def test_parses_single_batch_single_entry():
 
 
 def test_multiple_entries_share_the_same_batch_header_context():
+    specs = [
+        _entry_spec(),
+        _entry_spec(amount_cents="0000099999"),
+    ]
     lines = [
         _batch_header(company_id="9999999999"),
         _entry_detail(trace_number="000000000000001"),
         _entry_detail(trace_number="000000000000002", amount_cents="0000099999"),
-        _batch_control(),
+        _batch_control(specs),
     ]
     entries = parse_nacha_file("\n".join(lines).encode("ascii"))
 
@@ -87,13 +136,14 @@ def test_multiple_entries_share_the_same_batch_header_context():
 
 
 def test_multiple_batches_with_different_originators():
+    specs = [_entry_spec()]
     lines = [
         _batch_header(company_id="1111111111", company_name="FIRST CO"),
         _entry_detail(trace_number="000000000000001"),
-        _batch_control(),
+        _batch_control(specs),
         _batch_header(company_id="2222222222", company_name="SECOND CO"),
         _entry_detail(trace_number="000000000000002"),
-        _batch_control(),
+        _batch_control(specs),
     ]
     entries = parse_nacha_file("\n".join(lines).encode("ascii"))
 
@@ -109,7 +159,7 @@ def test_entry_before_any_batch_header_is_an_error():
 
 
 def test_missing_dfi_account_number_is_an_error():
-    lines = [_batch_header(), _entry_detail(dfi_account_number=""), _batch_control()]
+    lines = [_batch_header(), _entry_detail(dfi_account_number=""), _batch_control([_entry_spec()])]
     with pytest.raises(NachaParseError, match="no DFI account number"):
         parse_nacha_file("\n".join(lines).encode("ascii"))
 
@@ -120,7 +170,7 @@ def test_empty_file_with_no_entries_is_an_error():
 
 
 def test_invalid_effective_date_is_an_error():
-    lines = [_batch_header(effective_date="269999"), _entry_detail(), _batch_control()]
+    lines = [_batch_header(effective_date="269999"), _entry_detail(), _batch_control([_entry_spec()])]
     with pytest.raises(NachaParseError, match="invalid effective date"):
         parse_nacha_file("\n".join(lines).encode("ascii"))
 
@@ -136,8 +186,62 @@ def test_unrecognized_transaction_code_raises():
 
 
 def test_short_unpadded_lines_are_tolerated():
-    # A file header/control record we don't care about, deliberately short/malformed —
-    # lenient mode should still extract the entry detail correctly.
-    lines = ["1 short file header", _batch_header(), _entry_detail(), _batch_control(), "9 short file control"]
-    entries = parse_nacha_file("\n".join(lines).encode("ascii"))
-    assert len(entries) == 1
+    # A file header record we don't care about, deliberately short/malformed — lenient
+    # mode should still extract the entry detail correctly. (Batch/file control records
+    # ARE validated now, so this no longer uses a bogus type-9 filler line the way it
+    # once did — see test_file_control_* below for that coverage.)
+    entries = [_entry_spec()]
+    lines = ["1 short file header", _batch_header(), _entry_detail(), _batch_control(entries)]
+    parsed = parse_nacha_file("\n".join(lines).encode("ascii"))
+    assert len(parsed) == 1
+
+
+def test_correct_batch_control_totals_parse_cleanly():
+    entries = [_entry_spec(transaction_code="22", amount_cents="0000015000"), _entry_spec(transaction_code="27", amount_cents="0000005000")]
+    lines = [
+        _batch_header(),
+        _entry_detail(transaction_code="22", amount_cents="0000015000", trace_number="000000000000001"),
+        _entry_detail(transaction_code="27", amount_cents="0000005000", trace_number="000000000000002"),
+        _batch_control(entries),
+    ]
+    parsed = parse_nacha_file("\n".join(lines).encode("ascii"))
+    assert len(parsed) == 2
+
+
+@pytest.mark.parametrize("field,override", [("entry/addenda count", {"count": 99}), ("entry hash", {"hash": 1}), ("total debit amount", {"debit": 1}), ("total credit amount", {"credit": 1})])
+def test_batch_control_mismatch_raises(field, override):
+    entries = [_entry_spec(transaction_code="27")]
+    lines = [_batch_header(), _entry_detail(transaction_code="27"), _batch_control(entries, **override)]
+    with pytest.raises(NachaParseError, match=field):
+        parse_nacha_file("\n".join(lines).encode("ascii"))
+
+
+def test_correct_file_control_totals_parse_cleanly():
+    entries = [_entry_spec()]
+    lines = [_batch_header(), _entry_detail(), _batch_control(entries), _file_control(entries)]
+    parsed = parse_nacha_file("\n".join(lines).encode("ascii"))
+    assert len(parsed) == 1
+
+
+def test_file_control_totals_sum_across_multiple_batches():
+    spec_a = _entry_spec(transaction_code="22", amount_cents="0000010000")
+    spec_b = _entry_spec(transaction_code="27", amount_cents="0000002500")
+    lines = [
+        _batch_header(company_id="1111111111"),
+        _entry_detail(transaction_code="22", amount_cents="0000010000", trace_number="000000000000001"),
+        _batch_control([spec_a]),
+        _batch_header(company_id="2222222222"),
+        _entry_detail(transaction_code="27", amount_cents="0000002500", trace_number="000000000000002"),
+        _batch_control([spec_b]),
+        _file_control([spec_a, spec_b]),
+    ]
+    parsed = parse_nacha_file("\n".join(lines).encode("ascii"))
+    assert len(parsed) == 2
+
+
+@pytest.mark.parametrize("field,override", [("entry/addenda count", {"count": 99}), ("entry hash", {"hash": 1}), ("total debit amount", {"debit": 1}), ("total credit amount", {"credit": 1})])
+def test_file_control_mismatch_raises(field, override):
+    entries = [_entry_spec(transaction_code="27")]
+    lines = [_batch_header(), _entry_detail(transaction_code="27"), _batch_control(entries), _file_control(entries, **override)]
+    with pytest.raises(NachaParseError, match=field):
+        parse_nacha_file("\n".join(lines).encode("ascii"))

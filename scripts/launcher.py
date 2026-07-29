@@ -102,6 +102,10 @@ def _configure_run_env() -> None:
     run before the first `pospay.config.get_settings()` call anywhere (it's @lru_cache'd),
     so this is called before any `from pospay...` import."""
     RUN_DIR.mkdir(parents=True, exist_ok=True)
+    # Relaxes config.py::assert_production_safe's checks — this launcher is explicitly a
+    # local, single-user, SQLite-only tool (see the module docstring), so the checked-in
+    # dev/test signing keys and default SSO encryption key are fine here.
+    os.environ.setdefault("POSPAY_ENVIRONMENT", "development")
     os.environ.setdefault("POSPAY_DATABASE_URL", f"sqlite:///{RUN_DIR / 'pospay.db'}")
     os.environ.setdefault("POSPAY_CHECK_IMAGE_STORAGE_DIR", str(RUN_DIR / "check_images"))
     os.environ.setdefault("POSPAY_TENANT_ASSET_STORAGE_DIR", str(RUN_DIR / "tenant_assets"))

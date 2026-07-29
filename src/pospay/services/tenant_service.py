@@ -21,9 +21,10 @@ _ALLOWED_IMAGE_CONTENT_TYPES = {
 }
 
 
-class InvalidBrandingInput(ValueError):
-    """Raised for a malformed accent color or a disallowed image content-type — callers
-    turn this into a form error, never a 500."""
+class InvalidTenantSettingsInput(ValueError):
+    """Raised for any malformed tenant-settings form input — a bad accent color, a
+    disallowed image content-type, or an invalid session timeout — callers turn this
+    into a form error, never a 500."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,8 @@ class TenantBranding:
     has_logo: bool
     has_favicon: bool
     password_login_enabled: bool
+    access_token_expire_minutes: int | None
+    refresh_token_expire_minutes: int | None
 
 
 def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
@@ -53,6 +56,8 @@ def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
         has_logo=bool(tenant.logo_path),
         has_favicon=bool(tenant.favicon_path),
         password_login_enabled=tenant.password_login_enabled,
+        access_token_expire_minutes=tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
     )
 
 
@@ -80,13 +85,13 @@ def _validate_accent_color(accent_color: str | None) -> str | None:
     if not accent_color:
         return None
     if not _HEX_COLOR_RE.match(accent_color):
-        raise InvalidBrandingInput(f"{accent_color!r} is not a valid hex color — expected e.g. #2563eb")
+        raise InvalidTenantSettingsInput(f"{accent_color!r} is not a valid hex color — expected e.g. #2563eb")
     return accent_color
 
 
 def _validate_image(content_type: str) -> None:
     if content_type not in _ALLOWED_IMAGE_CONTENT_TYPES:
-        raise InvalidBrandingInput(f"Unsupported image type {content_type!r} — use PNG, JPEG, SVG, or ICO")
+        raise InvalidTenantSettingsInput(f"Unsupported image type {content_type!r} — use PNG, JPEG, SVG, or ICO")
 
 
 def update_tenant_branding(
@@ -101,7 +106,7 @@ def update_tenant_branding(
     """logo/favicon are (content_type, bytes) tuples, passed only when the admin actually
     picked a new file — omitting either leaves the existing one untouched, so re-saving
     the form just to change the color doesn't clobber an already-uploaded logo. Raises
-    InvalidBrandingInput on a malformed color or a disallowed image type; the route turns
+    InvalidTenantSettingsInput on a malformed color or a disallowed image type; the route turns
     that into a form error rather than a 500."""
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:
@@ -134,5 +139,29 @@ def set_require_dual_control(session: Session, tenant_id: uuid.UUID, enabled: bo
     if tenant is None:
         return None
     tenant.require_dual_control = enabled
+    session.flush()
+    return tenant
+
+
+def set_session_timeouts(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    access_token_expire_minutes: int | None,
+    refresh_token_expire_minutes: int | None,
+) -> Tenant | None:
+    """None means "use config.Settings.jwt_access/refresh_token_expire_minutes" (the
+    app-wide default) — see auth/security.py::create_token, which every login/refresh/
+    switch-tenant/WebAuthn-verify call site threads this through to. Raises
+    InvalidTenantSettingsInput if either value is given but isn't a positive integer."""
+    for label, value in (("access", access_token_expire_minutes), ("refresh", refresh_token_expire_minutes)):
+        if value is not None and value <= 0:
+            raise InvalidTenantSettingsInput(f"{label} token timeout must be a positive number of minutes")
+
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        return None
+    tenant.access_token_expire_minutes = access_token_expire_minutes
+    tenant.refresh_token_expire_minutes = refresh_token_expire_minutes
     session.flush()
     return tenant

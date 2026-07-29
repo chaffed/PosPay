@@ -2,8 +2,8 @@
 # Copyright (C) 2026 Chaffed
 
 from pospay.domain.check_image import CheckImage
-from pospay.repositories.base import TenantScopedRepository
+from pospay.repositories.base import CustomerScopedRepository
 
 
-class CheckImageRepository(TenantScopedRepository[CheckImage]):
+class CheckImageRepository(CustomerScopedRepository[CheckImage]):
     model = CheckImage

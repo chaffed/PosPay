@@ -20,20 +20,25 @@ def record_uploaded_file(
     content_type: str | None,
     data: bytes,
     uploaded_by_user_id: uuid.UUID,
+    customer_id: uuid.UUID | None = None,
 ) -> BulkUploadFile:
     """Called immediately after reading an uploaded bulk file, before parsing — so a
     rejected/malformed file is still captured for audit purposes, not just successful
     ones. succeeded_count/failed_count start out unset; the caller fills them in
-    afterward via set_result_counts once parsing has actually produced row results."""
-    repo = BulkUploadFileRepository(session, tenant_id)
+    afterward via set_result_counts once parsing has actually produced row results.
+    `customer_id` is the uploader's own scope at upload time (None = tenant-wide staff,
+    whose file could legitimately span several customers) — see
+    domain/bulk_upload_file.py."""
+    repo = BulkUploadFileRepository(session, tenant_id, customer_id)
     record = BulkUploadFile(
+        customer_id=customer_id,
         kind=kind,
         original_filename=filename,
         content_type=content_type,
         storage_path="",
         size_bytes=len(data),
         sha256_hex=content_hash(data),
-        hmac_signature_hex=sign_file(data),
+        signature_hex=sign_file(data),
         uploaded_by_user_id=uploaded_by_user_id,
     )
     repo.add(record)
@@ -50,17 +55,21 @@ def set_result_counts(session: Session, record: BulkUploadFile, *, succeeded_cou
     session.flush()
 
 
-def get_uploaded_file(session: Session, tenant_id: uuid.UUID, upload_id: uuid.UUID) -> BulkUploadFile | None:
-    return BulkUploadFileRepository(session, tenant_id).get(upload_id)
+def get_uploaded_file(
+    session: Session, tenant_id: uuid.UUID, upload_id: uuid.UUID, customer_id: uuid.UUID | None = None
+) -> BulkUploadFile | None:
+    return BulkUploadFileRepository(session, tenant_id, customer_id).get(upload_id)
 
 
-def verify_uploaded_file(session: Session, tenant_id: uuid.UUID, upload_id: uuid.UUID) -> bool | None:
-    """Re-reads the file from disk RIGHT NOW and recomputes/compares both the hash and
-    HMAC against what was stored at upload time — this is what actually proves nothing
-    has changed since upload, as opposed to just checking the stored values are
+def verify_uploaded_file(
+    session: Session, tenant_id: uuid.UUID, upload_id: uuid.UUID, customer_id: uuid.UUID | None = None
+) -> bool | None:
+    """Re-reads the file from disk RIGHT NOW and recomputes/verifies both the hash and
+    signature against what was stored at upload time — this is what actually proves
+    nothing has changed since upload, as opposed to just checking the stored values are
     internally consistent with each other. Returns None if the record doesn't exist."""
-    record = get_uploaded_file(session, tenant_id, upload_id)
+    record = get_uploaded_file(session, tenant_id, upload_id, customer_id)
     if record is None:
         return None
     data = read_uploaded_file(record.storage_path)
-    return content_hash(data) == record.sha256_hex and verify_signature(data, record.hmac_signature_hex)
+    return content_hash(data) == record.sha256_hex and verify_signature(data, record.signature_hex)

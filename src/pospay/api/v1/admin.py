@@ -12,7 +12,7 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.ml_model import MlModel
 from pospay.ml.registry import activate_model
-from pospay.ml.train import InsufficientTrainingData, train_model
+from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
 from pospay.schemas.ml_model import MlModelRead, RetrainResponse
 
@@ -39,7 +39,7 @@ def retrain(
 ) -> RetrainResponse:
     try:
         result = train_model(db, network_code)
-    except InsufficientTrainingData as exc:
+    except (InsufficientTrainingData, RetrainCooldownActive) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
 
     return RetrainResponse(
@@ -70,7 +70,7 @@ def activate_ml_model(
     ctx: TenantContext = Depends(require_permission("admin:manage")),
 ) -> MlModelRead:
     try:
-        model = activate_model(db, model_id)
+        model = activate_model(db, model_id, expected_customer_id=None)
     except ValueError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from None
     db.commit()

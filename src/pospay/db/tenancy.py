@@ -38,3 +38,13 @@ class TenantContext:
     has_favicon: bool
     customer_id: uuid.UUID | None
     customer_name: str | None
+
+    # Per-tenant session-length override (services/tenant_service.py::set_session_timeouts)
+    # — None means "use config.Settings.jwt_access/refresh_token_expire_minutes", the same
+    # value most tests that construct a TenantContext directly want, hence the default
+    # (unlike every field above, which has none, deliberately, and must be passed
+    # explicitly). Resolved the same way branding is, from the same Tenant lookup
+    # decode_and_build_context already does — see auth/security.py::create_token's
+    # access_token_expire_minutes/refresh_token_expire_minutes params.
+    access_token_expire_minutes: int | None = None
+    refresh_token_expire_minutes: int | None = None

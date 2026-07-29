@@ -31,7 +31,10 @@
         <td>{{ row.user.email }}</td>
         <td>{{ row.security_group_name }}</td>
         <td>{{ row.customer_name or "bank-wide" }}</td>
-        <td><span class="badge {{ 'badge-ok' if row.membership.is_active else 'badge-danger' }}">{{ 'active' if row.membership.is_active else 'deactivated' }}</span></td>
+        <td>
+          <span class="badge {{ 'badge-ok' if row.membership.is_active else 'badge-danger' }}">{{ 'active' if row.membership.is_active else 'deactivated' }}</span>
+          {% if row.user.locked_until %}<span class="badge badge-danger">locked</span>{% endif %}
+        </td>
         <td>
           <a href="/ui/users/{{ row.membership.id }}/edit">Edit</a>
           {% if row.membership.is_active %}
@@ -43,6 +46,12 @@
           <form method="post" action="/ui/users/{{ row.membership.id }}/reactivate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="link-button">Reactivate</button>
+          </form>
+          {% endif %}
+          {% if row.user.locked_until %}
+          <form method="post" action="/ui/users/{{ row.membership.id }}/unlock" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">Unlock</button>
           </form>
           {% endif %}
         </td>

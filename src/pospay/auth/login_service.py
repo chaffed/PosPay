@@ -3,16 +3,27 @@
 
 import enum
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pospay.auth.security import verify_password
 from pospay.auth.webauthn_service import user_has_webauthn_credentials
+from pospay.config import Settings, get_settings
 from pospay.domain.customer import Customer
 from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
+
+
+def _as_utc(dt: datetime) -> datetime:
+    # SQLite drops tzinfo on reload (same caveat audit_log_service.py::_normalize_datetime
+    # and ml/train.py::_seconds_since document) — a naive value here is always
+    # already-UTC by construction (see User.locked_until).
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +50,11 @@ class PasswordLoginOutcome(str, enum.Enum):
     # SSO — see Tenant.password_login_enabled / Customer.password_login_enabled and
     # services/sso_service.py's lockout-guarded toggle for that setting.
     SSO_REQUIRED = "sso_required"
+    # Threshold reached (config.Settings.login_max_failed_attempts) — locked until
+    # User.locked_until, regardless of whether THIS attempt's password was even correct;
+    # a correct password on an already-locked account still must not succeed, or the
+    # lockout would be pointless once an attacker's Nth guess happens to land.
+    LOCKED = "locked"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,20 +63,49 @@ class PasswordLoginResult:
     identity: AuthenticatedIdentity | None = None
 
 
-def authenticate_password(session: Session, tenant_slug: str, email: str, password: str) -> PasswordLoginResult:
+def authenticate_password(
+    session: Session, tenant_slug: str, email: str, password: str, *, settings: Settings | None = None
+) -> PasswordLoginResult:
     """Shared by the JSON API (api/v1/auth.py) and the web login form
     (web/routers/auth.py) so credential-checking logic exists in exactly one place.
 
     `email` resolves a User globally now (see domain/user.py) rather than within this one
     tenant — the same identity can hold a TenantMembership (and therefore log in) in more
-    than one tenant, each with its own security group."""
+    than one tenant, each with its own security group.
+
+    Account lockout is tracked on User (global to the identity, not per-tenant — a brute
+    force targets this one password regardless of which tenant the attempt is against;
+    see domain/user.py). This function only flushes, never commits — callers
+    (web/routers/auth.py::login_submit, api/v1/auth.py::login) must each commit right
+    after calling this, or a failed attempt's counter increment is silently lost when the
+    request's session closes."""
+    settings = settings or get_settings()
     tenant = session.execute(select(Tenant).where(Tenant.slug == tenant_slug)).scalar_one_or_none()
     if tenant is None or not tenant.is_active:
         return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)
 
     user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
-    if user is None or not user.is_active or not verify_password(password, user.hashed_password):
+    if user is None or not user.is_active:
         return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)
+
+    if user.locked_until is not None and _as_utc(user.locked_until) > datetime.now(timezone.utc):
+        return PasswordLoginResult(PasswordLoginOutcome.LOCKED)
+
+    if not verify_password(password, user.hashed_password):
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= settings.login_max_failed_attempts:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.login_lockout_minutes)
+            session.flush()
+            return PasswordLoginResult(PasswordLoginOutcome.LOCKED)
+        session.flush()
+        return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)
+
+    # Correct password proves the brute force didn't work, regardless of whether the
+    # login ultimately succeeds or hits SSO_REQUIRED below.
+    if user.failed_login_attempts or user.locked_until is not None:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        session.flush()
 
     # A user can now hold several memberships in the same tenant (one per customer, or a
     # tenant-wide one plus per-customer overrides — domain/tenant_membership.py), so this

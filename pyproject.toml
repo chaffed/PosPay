@@ -13,6 +13,7 @@ dependencies = [
   "pydantic-settings>=2.3",
   "email-validator>=2.1",
   "pyjwt>=2.8",
+  "cryptography>=42.0",
   "bcrypt>=4.1",
   "webauthn>=3.0",
   "jinja2>=3.1",

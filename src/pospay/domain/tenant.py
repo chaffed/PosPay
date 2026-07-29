@@ -22,6 +22,12 @@ class Tenant(Base):
     # every other tenant-level toggle.
     password_login_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     stale_date_threshold_days: Mapped[int] = mapped_column(Integer, nullable=False, default=180)
+    # Nullable = "use the app's global default" (config.Settings.jwt_access/refresh_
+    # token_expire_minutes) — see auth/security.py::create_token and
+    # services/tenant_service.py::set_session_timeouts. Doesn't affect the short-lived
+    # mfa_pending token, which stays fixed regardless of tenant.
+    access_token_expire_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    refresh_token_expire_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

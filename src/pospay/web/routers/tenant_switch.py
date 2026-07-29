@@ -80,6 +80,8 @@ def switch_tenant(
         security_group_id=target.membership.security_group_id,
         customer_id=target.membership.customer_id,
         token_type="access",
+        access_token_expire_minutes=target.tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=target.tenant.refresh_token_expire_minutes,
     )
     refresh_token = create_token(
         user_id=ctx.user_id,
@@ -87,6 +89,8 @@ def switch_tenant(
         security_group_id=target.membership.security_group_id,
         customer_id=target.membership.customer_id,
         token_type="refresh",
+        access_token_expire_minutes=target.tenant.access_token_expire_minutes,
+        refresh_token_expire_minutes=target.tenant.refresh_token_expire_minutes,
     )
     response = RedirectResponse("/ui/", status_code=303)
     set_access_cookie(response, access_token)

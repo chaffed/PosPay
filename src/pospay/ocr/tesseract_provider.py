@@ -9,6 +9,7 @@ import pytesseract
 from PIL import Image
 from pytesseract import Output
 
+from pospay.config import get_settings
 from pospay.ocr.base import OCRResult
 from pospay.ocr.preprocessing import preprocess_for_ocr
 
@@ -30,8 +31,12 @@ class TesseractOCRProvider:
         processed_bytes = preprocess_for_ocr(image_bytes)
         image = Image.open(io.BytesIO(processed_bytes))
 
-        raw_text = pytesseract.image_to_string(image)
-        word_data = pytesseract.image_to_data(image, output_type=Output.DICT)
+        # A pathological/adversarial image can otherwise make the tesseract subprocess
+        # hang indefinitely — pytesseract raises a plain RuntimeError on timeout, already
+        # caught by networks/check/ocr_processing.py's existing broad exception handler.
+        timeout = get_settings().ocr_timeout_seconds
+        raw_text = pytesseract.image_to_string(image, timeout=timeout)
+        word_data = pytesseract.image_to_data(image, output_type=Output.DICT, timeout=timeout)
 
         confidences = [float(c) for c in word_data.get("conf", []) if c not in ("-1", -1) and float(c) >= 0]
         confidence = (sum(confidences) / len(confidences) / 100.0) if confidences else 0.0

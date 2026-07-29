@@ -85,6 +85,37 @@ def test_deactivate_and_reactivate_user(client, db_session, tenant_factory):
     assert resp.status_code == 303
 
 
+def test_unlock_button_shown_only_for_locked_users_and_clears_lockout(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-unlock")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
+
+    membership = TenantMembershipRepository(db_session, tenant.id).list(user_id=users["viewer"].id)[0]
+
+    list_page = client.get("/ui/users")
+    assert f"/ui/users/{membership.id}/unlock" not in list_page.text
+
+    user_service.unlock_user(db_session, tenant.id, membership.id)  # sanity: no-op on an unlocked user
+    users["viewer"].failed_login_attempts = 5
+    from datetime import datetime, timedelta, timezone
+
+    users["viewer"].locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+    db_session.commit()
+
+    list_page = client.get("/ui/users")
+    assert f"/ui/users/{membership.id}/unlock" in list_page.text
+
+    resp = client.post(f"/ui/users/{membership.id}/unlock", data={"csrf_token": csrf}, follow_redirects=False)
+    assert resp.status_code == 303
+
+    db_session.expire_all()
+    assert users["viewer"].locked_until is None
+    assert users["viewer"].failed_login_attempts == 0
+
+    list_page = client.get("/ui/users")
+    assert f"/ui/users/{membership.id}/unlock" not in list_page.text
+
+
 def test_bulk_upload_users_csv(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-users-bulk-csv")
     tenant_other, _account_other, users_other = tenant_factory.make(slug="web-users-bulk-csv-other")
@@ -163,6 +194,30 @@ def test_export_json_contains_expected_rows(client, tenant_factory):
     assert admin_row["security_group"] == "Admin"
     assert admin_row["customer"] == "bank-wide"
     assert admin_row["status"] == "active"
+
+
+def test_export_csv_neutralizes_formula_injection_but_json_export_is_unaffected(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-users-export-csv-injection")
+    _login(client, tenant.slug, users["admin"].email)
+
+    group = security_group_service.create_security_group(
+        db_session, tenant.id, security_group_service.SecurityGroupInput(name="=1+1", permissions=[])
+    )
+    user_service.add_user(db_session, tenant.id, email="injection-test@example.com", password="hunter2-hunter2", security_group_id=group.id)
+    db_session.commit()
+
+    import csv
+    import io
+
+    csv_resp = client.get("/ui/users/export.csv")
+    rows = list(csv.DictReader(io.StringIO(csv_resp.text)))
+    injected_row = next(row for row in rows if row["email"] == "injection-test@example.com")
+    assert injected_row["security_group"] == "'=1+1"
+
+    json_resp = client.get("/ui/users/export.json")
+    body = json_resp.json()
+    injected_json_row = next(row for row in body if row["email"] == "injection-test@example.com")
+    assert injected_json_row["security_group"] == "=1+1"
 
 
 def test_export_reflects_deactivated_status(client, db_session, tenant_factory):

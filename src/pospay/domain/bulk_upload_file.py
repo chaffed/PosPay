@@ -24,14 +24,19 @@ class BulkUploadFile(Base):
     see services/bulk_upload_file_service.py), kept for audit purposes even when the file
     is rejected outright: a malformed submission is still evidence of what was actually
     sent. `sha256_hex` is a plain content fingerprint anyone can quote independently;
-    `hmac_signature_hex` is the actual tamper-evidence, computed with a server-held secret
-    (bulk_import/signing.py) — re-verified against the file on disk on demand, not just
-    trusted as a stored flag."""
+    `signature_hex` is the actual tamper-evidence, an ECDSA-P256/SHA256 signature computed
+    with a server-held private key (bulk_import/signing.py) — re-verified against the
+    file on disk on demand, not just trusted as a stored flag."""
 
     __tablename__ = "bulk_upload_file"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=new_uuid)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id"), nullable=False, index=True)
+    # NULL = the uploader was tenant-wide staff (a single file can legitimately span
+    # several customers, e.g. a bank-wide admin's CSV); a real value means it was
+    # uploaded within that one customer's scope — set from the uploader's own
+    # ctx.customer_id at upload time (services/bulk_upload_file_service.py).
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
     kind: Mapped[BulkUploadKind] = mapped_column(Enum(BulkUploadKind, name="bulk_upload_kind", native_enum=False, length=20), nullable=False)
 
     original_filename: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -39,7 +44,9 @@ class BulkUploadFile(Base):
     storage_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256_hex: Mapped[str] = mapped_column(String(64), nullable=False)
-    hmac_signature_hex: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Widened from String(64) (an HMAC-SHA256 hex digest) to fit a hex-encoded ECDSA
+    # P-256 DER signature, which can run up to ~144 hex chars.
+    signature_hex: Mapped[str] = mapped_column(String(200), nullable=False)
 
     succeeded_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     failed_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

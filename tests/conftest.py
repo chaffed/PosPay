@@ -1,6 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import os
+
+# Relaxes config.py::assert_production_safe's checks so the test suite can use the
+# checked-in dev_keys/ signing keys and default SSO encryption key — set before any
+# pospay import (mirrors scripts/launcher.py::_configure_run_env's own documented
+# "before any `from pospay...` import" pattern, since Settings is @lru_cache'd).
+# "development" (not a separate "test" value — config.Settings.environment only
+# distinguishes production from everything else).
+os.environ.setdefault("POSPAY_ENVIRONMENT", "development")
+
 import uuid
 from collections.abc import Generator
 

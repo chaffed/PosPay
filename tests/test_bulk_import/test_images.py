@@ -77,3 +77,22 @@ def test_back_image_must_also_be_a_supported_format():
     front_data = _encode("PNG")
     with pytest.raises(UnsupportedImageError):
         normalize_and_split_image(front_data, "check.png", back_data=b"garbage")
+
+
+def test_decompression_bomb_is_rejected_with_a_clean_message(monkeypatch):
+    # Lower Pillow's own default guard so an otherwise-ordinary image trips it, proving
+    # normalize_and_split_image converts Image.DecompressionBombError into the same
+    # UnsupportedImageError shape as every other rejection, rather than a raw Pillow
+    # exception escaping.
+    data = _encode("PNG", size=(200, 200))
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+    with pytest.raises(UnsupportedImageError, match="too large to process safely"):
+        normalize_and_split_image(data, "check.png")
+
+
+def test_decompression_bomb_on_back_image_is_rejected_with_a_clean_message(monkeypatch):
+    front_data = _encode("PNG", size=(5, 5))  # stays under the lowered threshold below
+    back_data = _encode("PNG", size=(200, 200))
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+    with pytest.raises(UnsupportedImageError, match="back image is too large to process safely"):
+        normalize_and_split_image(front_data, "check.png", back_data=back_data)

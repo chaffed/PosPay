@@ -58,3 +58,26 @@ def test_find_image_returns_none_when_absent():
     content = _make_zip({"manifest.csv": "a,b\n1,2\n".encode()})
     _rows, images = parse_zip_manifest(content)
     assert find_image(images, "does-not-exist.tif") is None
+
+
+def test_oversized_declared_uncompressed_size_is_rejected_before_reading_entries(monkeypatch):
+    from pospay.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "max_zip_uncompressed_bytes", 10)  # smaller than the content below
+    content = _make_zip(
+        {
+            "manifest.csv": "account_number,check_number\n1001,5001\n".encode(),
+            "images/check5001.tif": b"fake-tiff-bytes",
+        }
+    )
+    with pytest.raises(ZipImportError, match="decompress to"):
+        parse_zip_manifest(content)
+
+
+def test_uncompressed_size_within_the_cap_still_parses(monkeypatch):
+    from pospay.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "max_zip_uncompressed_bytes", 10_000)
+    content = _make_zip({"manifest.csv": "account_number,check_number\n1001,5001\n".encode()})
+    rows, _images = parse_zip_manifest(content)
+    assert rows == [{"account_number": "1001", "check_number": "5001"}]

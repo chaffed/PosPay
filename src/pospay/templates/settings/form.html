@@ -9,6 +9,9 @@
 <p>Dual control (maker/checker) means a different person must make the final pay/return
   decision than the one who recommended it — takes effect immediately for every
   exception, no re-login needed.</p>
+<p>Session timeout controls how long a signed-in session lasts before requiring a fresh
+  login (access token) or a full re-authentication (refresh token). Leave a field blank
+  to use the platform default; changes only apply to sessions started after saving.</p>
 {% endblock %}
 {% block content %}
 <div class="card card-narrow">
@@ -31,6 +34,21 @@
       <input type="file" name="favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml">
     </label>
 
+    <button type="submit">Save</button>
+  </form>
+
+  <form method="post" action="/ui/settings/session-timeout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Access token timeout (minutes)
+      <input type="number" name="access_token_expire_minutes" min="1" step="1"
+             value="{{ access_token_expire_minutes if access_token_expire_minutes is not none else '' }}"
+             placeholder="Default: {{ default_access_token_expire_minutes }}">
+    </label>
+    <label>Refresh token timeout (minutes)
+      <input type="number" name="refresh_token_expire_minutes" min="1" step="1"
+             value="{{ refresh_token_expire_minutes if refresh_token_expire_minutes is not none else '' }}"
+             placeholder="Default: {{ default_refresh_token_expire_minutes }}">
+    </label>
     <button type="submit">Save</button>
   </form>
 
