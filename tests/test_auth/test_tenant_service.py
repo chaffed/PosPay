@@ -7,6 +7,7 @@ from pospay.services.tenant_service import (
     InvalidTenantSettingsInput,
     get_tenant_branding_by_id,
     get_tenant_branding_by_slug,
+    set_data_export_timeout,
     set_session_timeouts,
     update_tenant_branding,
 )
@@ -121,3 +122,30 @@ def test_set_session_timeouts_rejects_non_positive_value(db_session, tenant_fact
 
     with pytest.raises(InvalidTenantSettingsInput):
         set_session_timeouts(db_session, tenant.id, access_token_expire_minutes=0, refresh_token_expire_minutes=None)
+
+
+def test_set_data_export_timeout_persists_override(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-export-timeout-set")
+
+    updated = set_data_export_timeout(db_session, tenant.id, timeout_seconds=900)
+    db_session.commit()
+
+    assert updated.data_export_timeout_seconds == 900
+
+
+def test_set_data_export_timeout_none_resets_to_global_default(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-export-timeout-reset")
+    set_data_export_timeout(db_session, tenant.id, timeout_seconds=900)
+    db_session.commit()
+
+    updated = set_data_export_timeout(db_session, tenant.id, timeout_seconds=None)
+    db_session.commit()
+
+    assert updated.data_export_timeout_seconds is None
+
+
+def test_set_data_export_timeout_rejects_non_positive_value(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-export-timeout-bad")
+
+    with pytest.raises(InvalidTenantSettingsInput):
+        set_data_export_timeout(db_session, tenant.id, timeout_seconds=0)

@@ -26,10 +26,12 @@
         <a href="/ui/ach/authorizations">ACH Authorizations</a>
         <a href="/ui/ach/transactions">ACH Transactions</a>
         <a href="/ui/exceptions">Exceptions</a>
+        {% if ctx.customer_id is not none and can(ctx, "wsud:sign") %}<a href="/ui/wsud">Unauthorized Debit Statement</a>{% endif %}
         {% if can(ctx, "customer:manage") %}<a href="/ui/customers">Customers</a>{% endif %}
         {% if can(ctx, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
         {% if can(ctx, "user:manage") %}<a href="/ui/users">Users</a>{% endif %}
         {% if can(ctx, "security_group:manage") %}<a href="/ui/security-groups">Security Groups</a>{% endif %}
+        {% if can(ctx, "ach_return_reason:manage") %}<a href="/ui/ach-return-reasons">ACH Return Reasons</a>{% endif %}
         {% if can(ctx, "tenant:manage") %}<a href="/ui/wizard/bank">Getting Started</a>{% endif %}
         {% if can(ctx, "tenant:manage") %}<a href="/ui/settings">Settings</a>{% endif %}
         {% if can(ctx, "audit_log:read") %}<a href="/ui/audit-log">Audit Log</a>{% endif %}

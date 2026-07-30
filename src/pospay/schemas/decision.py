@@ -11,14 +11,19 @@ from pospay.domain.decision import DecisionOutcome
 
 class RecommendRequest(BaseModel):
     outcome: DecisionOutcome
-    reason_code: str
+    # Optional at this layer: required only for an ACH exception recommended as RETURN,
+    # enforced in services/decision_service.py — every other network/outcome combination
+    # still needs reason_code below instead, exactly as before this field existed.
+    reason_code: str = ""
     notes: str | None = None
+    ach_return_reason_id: uuid.UUID | None = None
 
 
 class DecideRequest(BaseModel):
     outcome: DecisionOutcome
-    reason_code: str
+    reason_code: str = ""
     notes: str | None = None
+    ach_return_reason_id: uuid.UUID | None = None
 
 
 class DecisionRead(BaseModel):
@@ -28,6 +33,7 @@ class DecisionRead(BaseModel):
     exception_item_id: uuid.UUID
     outcome: DecisionOutcome
     reason_code: str
+    return_transaction_code: str | None
     notes: str | None
     submitted_by_user_id: uuid.UUID | None
     decided_by_user_id: uuid.UUID

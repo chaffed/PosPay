@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit" if reason else "New" }} ACH Return Reason — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About this form{% endblock %}
+{% block help_body %}
+<p>The transaction code is your own core banking system's posting code for the
+  reversal — optional, since not every bank tracks one, but the reason text itself is
+  always required.</p>
+{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>{{ "Edit" if reason else "New" }} ACH return reason</h1>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ '/ui/ach-return-reasons/' ~ reason.id if reason else '/ui/ach-return-reasons' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Reason text
+      <input type="text" name="reason_text" value="{{ reason_text if reason_text is defined else (reason.reason_text if reason else '') }}" required autofocus>
+    </label>
+    <label>Transaction code (optional — your core system's posting code)
+      <input type="text" name="transaction_code" value="{{ transaction_code if transaction_code is defined else (reason.transaction_code or '' if reason else '') }}">
+    </label>
+    <button type="submit">{{ "Save" if reason else "Create" }}</button>
+  </form>
+</div>
+{% endblock %}

@@ -22,10 +22,10 @@
   <p>This exception was withdrawn because its underlying item was backed out via a bulk upload reversal.</p>
   {% endif %}
   {% if item.recommended_outcome %}
-  <p>Recommended: <strong>{{ item.recommended_outcome }}</strong> ({{ item.recommended_reason_code }}){% if item.recommended_notes %} — {{ item.recommended_notes }}{% endif %}</p>
+  <p>Recommended: <strong>{{ item.recommended_outcome }}</strong> ({{ item.recommended_reason_code }}{% if item.recommended_return_transaction_code %}, trancode {{ item.recommended_return_transaction_code }}{% endif %}){% if item.recommended_notes %} — {{ item.recommended_notes }}{% endif %}</p>
   {% endif %}
   {% if decision %}
-  <p>Decision: <strong>{{ decision.outcome.value }}</strong> ({{ decision.reason_code }}){% if decision.notes %} — {{ decision.notes }}{% endif %}, decided {{ decision.decided_at.strftime("%Y-%m-%d %H:%M") }}</p>
+  <p>Decision: <strong>{{ decision.outcome.value }}</strong> ({{ decision.reason_code }}{% if decision.return_transaction_code %}, trancode {{ decision.return_transaction_code }}{% endif %}){% if decision.notes %} — {{ decision.notes }}{% endif %}, decided {{ decision.decided_at.strftime("%Y-%m-%d %H:%M") }}</p>
   {% endif %}
 </div>
 
@@ -42,7 +42,19 @@
         <option value="return">Return</option>
       </select>
     </label>
+    {% if item.network_code == "ach" %}
+    <label>Return reason (required to return an ACH item — replaces freeform text below)
+      <select name="ach_return_reason_id">
+        <option value="">— select if returning —</option>
+        {% for reason in ach_return_reasons %}
+        <option value="{{ reason.id }}">{{ reason.reason_text }}{% if reason.transaction_code %} (trancode {{ reason.transaction_code }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Reason code (used only for Pay) <input type="text" name="reason_code"></label>
+    {% else %}
     <label>Reason code <input type="text" name="reason_code" required></label>
+    {% endif %}
     <label>Notes <input type="text" name="notes"></label>
     <button type="submit">Submit recommendation</button>
   </form>
@@ -60,7 +72,19 @@
         <option value="return">Return</option>
       </select>
     </label>
+    {% if item.network_code == "ach" %}
+    <label>Return reason (required to return an ACH item — replaces freeform text below)
+      <select name="ach_return_reason_id">
+        <option value="">— select if returning —</option>
+        {% for reason in ach_return_reasons %}
+        <option value="{{ reason.id }}">{{ reason.reason_text }}{% if reason.transaction_code %} (trancode {{ reason.transaction_code }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Reason code (used only for Pay) <input type="text" name="reason_code"></label>
+    {% else %}
     <label>Reason code <input type="text" name="reason_code" required></label>
+    {% endif %}
     <label>Notes <input type="text" name="notes"></label>
     <button type="submit">Submit decision</button>
   </form>

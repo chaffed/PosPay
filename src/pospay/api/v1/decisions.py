@@ -21,6 +21,8 @@ _ERROR_STATUS = {
     DecisionError.ALREADY_DECIDED: status.HTTP_409_CONFLICT,
     DecisionError.RECOMMENDATION_REQUIRED: status.HTTP_409_CONFLICT,
     DecisionError.MAKER_CANNOT_APPROVE_OWN_RECOMMENDATION: status.HTTP_403_FORBIDDEN,
+    DecisionError.RETURN_REASON_REQUIRED: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    DecisionError.INVALID_RETURN_REASON: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
 
@@ -39,6 +41,7 @@ def recommend_decision(
         outcome=payload.outcome,
         reason_code=payload.reason_code,
         notes=payload.notes,
+        ach_return_reason_id=payload.ach_return_reason_id,
     )
     if result.error is not None:
         raise HTTPException(_ERROR_STATUS[result.error], result.error.value)
@@ -71,6 +74,7 @@ def decide_exception(
         outcome=payload.outcome,
         reason_code=payload.reason_code,
         notes=payload.notes,
+        ach_return_reason_id=payload.ach_return_reason_id,
     )
     if result.error is not None:
         raise HTTPException(_ERROR_STATUS[result.error], result.error.value)

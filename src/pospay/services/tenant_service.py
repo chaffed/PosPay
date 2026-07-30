@@ -165,3 +165,19 @@ def set_session_timeouts(
     tenant.refresh_token_expire_minutes = refresh_token_expire_minutes
     session.flush()
     return tenant
+
+
+def set_data_export_timeout(session: Session, tenant_id: uuid.UUID, *, timeout_seconds: int | None) -> Tenant | None:
+    """None means "use config.Settings.data_export_timeout_seconds" (the app-wide
+    default) — see services/data_export_service.py::run_export_job, which resolves this
+    before starting the background archive-building job. Raises
+    InvalidTenantSettingsInput if given but not a positive integer."""
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise InvalidTenantSettingsInput("Data export timeout must be a positive number of seconds")
+
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        return None
+    tenant.data_export_timeout_seconds = timeout_seconds
+    session.flush()
+    return tenant

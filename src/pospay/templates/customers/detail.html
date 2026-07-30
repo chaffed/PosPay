@@ -91,6 +91,17 @@
 </div>
 {% endif %}
 
+{% if can(ctx, "wsud:read") %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Unauthorized Debit Statements</h1>
+    <a href="/ui/customers/{{ customer.id }}/wsud" class="button secondary">View</a>
+  </div>
+  <p>Written Statements of Unauthorized Debit this customer has signed, self-service,
+    covering their own returned ACH transactions.</p>
+</div>
+{% endif %}
+
 {% if ml_summary is not none %}
 <div class="card">
   <div class="toolbar">

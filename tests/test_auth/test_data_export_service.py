@@ -7,13 +7,23 @@ import zipfile
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from pospay.auth.permissions import PERMISSION_CATALOG
 from pospay.bulk_import.file_storage import save_uploaded_file
+from pospay.config import get_settings
 from pospay.domain.bulk_upload_file import BulkUploadFile, BulkUploadKind
 from pospay.domain.data_export_job import DataExportJobStatus
 from pospay.networks.check.ingestion import PaidItemSubmission, ingest_paid_item
 from pospay.networks.check.ocr_processing import create_check_image
-from pospay.services import account_service, customer_service, data_export_service, issued_item_service, security_group_service
+from pospay.services import (
+    account_service,
+    customer_service,
+    data_export_service,
+    issued_item_service,
+    security_group_service,
+    tenant_service,
+)
 
 
 def test_data_export_permission_is_not_in_default_admin_group(db_session, tenant_factory):
@@ -222,3 +232,146 @@ def test_failed_export_marks_job_failed_with_error_message(db_session, tenant_fa
     job = db_session.get(type(job), job.id)
     assert job.status == DataExportJobStatus.FAILED
     assert "disk full" in job.error_message
+
+
+def test_no_exporter_ever_emits_a_secret_column(db_session, tenant_factory):
+    """Tripwire against ANY exporter (today's or a future one) leaking a secret
+    column — not just users.json/sso_connections.json, which
+    test_export_never_includes_secret_columns above already checks by name. Walks every
+    data/*.json file in a rich, fully-populated tenant-wide export and asserts none of
+    _SECRET_COLUMNS appears as a key anywhere in it."""
+    from pospay.domain.sso_connection import SsoProvider
+    from pospay.services import sso_service
+    from pospay.services.sso_service import SsoConnectionInput
+
+    tenant, account, users = tenant_factory.make(slug="export-secret-tripwire")
+    issued_item_service.create_issued_item(
+        db_session, tenant.id,
+        issued_item_service.IssuedItemInput(account_id=account.id, check_number="1", amount=Decimal("10.00"), payee_name="X", issue_date=date(2026, 1, 1)),
+        submitted_by_user_id=users["preparer"].id,
+    )
+    db_session.commit()
+    ingest_paid_item(db_session, tenant.id, PaidItemSubmission(account_id=account.id, check_number="1", presented_amount=Decimal("12.00"), presented_date=date(2026, 1, 10)))
+    db_session.commit()
+    sso_service.create_connection(
+        db_session, tenant.id,
+        SsoConnectionInput(
+            provider=SsoProvider.OKTA, display_name="Okta", issuer="https://idp.example.com", client_id="cid",
+            client_secret="hunter2-secret", groups_claim_name="groups", auto_provision=False, customer_id=None,
+        ),
+    )
+    db_session.commit()
+
+    job = data_export_service.request_export(db_session, tenant.id, users["admin"].id)
+    db_session.commit()
+    _run_job_sync(db_session, job)
+    db_session.expire_all()
+    job = db_session.get(type(job), job.id)
+    assert job.status == DataExportJobStatus.COMPLETED
+
+    def _walk_keys(value):
+        if isinstance(value, dict):
+            for key, sub_value in value.items():
+                yield key
+                yield from _walk_keys(sub_value)
+        elif isinstance(value, list):
+            for item in value:
+                yield from _walk_keys(item)
+
+    with zipfile.ZipFile(job.archive_path) as zf:
+        data_files = [n for n in zf.namelist() if n.startswith("data/") and n.endswith(".json")]
+        assert len(data_files) > 5  # sanity: this really did walk a rich export, not an empty one
+        for name in data_files:
+            payload = json.loads(zf.read(name))
+            leaked = data_export_service._SECRET_COLUMNS & set(_walk_keys(payload))
+            assert not leaked, f"{name} leaked secret column(s): {leaked}"
+
+
+def test_export_fails_when_an_entity_exceeds_the_row_limit(db_session, tenant_factory):
+    tenant, account, users = tenant_factory.make(slug="export-row-limit")
+    issued_item_service.create_issued_item(
+        db_session, tenant.id,
+        issued_item_service.IssuedItemInput(account_id=account.id, check_number="1", amount=Decimal("10.00"), payee_name="X", issue_date=date(2026, 1, 1)),
+        submitted_by_user_id=users["preparer"].id,
+    )
+    db_session.commit()
+
+    with pytest.raises(data_export_service.ExportRowLimitExceeded):
+        data_export_service._build_archive(
+            db_session, tenant.id, None, data_export_service.data_export_storage.export_archive_path(tenant.id, uuid.uuid4()),
+            timeout_seconds=60, max_rows_per_entity=0,
+        )
+
+
+def test_export_fails_when_the_time_budget_is_exhausted(db_session, tenant_factory):
+    tenant, account, users = tenant_factory.make(slug="export-timeout")
+    issued_item_service.create_issued_item(
+        db_session, tenant.id,
+        issued_item_service.IssuedItemInput(account_id=account.id, check_number="1", amount=Decimal("10.00"), payee_name="X", issue_date=date(2026, 1, 1)),
+        submitted_by_user_id=users["preparer"].id,
+    )
+    db_session.commit()
+
+    with pytest.raises(data_export_service.ExportTimedOut):
+        data_export_service._build_archive(
+            db_session, tenant.id, None, data_export_service.data_export_storage.export_archive_path(tenant.id, uuid.uuid4()),
+            timeout_seconds=-1, max_rows_per_entity=get_settings().data_export_max_rows_per_entity,
+        )
+
+
+def test_run_export_job_fails_gracefully_when_row_limit_exceeded(db_session, tenant_factory, monkeypatch):
+    tenant, account, users = tenant_factory.make(slug="export-row-limit-job")
+    issued_item_service.create_issued_item(
+        db_session, tenant.id,
+        issued_item_service.IssuedItemInput(account_id=account.id, check_number="1", amount=Decimal("10.00"), payee_name="X", issue_date=date(2026, 1, 1)),
+        submitted_by_user_id=users["preparer"].id,
+    )
+    db_session.commit()
+    job = data_export_service.request_export(db_session, tenant.id, users["admin"].id)
+    db_session.commit()
+
+    monkeypatch.setattr(get_settings(), "data_export_max_rows_per_entity", 0)
+    _run_job_sync(db_session, job)
+
+    db_session.expire_all()
+    job = db_session.get(type(job), job.id)
+    assert job.status == DataExportJobStatus.FAILED
+    assert "row" in job.error_message.lower()
+
+
+def test_run_export_job_uses_tenants_own_timeout_override(db_session, tenant_factory, monkeypatch):
+    tenant, _account, users = tenant_factory.make(slug="export-timeout-override")
+    tenant_service.set_data_export_timeout(db_session, tenant.id, timeout_seconds=7)
+    db_session.commit()
+    job = data_export_service.request_export(db_session, tenant.id, users["admin"].id)
+    db_session.commit()
+
+    captured: dict = {}
+    original_build_archive = data_export_service._build_archive
+
+    def _capture(*args, **kwargs):
+        captured.update(kwargs)
+        return original_build_archive(*args, **kwargs)
+
+    monkeypatch.setattr(data_export_service, "_build_archive", _capture)
+    _run_job_sync(db_session, job)
+
+    assert captured["timeout_seconds"] == 7
+
+
+def test_run_export_job_falls_back_to_global_default_timeout(db_session, tenant_factory, monkeypatch):
+    tenant, _account, users = tenant_factory.make(slug="export-timeout-default")
+    job = data_export_service.request_export(db_session, tenant.id, users["admin"].id)
+    db_session.commit()
+
+    captured: dict = {}
+    original_build_archive = data_export_service._build_archive
+
+    def _capture(*args, **kwargs):
+        captured.update(kwargs)
+        return original_build_archive(*args, **kwargs)
+
+    monkeypatch.setattr(data_export_service, "_build_archive", _capture)
+    _run_job_sync(db_session, job)
+
+    assert captured["timeout_seconds"] == get_settings().data_export_timeout_seconds

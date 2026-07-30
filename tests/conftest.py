@@ -26,7 +26,7 @@ from pospay.db.session import get_db
 from pospay.domain.account import Account
 from pospay.domain.payment_network import PaymentNetwork, SettlementTiming
 from pospay.domain.tenant import Tenant
-from pospay.services import security_group_service, user_service
+from pospay.services import ach_return_reason_service, security_group_service, user_service
 
 # pospay.domain's __init__ imports every model module, fully populating Base.metadata
 # before create_all — see its docstring for why this must be centralized in one place.
@@ -110,6 +110,7 @@ class TenantFactory:
         self.session.add(account)
 
         groups = security_group_service.seed_default_security_groups(self.session, tenant.id)
+        ach_return_reason_service.seed_default_ach_return_reasons(self.session, tenant.id)
 
         users = {}
         for group_name, group in groups.items():

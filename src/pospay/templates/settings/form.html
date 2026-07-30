@@ -12,6 +12,9 @@
 <p>Session timeout controls how long a signed-in session lasts before requiring a fresh
   login (access token) or a full re-authentication (refresh token). Leave a field blank
   to use the platform default; changes only apply to sessions started after saving.</p>
+<p>Data export timeout bounds how long a background export job may run before it's
+  stopped and marked failed — a large organization may need more time than the platform
+  default; leave it blank to use that default.</p>
 {% endblock %}
 {% block content %}
 <div class="card card-narrow">
@@ -48,6 +51,16 @@
       <input type="number" name="refresh_token_expire_minutes" min="1" step="1"
              value="{{ refresh_token_expire_minutes if refresh_token_expire_minutes is not none else '' }}"
              placeholder="Default: {{ default_refresh_token_expire_minutes }}">
+    </label>
+    <button type="submit">Save</button>
+  </form>
+
+  <form method="post" action="/ui/settings/data-export-timeout">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Data export timeout (seconds)
+      <input type="number" name="timeout_seconds" min="1" step="1"
+             value="{{ data_export_timeout_seconds if data_export_timeout_seconds is not none else '' }}"
+             placeholder="Default: {{ default_data_export_timeout_seconds }}">
     </label>
     <button type="submit">Save</button>
   </form>

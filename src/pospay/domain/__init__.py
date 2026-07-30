@@ -10,6 +10,7 @@
 from pospay.domain import (  # noqa: F401
     account,
     ach_authorization_rule,
+    ach_return_reason,
     ach_transaction,
     audit_log_entry,
     bulk_upload_created_record,
@@ -33,4 +34,6 @@ from pospay.domain import (  # noqa: F401
     webauthn_challenge,
     webauthn_credential,
     wizard_step_ack,
+    wsud_statement,
+    wsud_statement_transaction,
 )

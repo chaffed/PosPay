@@ -11,6 +11,9 @@ schemas), see [API.md](API.md). For implementing a new bank or a new customer �
 prerequisites and step-by-step setup, also available as an in-app guided checklist at
 `/ui/wizard/bank` and `/ui/customers/{id}/wizard` — see [RUNBOOK.md](RUNBOOK.md).
 
+## Message from the author
+This was built using Claude Code. I am not a developer/programmer. I do have 20 years of bank systems, payments, and check processing experience. This is the Positive Pay system I want. I've also rolled in security enhancements I have never seen in commercial positive pay systems. My goal is to demonstrate banking software needs to be modernized.
+
 ## Screenshots
 
 <table>
@@ -481,10 +484,11 @@ and request/response schemas, see [API.md](API.md).
 
 ## Signing keys
 
-Three things get cryptographically signed: JWTs (login sessions), bulk-upload files
-(tamper-evidence), and the immutable audit log (its hash chain — see "Immutable action
-log" below). Each uses its own ECDSA P-256 (ES256) key pair rather than a shared secret
-string, so a leaked key can't also be used to forge the other two, and — unlike a
+Four things get cryptographically signed: JWTs (login sessions), bulk-upload files
+(tamper-evidence), the immutable audit log (its hash chain — see "Immutable action
+log" below), and signed Written Statement of Unauthorized Debit (WSUD) attestations.
+Each uses its own ECDSA P-256 (ES256) key pair rather than a shared secret
+string, so a leaked key can't also be used to forge the others, and — unlike a
 guessable string — a real key pair can't accidentally ship as a usable default.
 
 For local dev and the test suite, `dev_keys/` is a checked-in, deliberately public key
@@ -495,9 +499,9 @@ deployment.** Generate your own before deploying:
 python scripts/generate_keys.py --output-dir keys
 ```
 
-This prints the six `POSPAY_*_PRIVATE_KEY_PATH`/`POSPAY_*_PUBLIC_KEY_PATH` env vars to
-set. Prefer `openssl` instead? The equivalent for each of the three pairs (`jwt`,
-`file_signing`, `audit_log_signing`) is:
+This prints the eight `POSPAY_*_PRIVATE_KEY_PATH`/`POSPAY_*_PUBLIC_KEY_PATH` env vars to
+set. Prefer `openssl` instead? The equivalent for each of the four pairs (`jwt`,
+`file_signing`, `audit_log_signing`, `wsud_signing`) is:
 
 ```
 openssl ecparam -genkey -name prime256v1 -noout -out keys/<name>_private.pem
@@ -531,7 +535,8 @@ Or bring up the whole stack (app + Postgres) with `docker compose up --build`.
 **Row-Level Security**: on Postgres, migrations enable RLS (`FORCE ROW LEVEL SECURITY`)
 on the single-tenant operational tables (`account`, `issued_item`, `stop_payment`,
 `check_image`, `paid_item`, `ach_authorization_rule`, `ach_transaction`,
-`security_group`, `tenant_membership`, `bulk_upload_file`, `audit_log_entry`) as
+`security_group`, `tenant_membership`, `bulk_upload_file`, `audit_log_entry`,
+`ach_return_reason`, `wsud_statement`, `wsud_statement_transaction`) as
 defense-in-depth alongside the primary
 tenant-isolation mechanism (the repository-layer filter in `repositories/base.py`, which
 is what's actually under test in `tests/test_api/test_cross_tenant_isolation.py`).

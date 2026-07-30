@@ -104,11 +104,19 @@ and fixed alongside it:
   already active (never disabled anywhere in this repo) but surfaced as a raw exception
   instead of this module's clean per-row error.
 
-**Low — data export's secret exclusion is fragile.**
-The generic row exporter correctly strips `hashed_password`/`client_secret_encrypted`, but
-the hand-written `_users_dicts`/`_sso_group_mapping_dicts` composers in
-`data_export_service.py` don't reference that same exclusion list — correct today only
-because someone remembered by hand.
+**FIXED — data export's secret exclusion was fragile.**
+The generic row exporter (`_row_to_dict`) correctly strips `hashed_password`/
+`client_secret_encrypted` for every exporter that uses it. Re-verified while fixing this:
+`_sso_group_mapping_dicts` was actually already safe — it does call `_row_to_dict` per
+row — so the original wording naming it alongside `_users_dicts` was inaccurate; only
+`_users_dicts` hand-composes its dict without going through the shared filter. It's now
+run through the same exclusion set as a mechanical safety net (it didn't emit either
+secret field before this either, but nothing structurally prevented a future edit from
+reintroducing one). More importantly, a new test walks a fully-populated tenant-wide
+export's entire archive — every entity, not just users/SSO — and asserts no
+`_SECRET_COLUMNS` name appears anywhere, as a tripwire against any *future* exporter
+leaking a secret column, which is the real fix for "correct only because someone
+remembered by hand."
 
 **What's genuinely solid:** permissions are re-resolved from the DB on every request
 rather than baked into the JWT, so revoking a membership or editing a group takes effect
@@ -121,11 +129,13 @@ another admin's view.
 
 ## Integrity
 
-**High — dual control defaults to off.**
+**Accepted — dual control defaults to off.**
 `Tenant.require_dual_control` defaults to `False` for every new tenant, so unless a bank
 explicitly opts in, one person holding both `exception:recommend` and `exception:decide`
 (Admin, or the new Bookkeeper preset) can unilaterally finalize a pay/return decision with
-no second reviewer.
+no second reviewer. Reviewed and accepted as the correct default, not a gap: dual control
+isn't the common case for positive pay, though some banks do request it — which is exactly
+why it's a per-tenant opt-in (`/ui/settings` → "Require dual control") rather than mandatory.
 
 **FIXED — `activate_model()` has no ownership check.**
 `activate_model` now takes a required, keyword-only `expected_customer_id` and rejects
@@ -187,8 +197,22 @@ already-handled "not enough data yet" case), rolls back cleanly, records a `FAIL
 enum but was never actually written before this), and moves on to the next
 network/customer instead of aborting the rest of the run.
 
-**Low — data export archives are built by iterating every entity unbounded**, with no
-pagination and no timeout/kill-switch on the background task.
+**FIXED — data export archives had no row limit, pagination, or timeout.**
+`_build_archive` (`services/data_export_service.py`) now checks a time budget
+(`config.py::data_export_timeout_seconds`, default 5 minutes, overridable per-tenant via
+a new "Data export timeout" field on `/ui/settings`) before starting each named entity's
+export and before each check-image/bulk-upload-file copy, failing the job clearly
+(`ExportTimedOut`) rather than letting it hang indefinitely. Separately, any single
+entity whose row count exceeds `data_export_max_rows_per_entity` (default 50,000, a
+global technical ceiling, not a per-tenant policy value) fails the job with a clear
+message (`ExportRowLimitExceeded`) before its JSON is ever written into the archive.
+This is a deliberately proportional fix, not a full streaming/paginated rewrite of every
+repository: the check is cooperative, between units of work, so a single entity whose own
+query is itself slow isn't interrupted mid-query — same "sum sizes before reading" spirit
+as `bulk_import/zip_import.py`'s existing zip-bomb guard, matched to this finding's
+Low/Low-Medium severity. Both new exceptions are caught by `run_export_job`'s existing
+broad exception handler, which already marks the job `FAILED` with a clear message — no
+new failure-handling path was needed.
 
 **What's genuinely solid:** every bulk-import path commits per-row, so one bad row can't
 abort or corrupt the rest of a file; OCR and export background tasks are wrapped in broad

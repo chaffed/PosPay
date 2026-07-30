@@ -369,6 +369,10 @@ def _capture_screenshots() -> None:
 
 
 def main() -> None:
+    os.chdir(PROJECT_ROOT)  # pin cwd regardless of how this was invoked — dev_keys/ and
+    # every other *_key_path config default is a relative path resolved against cwd, same
+    # gotcha scripts/launcher.py::main() already documents for itself.
+
     try:
         import playwright  # noqa: F401
     except ImportError:

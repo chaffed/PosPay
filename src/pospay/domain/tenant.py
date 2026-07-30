@@ -28,6 +28,11 @@ class Tenant(Base):
     # mfa_pending token, which stays fixed regardless of tenant.
     access_token_expire_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     refresh_token_expire_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Same nullable-override pattern as the two above — None means "use
+    # config.Settings.data_export_timeout_seconds" — see
+    # services/data_export_service.py::run_export_job and
+    # services/tenant_service.py::set_data_export_timeout.
+    data_export_timeout_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

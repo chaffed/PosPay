@@ -42,9 +42,11 @@ def test_authorized_debit_within_limits_matches(client, tenant_factory):
     assert exceptions == []
 
 
-def test_unauthorized_originator_creates_exception_through_shared_endpoints(client, tenant_factory):
+def test_unauthorized_originator_creates_exception_through_shared_endpoints(client, db_session, tenant_factory):
     """Proves the network-adapter abstraction holds: /exceptions and /decide are the exact
     same endpoints the check flow uses, unmodified, now serving an ACH exception."""
+    from pospay.services import ach_return_reason_service
+
     tenant, account, users = tenant_factory.make(slug="ach-unauthorized")
     headers = login_headers(client, tenant.slug, users["preparer"].email)
 
@@ -70,14 +72,16 @@ def test_unauthorized_originator_creates_exception_through_shared_endpoints(clie
     assert exceptions[0]["exception_types"] == ["unauthorized_originator"]
     exception_id = exceptions[0]["id"]
 
+    return_reason = ach_return_reason_service.list_ach_return_reasons(db_session, tenant.id, active_only=True)[0]
     approver_headers = login_headers(client, tenant.slug, users["approver"].email)
     decide = client.post(
         f"/api/v1/exceptions/{exception_id}/decide",
         headers=approver_headers,
-        json={"outcome": "return", "reason_code": "confirmed_fraud"},
+        json={"outcome": "return", "ach_return_reason_id": str(return_reason.id)},
     )
     assert decide.status_code == 200
     assert decide.json()["outcome"] == "return"
+    assert decide.json()["reason_code"] == return_reason.reason_text
 
 
 def test_amount_exceeds_authorized_limit(client, tenant_factory):

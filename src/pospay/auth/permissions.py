@@ -37,6 +37,9 @@ PERMISSION_CATALOG: dict[str, str] = {
     "audit_log:read": "View the immutable action log",
     "customer:manage": "Manage customers",
     "data_export:run": "Export all tenant/customer data for migration or offboarding",
+    "ach_return_reason:manage": "Manage the catalog of ACH return reasons",
+    "wsud:sign": "Sign a Written Statement of Unauthorized Debit (customer-scoped)",
+    "wsud:read": "View signed Written Statements of Unauthorized Debit across customers",
 }
 
 # Masked out of TenantContext.permissions whenever the active membership is
@@ -47,7 +50,10 @@ PERMISSION_CATALOG: dict[str, str] = {
 # bank employee acting in a customer-scoped context, must never be able to reach them even
 # via a misconfigured security group.
 CUSTOMER_SCOPE_MASKED_PERMISSIONS: frozenset[str] = frozenset(
-    {"user:manage", "security_group:manage", "tenant:manage", "customer:manage", "admin:manage", "audit_log:read"}
+    {
+        "user:manage", "security_group:manage", "tenant:manage", "customer:manage", "admin:manage", "audit_log:read",
+        "ach_return_reason:manage", "wsud:read",
+    }
 )
 
 # Deliberately excluded from _ALL/Admin's automatic grant — every OTHER permission in
@@ -57,16 +63,20 @@ CUSTOMER_SCOPE_MASKED_PERMISSIONS: frozenset[str] = frozenset(
 # group must be explicitly edited to add it via /ui/security-groups, rather than getting
 # it "for free" like every other permission does today. This is a one-off exception, not
 # a pattern to extend casually — most new permissions should still join Admin normally.
-_NOT_ADMIN_DEFAULT = {"data_export:run"}
+# wsud:sign joins it for the same reason: signing a legal unauthorized-debit attestation
+# on the account holder's behalf is a distinct, deliberate-opt-in class of action, not
+# something every Admin group should silently gain.
+_NOT_ADMIN_DEFAULT = {"data_export:run", "wsud:sign"}
 
 _ALL = [key for key in PERMISSION_CATALOG if key not in _NOT_ADMIN_DEFAULT]
 
-# audit_log:read is deliberately excluded from the general read-permission bucket below —
-# every other *:read key lands in Preparer/Approver/Viewer by default (they already see
-# the underlying business records), but "who did what, when" is a more sensitive,
-# cross-cutting view than any single resource's own data and defaults to Admin-only,
-# same posture as the *:manage permissions. A tenant can still grant it to a custom group.
-_READS = [key for key in _ALL if key.endswith(":read") and key != "audit_log:read"]
+# audit_log:read and wsud:read are deliberately excluded from the general read-permission
+# bucket below — every other *:read key lands in Preparer/Approver/Viewer by default
+# (they already see the underlying business records), but "who did what, when" and
+# "every customer's signed unauthorized-debit attestations" are both more sensitive,
+# cross-cutting views than any single resource's own data, and default to Admin-only,
+# same posture as the *:manage permissions. A tenant can still grant either to a custom group.
+_READS = [key for key in _ALL if key.endswith(":read") and key not in ("audit_log:read", "wsud:read")]
 
 # Default groups seeded into every new tenant (provisioning_service.py, tests'
 # TenantFactory) — chosen to exactly reproduce the old Admin/Preparer/Approver/Viewer
@@ -82,6 +92,7 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
         "ach_authorization:read", "ach_authorization:write",
         "ach_transaction:read", "ach_transaction:write",
         "exception:read", "exception:recommend",
+        "wsud:sign",
     ],
     "Approver": [*_READS, "exception:decide"],
     "Viewer": [*_READS],
@@ -104,5 +115,6 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
         "ach_authorization:read", "ach_authorization:write",
         "ach_transaction:read", "ach_transaction:write",
         "exception:read", "exception:recommend", "exception:decide",
+        "wsud:sign",
     ],
 }

@@ -153,6 +153,49 @@ def test_session_timeout_rejects_non_positive_value(client, tenant_factory):
     assert resp.status_code == 422
 
 
+def test_data_export_timeout_persists_override(client, db_session, tenant_factory):
+    from pospay.domain.tenant import Tenant
+
+    tenant, _account, users = tenant_factory.make(slug="web-settings-export-timeout")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/data-export-timeout",
+        data={"csrf_token": csrf, "timeout_seconds": "900"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    db_session.expire_all()
+    assert db_session.get(Tenant, tenant.id).data_export_timeout_seconds == 900
+
+
+def test_data_export_timeout_blank_resets_to_global_default(client, db_session, tenant_factory):
+    from pospay.domain.tenant import Tenant
+
+    tenant, _account, users = tenant_factory.make(slug="web-settings-export-timeout-reset")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    client.post("/ui/settings/data-export-timeout", data={"csrf_token": csrf, "timeout_seconds": "900"})
+
+    resp = client.post(
+        "/ui/settings/data-export-timeout",
+        data={"csrf_token": csrf, "timeout_seconds": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    db_session.expire_all()
+    assert db_session.get(Tenant, tenant.id).data_export_timeout_seconds is None
+
+
+def test_data_export_timeout_rejects_non_positive_value(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-export-timeout-bad")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post("/ui/settings/data-export-timeout", data={"csrf_token": csrf, "timeout_seconds": "0"})
+    assert resp.status_code == 422
+
+
 def test_branded_login_page_shows_name_and_logo(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-settings-branded-login")
     csrf = _login(client, tenant.slug, users["admin"].email)

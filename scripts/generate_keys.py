@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
-"""Generates the three ECDSA P-256 key pairs PosPay signs with — one each for JWTs,
-bulk-upload file signing, and the audit log hash chain (see README.md's "Signing keys"
-section for the full picture). Run this once per real deployment:
+"""Generates the four ECDSA P-256 key pairs PosPay signs with — one each for JWTs,
+bulk-upload file signing, the audit log hash chain, and signed WSUD statements (see
+README.md's "Signing keys" section for the full picture). Run this once per real
+deployment:
 
     python scripts/generate_keys.py --output-dir keys
 
@@ -24,7 +25,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-_KEY_NAMES = ("jwt", "file_signing", "audit_log_signing")
+_KEY_NAMES = ("jwt", "file_signing", "audit_log_signing", "wsud_signing")
 
 
 def _generate_pair(output_dir: Path, name: str, *, force: bool) -> None:
@@ -58,7 +59,7 @@ def _generate_pair(output_dir: Path, name: str, *, force: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--output-dir", default="keys", help="Directory to write the 6 PEM files into (default: keys/)")
+    parser.add_argument("--output-dir", default="keys", help="Directory to write the 8 PEM files into (default: keys/)")
     parser.add_argument("--force", action="store_true", help="Overwrite existing key files")
     args = parser.parse_args()
 
@@ -80,14 +81,17 @@ def main() -> None:
         f"  POSPAY_FILE_SIGNING_PUBLIC_KEY_PATH={output_dir / 'file_signing_public.pem'}\n"
         f"  POSPAY_AUDIT_LOG_SIGNING_PRIVATE_KEY_PATH={output_dir / 'audit_log_signing_private.pem'}\n"
         f"  POSPAY_AUDIT_LOG_SIGNING_PUBLIC_KEY_PATH={output_dir / 'audit_log_signing_public.pem'}\n"
+        f"  POSPAY_WSUD_SIGNING_PRIVATE_KEY_PATH={output_dir / 'wsud_signing_private.pem'}\n"
+        f"  POSPAY_WSUD_SIGNING_PUBLIC_KEY_PATH={output_dir / 'wsud_signing_public.pem'}\n"
         "  POSPAY_ENVIRONMENT=production\n"
         "\n"
         "Also set a real random POSPAY_SSO_ENCRYPTION_KEY (a plain random string, not a "
         "key pair — it's for encrypting stored SSO client secrets, not signing).\n"
         "\n"
         "Rotating any of these keys later invalidates every active login session (JWT "
-        "key) or stops previously-signed files/audit entries from re-verifying (file "
-        "signing / audit log keys) — expected, one-time costs of a rotation, not bugs."
+        "key) or stops previously-signed files/audit entries/WSUD statements from "
+        "re-verifying (file signing / audit log / WSUD signing keys) — expected, "
+        "one-time costs of a rotation, not bugs."
     )
 
 

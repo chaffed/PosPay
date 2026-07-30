@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # type, same key-separation reasoning (services/audit_log_service.py).
     audit_log_signing_private_key_path: str = f"{_DEV_KEYS_DIR}/audit_log_signing_private.pem"
     audit_log_signing_public_key_path: str = f"{_DEV_KEYS_DIR}/audit_log_signing_public.pem"
+    # Also its own separate key pair — signed Written Statement of Unauthorized Debit
+    # attestations (services/wsud_service.py) are a distinct signed-artifact type from
+    # the three above, same key-separation reasoning.
+    wsud_signing_private_key_path: str = f"{_DEV_KEYS_DIR}/wsud_signing_private.pem"
+    wsud_signing_public_key_path: str = f"{_DEV_KEYS_DIR}/wsud_signing_public.pem"
     jwt_access_token_expire_minutes: int = 30
     jwt_refresh_token_expire_minutes: int = 60 * 24 * 7
     mfa_pending_token_expire_minutes: int = 5  # short-lived: only enough time to complete the WebAuthn ceremony
@@ -75,6 +80,14 @@ class Settings(BaseSettings):
 
     check_stale_date_default_days: int = 180
     payee_match_fuzzy_threshold: float = 85.0
+
+    # Bounds a single data-export archive (services/data_export_service.py) — a technical
+    # ceiling on how much any one entity can dump into an archive, not a per-tenant
+    # policy value like the timeout below, so it's global-only (no Tenant override).
+    data_export_max_rows_per_entity: int = 50_000
+    # Per-tenant override on Tenant.data_export_timeout_seconds (None there means "use
+    # this"), same nullable-override shape as jwt_access/refresh_token_expire_minutes.
+    data_export_timeout_seconds: int = 300
 
     ml_min_new_decisions_for_retrain: int = 20
     # Minimum time between two retrains of the same (network_code, customer_id) pair —
@@ -117,6 +130,8 @@ _DEFAULT_FIELDS: tuple[str, ...] = (
     "file_signing_public_key_path",
     "audit_log_signing_private_key_path",
     "audit_log_signing_public_key_path",
+    "wsud_signing_private_key_path",
+    "wsud_signing_public_key_path",
     "sso_encryption_key",
 )
 

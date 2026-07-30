@@ -35,6 +35,11 @@ class Decision(Base):
     )
     reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Snapshotted from the selected AchReturnReason at decision time (see
+    # services/decision_service.py::decide()) — only ever set for an ACH RETURN. Not a
+    # NACHA return-reason code; it's the bank's own core-system posting code for the
+    # reversal, captured here purely for staff visibility (see domain/ach_return_reason.py).
+    return_transaction_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     decided_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), nullable=False)

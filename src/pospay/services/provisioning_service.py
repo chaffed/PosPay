@@ -9,7 +9,7 @@ from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
-from pospay.services import security_group_service, user_service
+from pospay.services import ach_return_reason_service, security_group_service, user_service
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +37,7 @@ def create_tenant_with_admin(
     session.flush()
 
     groups = security_group_service.seed_default_security_groups(session, tenant.id)
+    ach_return_reason_service.seed_default_ach_return_reasons(session, tenant.id)
 
     admin_user = user_service.create_user_with_membership(
         session, tenant.id, email=admin_email, password=admin_password, security_group_id=groups["Admin"].id

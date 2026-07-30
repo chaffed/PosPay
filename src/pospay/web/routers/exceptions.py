@@ -14,7 +14,7 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.decision import DecisionOutcome
 from pospay.domain.exception_item import ExceptionStatus
 from pospay.networks.registry import get_adapter
-from pospay.services import audit_log_service, decision_service, exception_service
+from pospay.services import ach_return_reason_service, audit_log_service, decision_service, exception_service
 from pospay.services.decision_service import DecisionError
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
@@ -27,7 +27,13 @@ _DECISION_ERROR_MESSAGES = {
     DecisionError.RECOMMENDATION_REQUIRED: "A recommendation is required before this can be decided under dual control.",
     DecisionError.MAKER_CANNOT_APPROVE_OWN_RECOMMENDATION: "You recommended this decision — a different user must approve it.",
     DecisionError.WITHDRAWN: "This exception was withdrawn because its underlying item was backed out.",
+    DecisionError.RETURN_REASON_REQUIRED: "Select a return reason from the list — freeform text isn't accepted for ACH returns.",
+    DecisionError.INVALID_RETURN_REASON: "That return reason no longer exists or has been deactivated — pick another.",
 }
+
+
+def _parse_optional_uuid(raw: str) -> uuid.UUID | None:
+    return uuid.UUID(raw) if raw else None
 
 
 def _summarize_source_item(network_code: str, source_item: Any) -> dict[str, str]:
@@ -89,6 +95,11 @@ def exception_detail(
     source_item = adapter.load_source_item(db, item.source_item_id)
     summary = _summarize_source_item(item.network_code, source_item) if source_item else None
     decision = decision_service.get_decision_for_exception(db, ctx.tenant_id, exception_id, customer_id=ctx.customer_id)
+    ach_return_reasons = (
+        ach_return_reason_service.list_ach_return_reasons(db, ctx.tenant_id, active_only=True)
+        if item.network_code == "ach"
+        else []
+    )
 
     return render_template(
         request,
@@ -98,6 +109,7 @@ def exception_detail(
         exception_types=item.exception_types.split(",") if item.exception_types else [],
         summary=summary,
         decision=decision,
+        ach_return_reasons=ach_return_reasons,
     )
 
 
@@ -105,14 +117,16 @@ def exception_detail(
 def recommend(
     exception_id: uuid.UUID,
     outcome: DecisionOutcome = Form(...),
-    reason_code: str = Form(...),
+    reason_code: str = Form(""),
     notes: str = Form(""),
+    ach_return_reason_id: str = Form(""),
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("exception:recommend")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     result = decision_service.submit_recommendation(
-        db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None
+        db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None,
+        ach_return_reason_id=_parse_optional_uuid(ach_return_reason_id),
     )
     if result.error is None:
         audit_log_service.record_action(
@@ -136,14 +150,16 @@ def recommend(
 def decide(
     exception_id: uuid.UUID,
     outcome: DecisionOutcome = Form(...),
-    reason_code: str = Form(...),
+    reason_code: str = Form(""),
     notes: str = Form(""),
+    ach_return_reason_id: str = Form(""),
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("exception:decide")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     result = decision_service.decide(
-        db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None
+        db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None,
+        ach_return_reason_id=_parse_optional_uuid(ach_return_reason_id),
     )
     if result.error is None:
         audit_log_service.record_action(

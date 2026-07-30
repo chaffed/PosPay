@@ -60,6 +60,9 @@ class ExceptionItem(Base):
     # columns are working state, not the ground-truth ML training signal Decision is.
     recommended_outcome: Mapped[str | None] = mapped_column(String(10), nullable=True)
     recommended_reason_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Parallel to recommended_reason_code — see Decision.return_transaction_code for
+    # what this is (and isn't).
+    recommended_return_transaction_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
     recommended_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     recommended_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)
 
