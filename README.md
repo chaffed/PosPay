@@ -11,6 +11,28 @@ schemas), see [API.md](API.md). For implementing a new bank or a new customer â€
 prerequisites and step-by-step setup, also available as an in-app guided checklist at
 `/ui/wizard/bank` and `/ui/customers/{id}/wizard` â€” see [RUNBOOK.md](RUNBOOK.md).
 
+## Contents
+
+- [Message from the author](#message-from-the-author)
+- [Screenshots](#screenshots)
+- [Quickstart](#quickstart)
+- [Running tests](#running-tests)
+- [Bulk file uploads](#bulk-file-uploads)
+- [Bulk-loading check images](#bulk-loading-check-images)
+- [Backing out a bulk upload](#backing-out-a-bulk-upload)
+- [Users, security groups, and cross-tenant access](#users-security-groups-and-cross-tenant-access)
+- [Querying and exporting users (access recertification)](#querying-and-exporting-users-access-recertification)
+- [Customers: segregating a tenant's own business clients](#customers-segregating-a-tenants-own-business-clients)
+- [Per-tenant branding](#per-tenant-branding)
+- [Immutable action log](#immutable-action-log)
+- [Authentication](#authentication)
+- [Signing keys](#signing-keys)
+- [Postgres](#postgres)
+- [MSSQL](#mssql)
+- [Web UI](#web-ui)
+- [Architecture at a glance](#architecture-at-a-glance)
+- [License](#license)
+
 ## Message from the author
 This was built using Claude Code. I am not a developer/programmer. I do have 20 years of bank systems, payments, and check processing experience. This is the Positive Pay system I want. I've also rolled in security enhancements I have never seen in commercial positive pay systems. My goal is to demonstrate banking software needs to be modernized.
 
