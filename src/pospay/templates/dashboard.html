@@ -19,7 +19,7 @@
 {% endif %}
 <div class="card">
   <h1>Dashboard</h1>
-  <p>Logged in as <strong>{{ ctx.role }}</strong>.</p>
+  <p>Logged in as <strong>{{ security_group_name or "—" }}</strong>{% if ctx.customer_name %} ({{ ctx.customer_name }}){% endif %}.</p>
   <ul class="quick-links">
     <li><a href="/ui/exceptions">Exceptions queue</a></li>
     <li><a href="/ui/issued-items">Issued items</a></li>

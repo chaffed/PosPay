@@ -41,6 +41,9 @@ dev = [
   "pytest>=8.2",
   "pytest-cov>=5.0",
   "factory-boy>=3.3",
+  # scripts/generate_screenshots.py only — also needs `playwright install chromium`
+  # once, to fetch the browser binary itself (not a pip package).
+  "playwright>=1.45",
 ]
 
 [build-system]

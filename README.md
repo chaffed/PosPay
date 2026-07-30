@@ -11,6 +11,93 @@ schemas), see [API.md](API.md). For implementing a new bank or a new customer �
 prerequisites and step-by-step setup, also available as an in-app guided checklist at
 `/ui/wizard/bank` and `/ui/customers/{id}/wizard` — see [RUNBOOK.md](RUNBOOK.md).
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+**Dashboard**
+![Dashboard](docs/screenshots/dashboard.png)
+
+</td>
+<td width="50%">
+
+**Exceptions queue**
+![Exceptions queue](docs/screenshots/exceptions.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Reviewing an exception**
+![Exception review](docs/screenshots/exception_detail.png)
+
+</td>
+<td width="50%">
+
+**Issued items**
+![Issued items](docs/screenshots/issued_items.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**ACH transactions**
+![ACH transactions](docs/screenshots/ach_transactions.png)
+
+</td>
+<td width="50%">
+
+**ML models (admin)**
+![ML models](docs/screenshots/admin_ml_models.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Users**
+![Users](docs/screenshots/users.png)
+
+</td>
+<td width="50%">
+
+**Organization settings**
+![Organization settings](docs/screenshots/settings.png)
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary>More screens (accounts, customers, security groups, stop payments, check-image bulk upload, audit log, login)</summary>
+
+| | |
+|---|---|
+| ![Accounts](docs/screenshots/accounts.png) Accounts | ![Customers](docs/screenshots/customers.png) Customers |
+| ![Security groups](docs/screenshots/security_groups.png) Security groups | ![Stop payments](docs/screenshots/stop_payments.png) Stop payments |
+| ![Check image bulk upload](docs/screenshots/check_images_bulk.png) Check-image bulk upload | ![Audit log](docs/screenshots/audit_log.png) Audit log |
+| ![Login](docs/screenshots/login.png) Login | |
+
+</details>
+
+Screenshots are generated from a seeded demo tenant, not hand-captured — see
+`scripts/generate_screenshots.py` if you change the UI enough to make these stale:
+
+```bash
+pip install -e ".[dev]"
+playwright install chromium
+python scripts/generate_screenshots.py
+```
+
+This spins up the app against a throwaway SQLite database (never your real
+`.pospay-run/` or `pospay.db`), seeds a demo bank with realistic accounts, issued items,
+exceptions, ACH activity, and users, and drives a real headless browser through each
+screen to (re)write the PNGs under `docs/screenshots/`.
+
 ## Quickstart
 
 **One-click (SQLite, zero manual setup)**: double-click `run_pospay.command` (macOS —
