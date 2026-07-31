@@ -16,7 +16,7 @@ from pospay.bulk_import.zip_import import ZipImportError, parse_zip_manifest
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.bulk_upload_file import BulkUploadKind
-from pospay.domain.check_image import OcrStatus
+from pospay.domain.check_image import CheckImage, OcrStatus
 from pospay.networks.check.bulk_import import ingest_check_image_zip_rows, ingest_x937_items
 from pospay.networks.check.ocr_processing import create_check_image, process_check_image_ocr
 from pospay.ocr.storage import read_image
@@ -24,6 +24,7 @@ from pospay.repositories.check_image_repo import CheckImageRepository
 from pospay.repositories.paid_item_repo import PaidItemRepository
 from pospay.services import audit_log_service, bulk_upload_file_service, bulk_upload_reversal_service
 from pospay.web.deps import WebForbidden, WebNotFound, get_web_context, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/check-images", tags=["web-check-images"])
@@ -42,10 +43,12 @@ def _run_ocr_in_background(engine: Engine, check_image_id: uuid.UUID, tenant_id:
 
 @router.get("")
 def list_check_images(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("check_image:read"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("check_image:read")),
 ) -> HTMLResponse:
-    images = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id).list()
-    return render_template(request, "check_images/list.html", ctx=ctx, images=images)
+    repo = CheckImageRepository(db, ctx.tenant_id, ctx.customer_id)
+    page_obj = paginate(page=page, count_fn=repo.count, list_fn=lambda **kw: repo.list(order_by=CheckImage.created_at.desc(), **kw))
+    return render_template(request, "check_images/list.html", ctx=ctx, page_obj=page_obj)
 
 
 @router.get("/upload")

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Accounts — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About accounts{% endblock %}
 {% block help_body %}
@@ -17,11 +18,11 @@
 {% block content %}
 <div class="card">
   <h1>Accounts</h1>
-  {% if accounts %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Account number</th><th>Name</th>{% if not ctx.customer_id %}<th>Customer</th>{% endif %}<th>ACH debit mode</th><th>External ID</th></tr></thead>
     <tbody>
-      {% for a in accounts %}
+      {% for a in page_obj.items %}
       <tr>
         <td>{{ a.account_number }}</td>
         <td>{{ a.name }}</td>
@@ -32,6 +33,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No accounts yet.</p>
   {% endif %}

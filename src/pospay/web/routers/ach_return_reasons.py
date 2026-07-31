@@ -9,9 +9,12 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.ach_return_reason import AchReturnReason
+from pospay.repositories.ach_return_reason_repo import AchReturnReasonRepository
 from pospay.services import ach_return_reason_service, audit_log_service
 from pospay.services.ach_return_reason_service import AchReturnReasonInput, InvalidAchReturnReasonInput
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach-return-reasons", tags=["web-ach-return-reasons"])
@@ -19,10 +22,17 @@ router = APIRouter(prefix="/ui/ach-return-reasons", tags=["web-ach-return-reason
 
 @router.get("")
 def list_ach_return_reasons(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("ach_return_reason:manage"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("ach_return_reason:manage")),
 ) -> HTMLResponse:
-    reasons = ach_return_reason_service.list_ach_return_reasons(db, ctx.tenant_id)
-    return render_template(request, "ach_return_reasons/list.html", ctx=ctx, reasons=reasons)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: AchReturnReasonRepository(db, ctx.tenant_id).count(),
+        list_fn=lambda **kw: ach_return_reason_service.list_ach_return_reasons(
+            db, ctx.tenant_id, order_by=AchReturnReason.created_at.desc(), **kw
+        ),
+    )
+    return render_template(request, "ach_return_reasons/list.html", ctx=ctx, page_obj=page_obj)
 
 
 @router.get("/new")

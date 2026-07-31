@@ -37,6 +37,7 @@ mssql = ["pyodbc>=5.1"]
 opencv = ["opencv-python-headless>=4.10"]
 textract = ["boto3>=1.34"]
 azure-di = ["azure-ai-documentintelligence>=1.0"]
+sms = ["twilio>=8"]
 dev = [
   "pytest>=8.2",
   "pytest-cov>=5.0",

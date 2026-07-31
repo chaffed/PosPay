@@ -20,6 +20,30 @@
 <div class="card">
   <h1>Dashboard</h1>
   <p>Logged in as <strong>{{ security_group_name or "—" }}</strong>{% if ctx.customer_name %} ({{ ctx.customer_name }}){% endif %}.</p>
+
+  {% if open_exceptions_count is not none or outstanding_issued_items_count is not none or active_stop_payments_count is not none %}
+  <div class="stat-cards">
+    {% if open_exceptions_count is not none %}
+    <a class="stat-card" href="/ui/exceptions?status=open">
+      <div class="stat-value">{{ open_exceptions_count }}</div>
+      <div class="stat-label">Open exceptions</div>
+    </a>
+    {% endif %}
+    {% if outstanding_issued_items_count is not none %}
+    <a class="stat-card" href="/ui/issued-items?status=outstanding">
+      <div class="stat-value">{{ outstanding_issued_items_count }}</div>
+      <div class="stat-label">Outstanding issued items</div>
+    </a>
+    {% endif %}
+    {% if active_stop_payments_count is not none %}
+    <a class="stat-card" href="/ui/stop-payments">
+      <div class="stat-value">{{ active_stop_payments_count }}</div>
+      <div class="stat-label">Active stop payments</div>
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <ul class="quick-links">
     <li><a href="/ui/exceptions">Exceptions queue</a></li>
     <li><a href="/ui/issued-items">Issued items</a></li>

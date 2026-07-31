@@ -84,6 +84,43 @@ def test_account_locks_after_max_failed_attempts(db_session, tenant_factory):
     assert result.outcome == PasswordLoginOutcome.LOCKED
     assert users["admin"].locked_until is not None
 
+    from pospay.domain.notification import Notification, NotificationType
+
+    notifs = (
+        db_session.query(Notification)
+        .filter(
+            Notification.recipient_user_id == users["admin"].id, Notification.notification_type == NotificationType.ACCOUNT_LOCKED
+        )
+        .all()
+    )
+    assert len(notifs) == 1
+
+
+def test_lockout_notification_fires_once_not_on_every_subsequent_rejected_attempt(db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="login-svc-lockout-notify-once")
+    max_attempts = get_settings().login_max_failed_attempts
+
+    for _ in range(max_attempts):
+        authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+        db_session.commit()
+    # Two more attempts against an already-locked account -- must not queue two more
+    # lockout notifications on top of the first.
+    for _ in range(2):
+        result = authenticate_password(db_session, tenant.slug, users["admin"].email, "wrong-password")
+        db_session.commit()
+        assert result.outcome == PasswordLoginOutcome.LOCKED
+
+    from pospay.domain.notification import Notification, NotificationType
+
+    notifs = (
+        db_session.query(Notification)
+        .filter(
+            Notification.recipient_user_id == users["admin"].id, Notification.notification_type == NotificationType.ACCOUNT_LOCKED
+        )
+        .all()
+    )
+    assert len(notifs) == 1
+
 
 def test_locked_account_rejects_even_the_correct_password(db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="login-svc-lockout-correct-pw")

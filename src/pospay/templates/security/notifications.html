@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Notification Preferences — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About notifications{% endblock %}
+{% block help_body %}
+<p>Email defaults to on for every notification type below; SMS defaults to off and
+  needs a phone number set here first. Account-lockout emails are always sent
+  regardless of these settings — a locked-out user needs to know either way — so that
+  one isn't listed as a toggle.</p>
+{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <h1>Contact number</h1>
+  <p>Used only for SMS notifications you opt into below.</p>
+  <form method="post" action="/ui/security/notifications/phone">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Phone number <input type="tel" name="phone" value="{{ phone or '' }}" placeholder="+15551234567"></label>
+    <button type="submit">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <h1>Notification preferences</h1>
+    <a href="/ui/security" class="button secondary">Security keys</a>
+  </div>
+  <form method="post" action="/ui/security/notifications">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <table>
+      <thead><tr><th>Notification</th><th>Email</th><th>SMS</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td><input type="checkbox" name="email_{{ row.type.value }}" {{ "checked" if row.email_enabled else "" }}></td>
+          <td><input type="checkbox" name="sms_{{ row.type.value }}" {{ "checked" if row.sms_enabled else "" }} {{ "disabled" if not phone else "" }}></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not phone %}<p class="flash">Set a phone number above to enable SMS.</p>{% endif %}
+    <button type="submit">Save preferences</button>
+  </form>
+</div>
+{% endblock %}

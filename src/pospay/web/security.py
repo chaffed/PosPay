@@ -12,6 +12,10 @@ REFRESH_COOKIE_NAME = "refresh_token"
 MFA_COOKIE_NAME = "mfa_token"
 CSRF_COOKIE_NAME = "csrf_token"
 SSO_STATE_COOKIE_NAME = "sso_state"
+# Purely cosmetic (web/routers/theme.py, base.html's theme toggle) — not auth-related,
+# but grouped with the other cookie names here for the same reason they all are: one
+# place to see every cookie this app sets.
+THEME_COOKIE_NAME = "pospay_theme"
 
 # Narrow paths for the higher-privilege / narrower-purpose cookies — the browser only
 # ever attaches them to requests under these paths, shrinking their exposure surface.

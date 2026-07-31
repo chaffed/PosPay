@@ -17,7 +17,7 @@ from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
-from pospay.services import customer_service, security_group_service
+from pospay.services import customer_service, notification_service, security_group_service
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,8 +57,15 @@ def record_login(session: Session, user_id: uuid.UUID) -> None:
     session.flush()
 
 
-def list_tenant_users(session: Session, tenant_id: uuid.UUID) -> list[TenantUserRow]:
-    memberships = TenantMembershipRepository(session, tenant_id).list()
+def list_tenant_users(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
+) -> list[TenantUserRow]:
+    memberships = TenantMembershipRepository(session, tenant_id).list(limit=limit, offset=offset, order_by=order_by)
     user_repo = UserRepository(session)
     rows: list[TenantUserRow] = []
     for membership in memberships:
@@ -294,6 +301,7 @@ def unlock_user(session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID
     user.failed_login_attempts = 0
     user.locked_until = None
     session.flush()
+    notification_service.notify_account_unlocked(session, user)
     return user
 
 

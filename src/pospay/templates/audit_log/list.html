@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Audit Log — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About the audit log{% endblock %}
 {% block help_body %}
@@ -25,7 +26,7 @@
     {% endif %}
   </p>
   {% endif %}
-  {% if rows %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Time</th><th>Actor</th><th>Channel</th><th>Action</th><th>Summary</th></tr></thead>
     <tbody>
@@ -40,6 +41,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No actions recorded yet.</p>
   {% endif %}

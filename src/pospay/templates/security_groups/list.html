@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Security Groups — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About security groups{% endblock %}
 {% block help_body %}
@@ -16,19 +17,23 @@
     <h1>Security Groups</h1>
     <a href="/ui/security-groups/new" class="button">New security group</a>
   </div>
-  {% if groups %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Name</th><th>Permissions</th><th></th></tr></thead>
     <tbody>
-      {% for group in groups %}
+      {% for group in page_obj.items %}
       <tr>
         <td>{{ group.name }}</td>
-        <td>{{ group.permissions | length }} of {{ catalog_size }}</td>
+        <td>
+          {{ group.permissions | length }} of {{ catalog_size }}
+          <span class="perm-bar"><span style="width: {{ ((group.permissions | length) / catalog_size * 100) | round }}%"></span></span>
+        </td>
         <td><a href="/ui/security-groups/{{ group.id }}/edit">Edit</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No security groups yet.</p>
   {% endif %}

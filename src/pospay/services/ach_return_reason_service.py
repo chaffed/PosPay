@@ -3,6 +3,7 @@
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -59,9 +60,18 @@ def seed_default_ach_return_reasons(session: Session, tenant_id: uuid.UUID) -> l
     return reasons
 
 
-def list_ach_return_reasons(session: Session, tenant_id: uuid.UUID, *, active_only: bool = False) -> list[AchReturnReason]:
+def list_ach_return_reasons(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    active_only: bool = False,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
+) -> list[AchReturnReason]:
     repo = AchReturnReasonRepository(session, tenant_id)
-    return repo.list(is_active=True) if active_only else repo.list()
+    is_active = True if active_only else None
+    return repo.list(is_active=is_active, limit=limit, offset=offset, order_by=order_by)
 
 
 def get_ach_return_reason(session: Session, tenant_id: uuid.UUID, reason_id: uuid.UUID) -> AchReturnReason | None:

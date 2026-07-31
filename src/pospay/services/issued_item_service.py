@@ -116,9 +116,12 @@ def list_issued_items(
     status: IssuedItemStatus | None = None,
     account_id: uuid.UUID | None = None,
     customer_id: uuid.UUID | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
 ) -> list[IssuedItem]:
     repo = IssuedItemRepository(session, tenant_id, customer_id)
-    return repo.list(status=status, account_id=account_id)
+    return repo.list(status=status, account_id=account_id, limit=limit, offset=offset, order_by=order_by)
 
 
 def _issued_item_input_from_row(

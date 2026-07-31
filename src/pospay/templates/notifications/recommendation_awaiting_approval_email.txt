@@ -1,0 +1,8 @@
+A recommendation on a {{ network_code }} exception is awaiting your approval.
+
+Recommended outcome: {{ recommended_outcome }}
+
+Review it here: {{ exception_url }}
+
+You're receiving this because your role can approve exception decisions. You can
+change what you're notified about at /ui/security/notifications.

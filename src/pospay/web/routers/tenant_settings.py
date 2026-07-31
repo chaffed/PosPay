@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from pospay.config import get_settings
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.bulk_upload_file import BulkUploadFile, BulkUploadSource
 from pospay.domain.tenant import Tenant
+from pospay.repositories.bulk_upload_file_repo import BulkUploadFileRepository
 from pospay.services import audit_log_service
 from pospay.services.tenant_service import (
     InvalidTenantSettingsInput,
@@ -16,6 +18,7 @@ from pospay.services.tenant_service import (
     set_require_dual_control,
     set_session_timeouts,
     update_tenant_branding,
+    update_tenant_contact_info,
 )
 from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
@@ -29,6 +32,12 @@ def settings_form(
 ) -> HTMLResponse:
     tenant = db.get(Tenant, ctx.tenant_id)
     settings = get_settings()
+    # Read-only visibility only — auto_import_* is a single process-wide config
+    # (config.py), not a per-tenant database setting, so there's nothing to save here,
+    # just the current config plus this tenant's own recent activity for it.
+    recent_auto_imports = BulkUploadFileRepository(db, ctx.tenant_id).list(
+        source=BulkUploadSource.AUTO_IMPORT, limit=5, order_by=BulkUploadFile.uploaded_at.desc()
+    )
     return render_template(
         request, "settings/form.html", ctx=ctx, tenant_display_name=ctx.tenant_name, accent_color=ctx.accent_color or "",
         require_dual_control=tenant.require_dual_control,
@@ -38,6 +47,18 @@ def settings_form(
         default_refresh_token_expire_minutes=settings.jwt_refresh_token_expire_minutes,
         data_export_timeout_seconds=tenant.data_export_timeout_seconds,
         default_data_export_timeout_seconds=settings.data_export_timeout_seconds,
+        auto_import_enabled=settings.auto_import_enabled,
+        auto_import_dropbox_dir=settings.auto_import_dropbox_dir,
+        auto_import_interval_seconds=settings.auto_import_interval_seconds,
+        recent_auto_imports=recent_auto_imports,
+        support_email=tenant.support_email,
+        support_phone=tenant.support_phone,
+        website=tenant.website,
+        address_line1=tenant.address_line1,
+        address_line2=tenant.address_line2,
+        city=tenant.city,
+        state=tenant.state,
+        postal_code=tenant.postal_code,
     )
 
 
@@ -198,6 +219,39 @@ def update_data_export_timeout(
             channel="web",
             action="tenant.update_data_export_timeout",
             summary=f"Updated data export timeout ({tenant.data_export_timeout_seconds or 'default'} sec)",
+            resource_type="tenant",
+            resource_id=ctx.tenant_id,
+        )
+    db.commit()
+    return RedirectResponse("/ui/settings?flash=Settings+updated.", status_code=303)
+
+
+@router.post("/contact")
+def update_contact_info(
+    support_email: str = Form(""),
+    support_phone: str = Form(""),
+    website: str = Form(""),
+    address_line1: str = Form(""),
+    address_line2: str = Form(""),
+    city: str = Form(""),
+    state: str = Form(""),
+    postal_code: str = Form(""),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    tenant = update_tenant_contact_info(
+        db, ctx.tenant_id, support_email=support_email, support_phone=support_phone, website=website,
+        address_line1=address_line1, address_line2=address_line2, city=city, state=state, postal_code=postal_code,
+    )
+    if tenant is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="tenant.update_contact_info",
+            summary="Updated organization contact info",
             resource_type="tenant",
             resource_id=ctx.tenant_id,
         )

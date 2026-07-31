@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Paid Items — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About bulk uploads{% endblock %}
+{% block help_body %}
+<p>Each row is processed independently — one bad row (bad account number, malformed
+  amount) is reported on the results page without failing the rest of the file. The
+  original file itself is saved and signed for audit purposes even if some rows fail,
+  and can be reviewed later from the Audit Log / bulk-upload detail page.</p>
+<p>This is for checks presented for payment as plain data, with no check image attached.
+  If you have a real image cash letter (X9.37) or a ZIP of images with a manifest,
+  use <a href="/ui/check-images/bulk">Bulk upload check images</a> instead.</p>
+<p>Want this automated instead of uploading by hand each time? See "Auto-import" in
+  {% if can(ctx, "tenant:manage") %}<a href="/ui/settings">Settings</a>{% else %}Settings{% endif %}
+  for the drop-directory your bank's own file transmission can use.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Bulk upload paid items</h1>
+  <p>Upload a delimited file (CSV, TSV, pipe- or semicolon-separated) or an Excel
+    (.xlsx) file. The first row must be a header row with these column names
+    (case/spacing-insensitive, any order):</p>
+  <table>
+    <thead><tr><th>Column</th><th>Required</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>account_number</td><td>yes</td><td>1001 (or an account's own external account ID, if it has one)</td></tr>
+      <tr><td>check_number</td><td>yes</td><td>5001</td></tr>
+      <tr><td>presented_amount</td><td>yes</td><td>150.00</td></tr>
+      <tr><td>presented_date</td><td>yes</td><td>2026-01-15</td></tr>
+      <tr><td>account_name</td><td>no</td><td>Operating (used only when creating a new account)</td></tr>
+    </tbody>
+  </table>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  {% if upload_record %}
+  <p>The file you just submitted was still saved and signed for audit purposes:
+    <a href="/ui/bulk-uploads/{{ upload_record.id }}">{{ upload_record.original_filename }}</a>
+  </p>
+  {% endif %}
+  <form method="post" action="/ui/paid-items/bulk" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>File <input type="file" name="upload_file" accept=".csv,.txt,.tsv,.xlsx,.xls" required></label>
+    <label><input type="checkbox" name="create_missing_accounts" value="true"> Automatically create accounts for account numbers not already in the system</label>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+{% endblock %}

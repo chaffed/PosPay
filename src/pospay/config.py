@@ -99,6 +99,40 @@ class Settings(BaseSettings):
     enable_ml_scheduler: bool = False  # opt-in: off by default so tests/local dev don't spawn a background thread
     ml_retrain_cron_hour: int = 2  # nightly at 2am when enabled
 
+    # Auto-import dropbox (services/dropbox_import_service.py) — a directory tree an
+    # external system (a core-banking export, an SFTP drop) can land files into for
+    # unattended import, isolated by tenant slug (and optionally customer number)
+    # subdirectory — see that module for the exact layout.
+    auto_import_dropbox_dir: str = "./data/auto_import_dropbox"
+    auto_import_enabled: bool = False  # opt-in: off by default, same reasoning as enable_ml_scheduler
+    auto_import_interval_seconds: int = 300  # how often the in-app scheduler polls, when enabled
+    # A dropped file is only processed once its mtime is at least this old — a simple,
+    # sender-agnostic guard against reading a file an external system is still mid-write
+    # on, without requiring that system to adopt a write-then-atomic-rename convention.
+    auto_import_min_file_age_seconds: int = 30
+    # Same resource-exhaustion-guard reasoning as max_request_body_bytes, applied to a
+    # dropped file read directly off disk rather than an HTTP upload.
+    auto_import_max_file_bytes: int = 50 * 1024 * 1024
+
+    # Notifications (services/notification_service.py queues, workers/tasks.py::
+    # notification_dispatch_job drains) — email/SMS are never sent inline in a request,
+    # so a slow/unreachable provider never blocks the action that triggered it.
+    notifications_enabled: bool = False  # opt-in: off by default, same reasoning as enable_ml_scheduler
+    notification_dispatch_interval_seconds: int = 30
+    notification_dispatch_batch_size: int = 200
+    email_provider: str = "smtp"  # see notifications/email/factory.py
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    smtp_from_address: str = "notifications@pospay.local"
+    smtp_timeout_seconds: float = 10.0
+    sms_provider: str = "twilio"  # see notifications/sms/factory.py; requires pip install pospay[sms]
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_from_number: str | None = None
+
     # Federated login (auth/oidc_service.py, services/sso_service.py) — fed through a KDF
     # into a valid Fernet key (auth/crypto.py), so this stays a plain string like every
     # other *_secret_key setting rather than a hand-generated base64 Fernet key. This is

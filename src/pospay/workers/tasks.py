@@ -13,9 +13,13 @@ from pospay.db.session import get_session_factory
 from pospay.domain.decision import Decision
 from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.ml_model import MlModel, MlModelStatus
+from pospay.domain.notification import Notification, NotificationChannel, NotificationStatus
 from pospay.ml.registry import create_model_row
 from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
+from pospay.notifications.email.factory import get_email_provider
+from pospay.notifications.sms.factory import get_sms_provider
+from pospay.services.dropbox_import_service import scan_and_import_all_tenants
 
 logger = logging.getLogger(__name__)
 
@@ -126,5 +130,78 @@ def retrain_job() -> None:
                 if customer_new_decisions < settings.ml_min_new_decisions_for_retrain:
                     continue
                 _train_and_log(session, network_code, customer_id=customer_id, label=f"customer_id={customer_id}")
+    finally:
+        session.close()
+
+
+def dropbox_import_job() -> None:
+    """The in-app scheduler's entry point for the auto-import dropbox (see
+    services/dropbox_import_service.py) -- one session, one full scan of every tenant's
+    own subtree, same call scripts/import_dropbox.py and the scheduler itself both make."""
+    session = get_session_factory()()
+    try:
+        results = scan_and_import_all_tenants(session)
+        imported = sum(r.outcome == "imported" for r in results)
+        failed = sum(r.outcome == "failed" for r in results)
+        duplicates = sum(r.outcome == "duplicate" for r in results)
+        logger.info("Dropbox import scan: %d imported, %d failed, %d duplicates skipped", imported, failed, duplicates)
+    finally:
+        session.close()
+
+
+def _send_one_notification(notification: Notification) -> None:
+    if notification.channel == NotificationChannel.EMAIL:
+        get_email_provider().send(to=notification.destination, subject=notification.subject or "", body=notification.body)
+    else:
+        get_sms_provider().send(to=notification.destination, body=notification.body)
+
+
+def notification_dispatch_job() -> None:
+    """Drains PENDING Notification rows (services/notification_service.py queues them,
+    never sends) -- one row's failure never blocks the rest of the batch, same isolation
+    principle as _train_and_log/dropbox_import_job's own per-item try/except. Committed
+    per-row so partial progress survives a crash mid-run rather than re-sending
+    everything already-successful on the next poll."""
+    settings = get_settings()
+    session = get_session_factory()()
+    try:
+        rows = (
+            session.execute(
+                select(Notification)
+                .where(Notification.status == NotificationStatus.PENDING)
+                .order_by(Notification.created_at)
+                .limit(settings.notification_dispatch_batch_size)
+            )
+            .scalars()
+            .all()
+        )
+
+        sent = 0
+        retrying = 0
+        failed = 0
+        for notification in rows:
+            try:
+                _send_one_notification(notification)
+            except Exception as exc:  # noqa: BLE001 -- one bad destination/provider hiccup must never abort the batch
+                notification.attempt_count += 1
+                notification.error = str(exc)[:1000]
+                if notification.exhausted_retries:
+                    notification.status = NotificationStatus.FAILED
+                    failed += 1
+                else:
+                    retrying += 1  # stays PENDING -- picked up again next poll
+                logger.warning(
+                    "Failed to send notification %s (%s, attempt %d, %s): %s",
+                    notification.id, notification.channel.value, notification.attempt_count,
+                    "giving up" if notification.exhausted_retries else "will retry", exc,
+                )
+            else:
+                notification.status = NotificationStatus.SENT
+                notification.sent_at = datetime.now(timezone.utc)
+                sent += 1
+            session.commit()
+
+        if rows:
+            logger.info("Notification dispatch: %d sent, %d retrying, %d permanently failed", sent, retrying, failed)
     finally:
         session.close()

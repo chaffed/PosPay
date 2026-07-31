@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Customers — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About customers{% endblock %}
 {% block help_body %}
@@ -14,11 +15,11 @@
     <h1>Customers</h1>
     <a href="/ui/customers/new" class="button">New customer</a>
   </div>
-  {% if customers %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Customer number</th><th>Name</th><th>Status</th></tr></thead>
     <tbody>
-      {% for customer in customers %}
+      {% for customer in page_obj.items %}
       <tr>
         <td>{{ customer.customer_number }}</td>
         <td><a href="/ui/customers/{{ customer.id }}">{{ customer.name }}</a></td>
@@ -27,6 +28,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No customers yet.</p>
   {% endif %}

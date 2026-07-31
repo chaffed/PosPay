@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Stop Payments — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About stop payments{% endblock %}
 {% block help_body %}
@@ -19,14 +20,14 @@
     <h1>Stop Payments</h1>
     {% if can(ctx, "stop_payment:write") %}<a href="/ui/stop-payments/new" class="button">New stop payment</a>{% endif %}
   </div>
-  {% if stops %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Check #</th><th data-type="number">Amount</th><th>Effective</th><th>Expires</th><th>Status</th><th></th></tr></thead>
     <tbody>
-      {% for stop in stops %}
+      {% for stop in page_obj.items %}
       <tr>
         <td>{{ stop.check_number }}</td>
-        <td>{{ stop.amount or "any" }}</td>
+        <td>{{ stop.amount | currency or "any" }}</td>
         <td>{{ stop.effective_date }}</td>
         <td>{{ stop.expiration_date or "never" }}</td>
         <td><span class="badge {{ 'badge-ok' if stop.status.value == 'active' else '' }}">{{ stop.status.value }}</span></td>
@@ -42,6 +43,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No stop payments yet.</p>
   {% endif %}

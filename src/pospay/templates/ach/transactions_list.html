@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}ACH Transactions — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ACH transactions{% endblock %}
 {% block help_body %}
@@ -18,21 +19,22 @@
     </div>
     {% endif %}
   </div>
-  {% if txns %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Originator</th><th>Type</th><th data-type="number">Amount</th><th>Effective date</th><th>Match status</th></tr></thead>
     <tbody>
-      {% for txn in txns %}
+      {% for txn in page_obj.items %}
       <tr>
         <td><a href="/ui/ach/transactions/{{ txn.id }}">{{ txn.originator_name }}</a></td>
         <td>{{ txn.transaction_type.value }}</td>
-        <td>{{ txn.amount }}</td>
+        <td>{{ txn.amount | currency }}</td>
         <td>{{ txn.effective_date }}</td>
         <td><span class="badge {{ 'badge-ok' if txn.match_status.value == 'matched' else 'badge-danger' if txn.match_status.value == 'exception' else '' }}">{{ txn.match_status.value }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No ACH transactions yet.</p>
   {% endif %}

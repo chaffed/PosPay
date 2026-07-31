@@ -16,6 +16,7 @@ from pospay.networks.registry import get_adapter
 from pospay.repositories.ach_return_reason_repo import AchReturnReasonRepository
 from pospay.repositories.decision_repo import DecisionRepository
 from pospay.repositories.exception_repo import ExceptionRepository
+from pospay.services import notification_service
 
 
 class DecisionError(str, enum.Enum):
@@ -102,6 +103,7 @@ def submit_recommendation(
     exception.recommended_by_user_id = ctx.user_id
     exception.status = ExceptionStatus.PENDING_APPROVAL
     session.flush()
+    notification_service.notify_recommendation_awaiting_approval(session, exception)
     return ServiceResult(None, exception, None)
 
 

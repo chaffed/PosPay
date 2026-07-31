@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Chaffed
 
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi.templating import Jinja2Templates
 
@@ -42,3 +43,50 @@ def _can(ctx: TenantContext | None, permission: str) -> bool:
 
 
 templates.env.globals["can"] = _can
+
+
+def _format_metrics(metrics: dict | None) -> str:
+    """Exposed to every template as `format_metrics(m.metrics_json)` — renders an ML
+    model's metrics dict (precision/recall/auc from ml/train.py, or {"error": ...} for a
+    failed retrain from workers/tasks.py::_train_and_log) as a readable string instead of
+    a raw Python dict repr (`{'precision': 0.5, ...}`)."""
+    if not metrics:
+        return "—"
+    parts = []
+    for key, value in metrics.items():
+        if key in ("precision", "recall") and isinstance(value, (int, float)):
+            parts.append(f"{key.capitalize()}: {value * 100:.0f}%")
+        elif isinstance(value, (int, float)):
+            parts.append(f"{key.upper() if key == 'auc' else key.capitalize()}: {value:.2f}")
+        else:
+            parts.append(f"{key.capitalize()}: {value}")
+    return ", ".join(parts)
+
+
+templates.env.globals["format_metrics"] = _format_metrics
+
+
+def _currency(value):
+    """Registered as the `currency` Jinja filter — formats a Decimal/numeric amount as
+    `$1,234.56`. Returns None unchanged (rather than raising or printing "None") so
+    existing `{{ x or "any" }}` fallbacks — e.g. stop_payments/list.html's nullable stop
+    amount — keep working exactly as before."""
+    if value is None:
+        return None
+    return f"${value:,.2f}"
+
+
+templates.env.filters["currency"] = _currency
+
+
+def _pager_href(request, page: int) -> str:
+    """Exposed to templates as `pager_href(request, page)` — used by
+    templates/_macros/pagination.html's Prev/Next links. Builds a query string with
+    `page` replaced (or added), preserving every other query param already on the
+    request (status filters, network filters, etc.) so paging never resets a filter."""
+    params = dict(request.query_params)
+    params["page"] = str(page)
+    return "?" + urlencode(params)
+
+
+templates.env.globals["pager_href"] = _pager_href

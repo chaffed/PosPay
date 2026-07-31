@@ -15,13 +15,14 @@ from pospay.bulk_import.nacha import NachaParseError, parse_nacha_file
 from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.tenancy import TenantContext
 from pospay.db.session import get_db
-from pospay.domain.ach_transaction import AchTransactionType
+from pospay.domain.ach_transaction import AchTransaction, AchTransactionType
 from pospay.domain.bulk_upload_file import BulkUploadKind
 from pospay.networks.ach.bulk_import import ingest_ach_rows, ingest_nacha_entries
 from pospay.networks.ach.ingestion import AchTransactionSubmission, ingest_ach_transaction
 from pospay.repositories.ach_transaction_repo import AchTransactionRepository
 from pospay.services import account_service, audit_log_service, bulk_upload_file_service, bulk_upload_reversal_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach/transactions", tags=["web-ach-transactions"])
@@ -29,10 +30,12 @@ router = APIRouter(prefix="/ui/ach/transactions", tags=["web-ach-transactions"])
 
 @router.get("")
 def list_transactions(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("ach_transaction:read"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("ach_transaction:read")),
 ) -> HTMLResponse:
-    txns = AchTransactionRepository(db, ctx.tenant_id, ctx.customer_id).list()
-    return render_template(request, "ach/transactions_list.html", ctx=ctx, txns=txns)
+    repo = AchTransactionRepository(db, ctx.tenant_id, ctx.customer_id)
+    page_obj = paginate(page=page, count_fn=repo.count, list_fn=lambda **kw: repo.list(order_by=AchTransaction.created_at.desc(), **kw))
+    return render_template(request, "ach/transactions_list.html", ctx=ctx, page_obj=page_obj)
 
 
 @router.get("/new")

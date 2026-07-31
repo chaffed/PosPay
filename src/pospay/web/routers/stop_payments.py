@@ -11,8 +11,11 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.stop_payment import StopPayment
+from pospay.repositories.stop_payment_repo import StopPaymentRepository
 from pospay.services import account_service, audit_log_service, stop_payment_service
 from pospay.web.deps import render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/stop-payments", tags=["web-stop-payments"])
@@ -20,10 +23,17 @@ router = APIRouter(prefix="/ui/stop-payments", tags=["web-stop-payments"])
 
 @router.get("")
 def list_stop_payments(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("stop_payment:read"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("stop_payment:read")),
 ) -> HTMLResponse:
-    stops = stop_payment_service.list_stop_payments(db, ctx.tenant_id, customer_id=ctx.customer_id)
-    return render_template(request, "stop_payments/list.html", ctx=ctx, stops=stops)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: StopPaymentRepository(db, ctx.tenant_id, ctx.customer_id).count(),
+        list_fn=lambda **kw: stop_payment_service.list_stop_payments(
+            db, ctx.tenant_id, customer_id=ctx.customer_id, order_by=StopPayment.created_at.desc(), **kw
+        ),
+    )
+    return render_template(request, "stop_payments/list.html", ctx=ctx, page_obj=page_obj)
 
 
 @router.get("/new")

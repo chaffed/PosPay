@@ -40,6 +40,7 @@ PERMISSION_CATALOG: dict[str, str] = {
     "ach_return_reason:manage": "Manage the catalog of ACH return reasons",
     "wsud:sign": "Sign a Written Statement of Unauthorized Debit (customer-scoped)",
     "wsud:read": "View signed Written Statements of Unauthorized Debit across customers",
+    "bulk_import:run": "Trigger an on-demand auto-import scan of dropped files",
 }
 
 # Masked out of TenantContext.permissions whenever the active membership is
@@ -92,7 +93,7 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
         "ach_authorization:read", "ach_authorization:write",
         "ach_transaction:read", "ach_transaction:write",
         "exception:read", "exception:recommend",
-        "wsud:sign",
+        "wsud:sign", "bulk_import:run",
     ],
     "Approver": [*_READS, "exception:decide"],
     "Viewer": [*_READS],
@@ -115,6 +116,6 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
         "ach_authorization:read", "ach_authorization:write",
         "ach_transaction:read", "ach_transaction:write",
         "exception:read", "exception:recommend", "exception:decide",
-        "wsud:sign",
+        "wsud:sign", "bulk_import:run",
     ],
 }

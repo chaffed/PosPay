@@ -41,8 +41,16 @@ def create_account(session: Session, tenant_id: uuid.UUID, data: AccountInput) -
     return account
 
 
-def list_accounts(session: Session, tenant_id: uuid.UUID, *, customer_id: uuid.UUID | None = None) -> list[Account]:
-    return AccountRepository(session, tenant_id, customer_id).list()
+def list_accounts(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    customer_id: uuid.UUID | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
+) -> list[Account]:
+    return AccountRepository(session, tenant_id, customer_id).list(limit=limit, offset=offset, order_by=order_by)
 
 
 def get_account_by_number(

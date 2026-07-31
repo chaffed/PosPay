@@ -129,6 +129,12 @@ def _seed_demo_data() -> None:
         )
         session.commit()
         tenant = identity.tenant
+        tenant_service.update_tenant_contact_info(
+            session, tenant.id, support_email="support@riversidebank.example.com", support_phone="(555) 867-5309",
+            website="https://riversidebank.example.com", address_line1="42 River Street", address_line2=None,
+            city="Springfield", state="IL", postal_code="62701",
+        )
+        session.commit()
 
         groups = {g.name: g for g in security_group_service.list_security_groups(session, tenant.id)}
         extra_users = [
@@ -307,6 +313,8 @@ class Page:
 PAGES: list[Page] = [
     Page("dashboard", "/ui/", "table, .card"),
     Page("issued_items", "/ui/issued-items"),
+    Page("paid_items", "/ui/paid-items"),
+    Page("paid_items_bulk", "/ui/paid-items/bulk"),
     Page("exceptions", "/ui/exceptions"),
     Page("check_images_bulk", "/ui/check-images/bulk"),
     Page("ach_transactions", "/ui/ach/transactions"),

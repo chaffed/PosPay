@@ -20,7 +20,8 @@ _STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     scheduler = None
-    if get_settings().enable_ml_scheduler:
+    settings = get_settings()
+    if settings.enable_ml_scheduler or settings.auto_import_enabled or settings.notifications_enabled:
         from pospay.workers.scheduler import start_scheduler, stop_scheduler
 
         scheduler = start_scheduler()

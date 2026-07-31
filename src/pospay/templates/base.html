@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if theme %} data-theme="{{ theme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,31 +10,48 @@
   {% block head_extra %}{% endblock %}
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
   <div class="app-shell">
     {% if ctx %}
+    {% macro nav_link(href, label) %}
+    <a href="{{ href }}" class="{{ 'active' if (request.url.path == href or request.url.path.startswith(href + '/')) else '' }}">{{ label }}</a>
+    {% endmacro %}
+    {% set show_ach_return_reasons = can(ctx, "ach_return_reason:manage") %}
+    {% set show_wsud = ctx.customer_id is not none and can(ctx, "wsud:sign") %}
+    {% set show_org_section = can(ctx, "customer:manage") or can(ctx, "admin:manage") or can(ctx, "user:manage")
+        or can(ctx, "security_group:manage") or can(ctx, "tenant:manage") or can(ctx, "audit_log:read") %}
     <nav class="sidenav">
       <a href="/ui/" class="brand">
         {% if ctx.has_logo %}<img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="{{ ctx.tenant_name }}" class="brand-logo">{% else %}{{ ctx.tenant_name }}{% endif %}
       </a>
       {% if ctx.customer_id %}<p class="customer-scope-badge">Scoped to <strong>{{ ctx.customer_name }}</strong></p>{% endif %}
       <div class="nav-links">
-        <a href="/ui/accounts">Accounts</a>
-        <a href="/ui/issued-items">Issued Items</a>
-        <a href="/ui/stop-payments">Stop Payments</a>
-        <a href="/ui/paid-items">Paid Items</a>
-        <a href="/ui/check-images">Check Images</a>
-        <a href="/ui/ach/authorizations">ACH Authorizations</a>
-        <a href="/ui/ach/transactions">ACH Transactions</a>
-        <a href="/ui/exceptions">Exceptions</a>
-        {% if ctx.customer_id is not none and can(ctx, "wsud:sign") %}<a href="/ui/wsud">Unauthorized Debit Statement</a>{% endif %}
-        {% if can(ctx, "customer:manage") %}<a href="/ui/customers">Customers</a>{% endif %}
-        {% if can(ctx, "admin:manage") %}<a href="/ui/admin">Admin</a>{% endif %}
-        {% if can(ctx, "user:manage") %}<a href="/ui/users">Users</a>{% endif %}
-        {% if can(ctx, "security_group:manage") %}<a href="/ui/security-groups">Security Groups</a>{% endif %}
-        {% if can(ctx, "ach_return_reason:manage") %}<a href="/ui/ach-return-reasons">ACH Return Reasons</a>{% endif %}
-        {% if can(ctx, "tenant:manage") %}<a href="/ui/wizard/bank">Getting Started</a>{% endif %}
-        {% if can(ctx, "tenant:manage") %}<a href="/ui/settings">Settings</a>{% endif %}
-        {% if can(ctx, "audit_log:read") %}<a href="/ui/audit-log">Audit Log</a>{% endif %}
+        <p class="nav-section">Positive Pay</p>
+        {{ nav_link("/ui/accounts", "Accounts") }}
+        {{ nav_link("/ui/issued-items", "Issued Items") }}
+        {{ nav_link("/ui/stop-payments", "Stop Payments") }}
+        {{ nav_link("/ui/paid-items", "Paid Items") }}
+        {{ nav_link("/ui/check-images", "Check Images") }}
+
+        <p class="nav-section">ACH</p>
+        {{ nav_link("/ui/ach/authorizations", "ACH Authorizations") }}
+        {{ nav_link("/ui/ach/transactions", "ACH Transactions") }}
+        {% if show_ach_return_reasons %}{{ nav_link("/ui/ach-return-reasons", "ACH Return Reasons") }}{% endif %}
+
+        <p class="nav-section">Review</p>
+        {{ nav_link("/ui/exceptions", "Exceptions") }}
+        {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement") }}{% endif %}
+
+        {% if show_org_section %}
+        <p class="nav-section">Organization</p>
+        {% if can(ctx, "customer:manage") %}{{ nav_link("/ui/customers", "Customers") }}{% endif %}
+        {% if can(ctx, "user:manage") %}{{ nav_link("/ui/users", "Users") }}{% endif %}
+        {% if can(ctx, "security_group:manage") %}{{ nav_link("/ui/security-groups", "Security Groups") }}{% endif %}
+        {% if can(ctx, "tenant:manage") %}{{ nav_link("/ui/wizard/bank", "Getting Started") }}{% endif %}
+        {% if can(ctx, "tenant:manage") %}{{ nav_link("/ui/settings", "Settings") }}{% endif %}
+        {% if can(ctx, "audit_log:read") %}{{ nav_link("/ui/audit-log", "Audit Log") }}{% endif %}
+        {% if can(ctx, "admin:manage") %}{{ nav_link("/ui/admin", "Admin") }}{% endif %}
+        {% endif %}
       </div>
       <div class="nav-bottom">
         <a href="/ui/switch-tenant">Switch organization</a>
@@ -47,10 +64,22 @@
     </nav>
     {% endif %}
 
-    <div class="page">
+    <div class="page" id="main-content">
       {% include "partials/_flash.html" %}
-      {% if self.help_body()|trim %}
-      <button type="button" id="page-help-button" class="help-button" aria-label="Help">?</button>
+      {% set has_help = self.help_body()|trim %}
+      <div class="page-controls">
+        <form method="post" action="/ui/theme" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="next" value="{{ request.url.path }}{{ ('?' + request.url.query) if request.url.query else '' }}">
+          <select name="theme" class="theme-select" onchange="this.form.submit()" aria-label="Color theme">
+            <option value="system" {{ "selected" if not theme else "" }}>System</option>
+            <option value="light" {{ "selected" if theme == "light" else "" }}>Light</option>
+            <option value="dark" {{ "selected" if theme == "dark" else "" }}>Dark</option>
+          </select>
+        </form>
+        {% if has_help %}<button type="button" id="page-help-button" class="help-button" aria-label="Help">?</button>{% endif %}
+      </div>
+      {% if has_help %}
       <dialog id="page-help-dialog" class="help-dialog">
         <button type="button" class="help-close" aria-label="Close">&times;</button>
         <h2>{% block help_title %}Help{% endblock %}</h2>
@@ -58,6 +87,16 @@
       </dialog>
       {% endif %}
       {% block content %}{% endblock %}
+      {% set contact = ctx if ctx else branding %}
+      {% if contact and (contact.support_email or contact.support_phone or contact.website or contact.address_line1) %}
+      <footer class="app-footer">
+        {{ contact.tenant_name if ctx else contact.name }}
+        {%- if contact.address_line1 %} · {{ contact.address_line1 }}{% if contact.address_line2 %}, {{ contact.address_line2 }}{% endif %}{% if contact.city %}, {{ contact.city }}{% endif %}{% if contact.state %}, {{ contact.state }}{% endif %} {{ contact.postal_code or "" }}{% endif -%}
+        {%- if contact.support_email %} · <a href="mailto:{{ contact.support_email }}">{{ contact.support_email }}</a>{% endif -%}
+        {%- if contact.support_phone %} · {{ contact.support_phone }}{% endif -%}
+        {%- if contact.website %} · <a href="{{ contact.website }}">{{ contact.website }}</a>{% endif -%}
+      </footer>
+      {% endif %}
     </div>
   </div>
 

@@ -25,6 +25,7 @@ from pospay.web.routers.sso_settings import router as sso_settings_router
 from pospay.web.routers.stop_payments import router as stop_payments_router
 from pospay.web.routers.tenant_settings import router as tenant_settings_router
 from pospay.web.routers.tenant_switch import router as tenant_switch_router
+from pospay.web.routers.theme import router as theme_router
 from pospay.web.routers.users import router as users_router
 from pospay.web.routers.wizard import router as wizard_router
 from pospay.web.routers.wsud import router as wsud_router
@@ -55,3 +56,4 @@ web_router.include_router(sso_settings_router)
 web_router.include_router(data_export_router)
 web_router.include_router(wizard_router)
 web_router.include_router(wsud_router)
+web_router.include_router(theme_router)

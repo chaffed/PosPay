@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}ACH Return Reasons — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ACH return reasons{% endblock %}
 {% block help_body %}
@@ -17,11 +18,11 @@
     <h1>ACH Return Reasons</h1>
     <a href="/ui/ach-return-reasons/new" class="button">New return reason</a>
   </div>
-  {% if reasons %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Reason</th><th>Transaction code</th><th>Status</th><th></th></tr></thead>
     <tbody>
-      {% for reason in reasons %}
+      {% for reason in page_obj.items %}
       <tr>
         <td>{{ reason.reason_text }}</td>
         <td>{{ reason.transaction_code or "—" }}</td>
@@ -44,6 +45,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No return reasons yet.</p>
   {% endif %}

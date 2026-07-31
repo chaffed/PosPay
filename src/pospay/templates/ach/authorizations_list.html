@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}ACH Authorizations — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ACH authorizations{% endblock %}
 {% block help_body %}
@@ -18,15 +19,15 @@
     <h1>ACH Authorizations</h1>
     {% if can(ctx, "ach_authorization:write") %}<a href="/ui/ach/authorizations/new" class="button">New authorization</a>{% endif %}
   </div>
-  {% if rules %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Originator</th><th>Receiver scope</th><th data-type="number">Max amount</th><th data-type="number">Freq/30d</th><th>SEC codes</th><th>Status</th><th></th></tr></thead>
     <tbody>
-      {% for rule in rules %}
+      {% for rule in page_obj.items %}
       <tr>
         <td>{{ rule.originator_name }} ({{ rule.originator_id }})</td>
         <td>{{ rule.receiver_id or "any (blanket)" }}</td>
-        <td>{{ rule.max_amount or "no limit" }}</td>
+        <td>{{ rule.max_amount | currency or "no limit" }}</td>
         <td>{{ rule.frequency_limit or "no limit" }}</td>
         <td>{{ rule.allowed_sec_codes | join(", ") if rule.allowed_sec_codes else "any" }}</td>
         <td><span class="badge {{ 'badge-ok' if rule.status.value == 'active' else 'badge-danger' }}">{{ rule.status.value }}</span></td>
@@ -42,6 +43,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No ACH authorizations yet.</p>
   {% endif %}

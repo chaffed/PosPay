@@ -44,3 +44,18 @@ class Tenant(Base):
     favicon_path: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     favicon_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     accent_color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+
+    # Contact info — shown in the page footer (templates/base.html), configured on
+    # /ui/settings. All nullable/free-text, same shape (and same lack of format
+    # validation) as Customer's own identical contact block — this is the bank's own
+    # info, not a business client's. Unlike branding above, there's no "app default" to
+    # fall back to: unset simply means the footer doesn't render at all (see
+    # services/tenant_service.py::TenantBranding).
+    support_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    support_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    website: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)

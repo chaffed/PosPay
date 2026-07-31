@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -75,6 +76,9 @@ def list_ach_authorizations(
     *,
     status: AchAuthorizationStatus | None = None,
     customer_id: uuid.UUID | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
 ) -> list[AchAuthorizationRule]:
     repo = AchAuthorizationRepository(session, tenant_id, customer_id)
-    return repo.list(status=status)
+    return repo.list(status=status, limit=limit, offset=offset, order_by=order_by)

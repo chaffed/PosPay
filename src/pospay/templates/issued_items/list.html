@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Issued Items — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About issued items{% endblock %}
 {% block help_body %}
@@ -35,14 +36,14 @@
       </select>
     </label>
   </form>
-  {% if items %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Check #</th><th data-type="number">Amount</th><th>Payee</th><th>Issue date</th><th>Status</th></tr></thead>
     <tbody>
-      {% for item in items %}
+      {% for item in page_obj.items %}
       <tr>
         <td><a href="/ui/issued-items/{{ item.id }}">{{ item.check_number }}</a></td>
-        <td>{{ item.amount }}</td>
+        <td>{{ item.amount | currency }}</td>
         <td>{{ item.payee_name }}</td>
         <td>{{ item.issue_date }}</td>
         <td><span class="badge {{ 'badge-ok' if item.status.value == 'outstanding' else 'badge-warn' if item.status.value in ['stale','stopped'] else 'badge-danger' if item.status.value == 'voided' else '' }}">{{ item.status.value }}</span></td>
@@ -50,6 +51,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No issued items yet.</p>
   {% endif %}

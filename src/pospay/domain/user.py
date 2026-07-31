@@ -33,3 +33,9 @@ class User(Base):
     # password; an admin can also clear locked_until early (services/user_service.py::unlock_user).
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Set by the user themselves on /ui/security/notifications — nullable since SMS
+    # notifications are opt-in and most users will never set one. No format validation
+    # beyond what services/notification_service.py's SMS provider itself rejects; kept
+    # as a plain string (not a typed phone type) same as Customer.phone.
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)

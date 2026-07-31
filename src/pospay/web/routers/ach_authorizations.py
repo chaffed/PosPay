@@ -11,8 +11,11 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.ach_authorization_rule import AchAuthorizationRule
+from pospay.repositories.ach_authorization_repo import AchAuthorizationRepository
 from pospay.services import account_service, ach_authorization_service, audit_log_service
 from pospay.web.deps import render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorizations"])
@@ -20,10 +23,17 @@ router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorization
 
 @router.get("")
 def list_authorizations(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("ach_authorization:read"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("ach_authorization:read")),
 ) -> HTMLResponse:
-    rules = ach_authorization_service.list_ach_authorizations(db, ctx.tenant_id, customer_id=ctx.customer_id)
-    return render_template(request, "ach/authorizations_list.html", ctx=ctx, rules=rules)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: AchAuthorizationRepository(db, ctx.tenant_id, ctx.customer_id).count(),
+        list_fn=lambda **kw: ach_authorization_service.list_ach_authorizations(
+            db, ctx.tenant_id, customer_id=ctx.customer_id, order_by=AchAuthorizationRule.created_at.desc(), **kw
+        ),
+    )
+    return render_template(request, "ach/authorizations_list.html", ctx=ctx, page_obj=page_obj)
 
 
 @router.get("/new")

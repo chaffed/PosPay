@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.account import Account
 from pospay.domain.bulk_upload_file import BulkUploadKind
+from pospay.repositories.account_repo import AccountRepository
 from pospay.services import (
     account_service,
     audit_log_service,
@@ -19,6 +21,7 @@ from pospay.services import (
     customer_service,
 )
 from pospay.web.deps import render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/accounts", tags=["web-accounts"])
@@ -26,15 +29,22 @@ router = APIRouter(prefix="/ui/accounts", tags=["web-accounts"])
 
 @router.get("")
 def list_accounts(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("account:read"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("account:read")),
 ) -> HTMLResponse:
-    accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: AccountRepository(db, ctx.tenant_id, ctx.customer_id).count(),
+        list_fn=lambda **kw: account_service.list_accounts(
+            db, ctx.tenant_id, customer_id=ctx.customer_id, order_by=Account.account_number, **kw
+        ),
+    )
     # A customer-scoped user's own scope is implicit — no picker needed, and they must
     # never be offered other customers (or "unassigned") to file a new account under.
     customers = customer_service.list_customers(db, ctx.tenant_id) if ctx.customer_id is None else []
     customer_names = {c.id: c.name for c in customers}
     return render_template(
-        request, "accounts/list.html", ctx=ctx, accounts=accounts, customers=customers, customer_names=customer_names
+        request, "accounts/list.html", ctx=ctx, page_obj=page_obj, customers=customers, customer_names=customer_names
     )
 
 

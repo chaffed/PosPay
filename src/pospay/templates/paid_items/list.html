@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
 {% block title %}Paid Items — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About paid items{% endblock %}
 {% block help_body %}
@@ -18,15 +19,16 @@
   <div class="toolbar">
     <h1>Paid Items</h1>
     {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/new" class="button">Submit paid item</a>{% endif %}
+    {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/bulk" class="button secondary">Bulk upload</a>{% endif %}
   </div>
-  {% if items %}
+  {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Check #</th><th data-type="number">Presented amount</th><th>Presented date</th><th>Match status</th><th>Settlement</th></tr></thead>
     <tbody>
-      {% for item in items %}
+      {% for item in page_obj.items %}
       <tr>
         <td><a href="/ui/paid-items/{{ item.id }}">{{ item.check_number }}</a></td>
-        <td>{{ item.presented_amount }}</td>
+        <td>{{ item.presented_amount | currency }}</td>
         <td>{{ item.presented_date }}</td>
         <td><span class="badge {{ 'badge-ok' if item.match_status.value == 'matched' else 'badge-danger' if item.match_status.value == 'exception' else '' }}">{{ item.match_status.value }}</span></td>
         <td>{{ item.settlement_status.value }}</td>
@@ -34,6 +36,7 @@
       {% endfor %}
     </tbody>
   </table>
+  {{ pg.pager(page_obj, request) }}
   {% else %}
   <p>No paid items yet.</p>
   {% endif %}

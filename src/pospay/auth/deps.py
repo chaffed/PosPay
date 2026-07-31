@@ -113,6 +113,14 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         customer_name=customer_name,
         access_token_expire_minutes=branding.access_token_expire_minutes,
         refresh_token_expire_minutes=branding.refresh_token_expire_minutes,
+        support_email=branding.support_email,
+        support_phone=branding.support_phone,
+        website=branding.website,
+        address_line1=branding.address_line1,
+        address_line2=branding.address_line2,
+        city=branding.city,
+        state=branding.state,
+        postal_code=branding.postal_code,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting

@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,9 @@ def list_stop_payments(
     *,
     status: StopPaymentStatus | None = None,
     customer_id: uuid.UUID | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
 ) -> list[StopPayment]:
     repo = StopPaymentRepository(session, tenant_id, customer_id)
-    return repo.list(status=status)
+    return repo.list(status=status, limit=limit, offset=offset, order_by=order_by)

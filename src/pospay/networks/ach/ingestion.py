@@ -19,6 +19,7 @@ from pospay.domain.exception_item import ExceptionItem
 from pospay.ml.predict import score_exception
 from pospay.networks.ach.adapter import AchAdapter
 from pospay.repositories.account_repo import AccountRepository
+from pospay.services import notification_service
 
 _adapter = AchAdapter()
 
@@ -92,6 +93,7 @@ def ingest_ach_transaction(
         session.add(exception_item)
         session.flush()
         score_exception(session, exception_item)
+        notification_service.notify_exception_created(session, exception_item)
 
     session.flush()
     return txn

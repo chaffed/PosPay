@@ -15,6 +15,7 @@ from pospay.domain.customer import Customer
 from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
+from pospay.services import notification_service
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -96,6 +97,10 @@ def authenticate_password(
         if user.failed_login_attempts >= settings.login_max_failed_attempts:
             user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.login_lockout_minutes)
             session.flush()
+            # Only fires the moment the lockout threshold is actually crossed, not on
+            # every subsequent rejected attempt while already locked (that's the
+            # early-return at the top of this function, above).
+            notification_service.notify_account_locked(session, user)
             return PasswordLoginResult(PasswordLoginOutcome.LOCKED)
         session.flush()
         return PasswordLoginResult(PasswordLoginOutcome.INVALID_CREDENTIALS)

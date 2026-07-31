@@ -3,6 +3,7 @@
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -63,8 +64,15 @@ def update_customer(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UU
     return customer
 
 
-def list_customers(session: Session, tenant_id: uuid.UUID) -> list[Customer]:
-    return CustomerRepository(session, tenant_id).list()
+def list_customers(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
+) -> list[Customer]:
+    return CustomerRepository(session, tenant_id).list(limit=limit, offset=offset, order_by=order_by)
 
 
 def get_customer(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID) -> Customer | None:

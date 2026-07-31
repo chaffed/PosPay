@@ -138,8 +138,15 @@ def record_action(
     return entry
 
 
-def list_entries(session: Session, tenant_id: uuid.UUID) -> list[AuditLogEntry]:
-    return AuditLogRepository(session, tenant_id).list()
+def list_entries(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
+) -> list[AuditLogEntry]:
+    return AuditLogRepository(session, tenant_id).list(limit=limit, offset=offset, order_by=order_by)
 
 
 def verify_chain(session: Session, tenant_id: uuid.UUID) -> ChainVerificationResult:

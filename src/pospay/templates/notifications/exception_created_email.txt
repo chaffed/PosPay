@@ -1,0 +1,8 @@
+A new {{ network_code }} exception needs review.
+
+Type(s): {{ exception_types }}
+
+View it here: {{ exception_url }}
+
+You're receiving this because your role can recommend a decision on exceptions like
+this one. You can change what you're notified about at /ui/security/notifications.

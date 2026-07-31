@@ -14,6 +14,7 @@ from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.bulk_upload_file import BulkUploadKind
+from pospay.domain.tenant_membership import TenantMembership
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
 from pospay.services import (
@@ -25,6 +26,7 @@ from pospay.services import (
     user_service,
 )
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/users", tags=["web-users"])
@@ -38,10 +40,15 @@ router = APIRouter(prefix="/ui/users", tags=["web-users"])
 
 @router.get("")
 def list_users(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("user:manage"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
 ) -> HTMLResponse:
-    rows = user_service.list_tenant_users(db, ctx.tenant_id)
-    return render_template(request, "users/list.html", ctx=ctx, rows=rows)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: TenantMembershipRepository(db, ctx.tenant_id).count(),
+        list_fn=lambda **kw: user_service.list_tenant_users(db, ctx.tenant_id, order_by=TenantMembership.created_at.desc(), **kw),
+    )
+    return render_template(request, "users/list.html", ctx=ctx, page_obj=page_obj)
 
 
 _EXPORT_COLUMNS = ("email", "security_group", "customer", "status", "membership_created_at", "last_login_at")

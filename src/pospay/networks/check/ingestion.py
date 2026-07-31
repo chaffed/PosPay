@@ -14,6 +14,7 @@ from pospay.domain.paid_item import PaidItem, PaidItemMatchStatus, PaidItemSettl
 from pospay.ml.predict import score_exception
 from pospay.networks.check.adapter import CheckAdapter
 from pospay.repositories.account_repo import AccountRepository
+from pospay.services import notification_service
 
 _adapter = CheckAdapter()
 
@@ -84,6 +85,7 @@ def ingest_paid_item(
         session.add(exception_item)
         session.flush()
         score_exception(session, exception_item)
+        notification_service.notify_exception_created(session, exception_item)
 
     session.flush()
     return paid_item

@@ -23,6 +23,7 @@ from pospay.domain import (  # noqa: F401
     exception_item,
     issued_item,
     ml_model,
+    notification,
     paid_item,
     payment_network,
     security_group,

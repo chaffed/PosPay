@@ -4,7 +4,7 @@
 import uuid
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 ModelT = TypeVar("ModelT")
@@ -31,12 +31,36 @@ class TenantScopedRepository(Generic[ModelT]):
         stmt = self.query().where(self.model.id == id_)
         return self.session.execute(stmt).scalar_one_or_none()
 
-    def list(self, **equality_filters: Any) -> list[ModelT]:
+    def _filtered_query(self, **equality_filters: Any) -> Select:
         stmt = self.query()
         for column_name, value in equality_filters.items():
             if value is not None:
                 stmt = stmt.where(getattr(self.model, column_name) == value)
+        return stmt
+
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        order_by: Any = None,
+        **equality_filters: Any,
+    ) -> list[ModelT]:
+        stmt = self._filtered_query(**equality_filters)
+        if order_by is not None:
+            stmt = stmt.order_by(order_by)
+        if offset is not None:
+            stmt = stmt.offset(offset)
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(self.session.execute(stmt).scalars().all())
+
+    def count(self, **equality_filters: Any) -> int:
+        """Used by web/pagination.py (and the dashboard's summary cards) to get a total
+        row count without materializing every row — reuses the exact same filters `list()`
+        would apply, via `_filtered_query`, so the two can never drift out of sync."""
+        stmt = select(func.count()).select_from(self._filtered_query(**equality_filters).subquery())
+        return self.session.execute(stmt).scalar_one()
 
     def add(self, obj: ModelT) -> ModelT:
         obj.tenant_id = self.tenant_id

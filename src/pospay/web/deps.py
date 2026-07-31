@@ -12,6 +12,7 @@ from pospay.db.tenancy import TenantContext
 from pospay.web.security import (
     ACCESS_COOKIE_NAME,
     MFA_COOKIE_NAME,
+    THEME_COOKIE_NAME,
     read_or_generate_csrf_token,
     set_csrf_cookie_if_new,
 )
@@ -81,11 +82,13 @@ def render_template(
     **extra,
 ) -> HTMLResponse:
     """Every /ui/* route renders through this so `request`, `ctx` (base.html's role-aware
-    nav), and `csrf_token` (base.html's logout form, and any page-specific form) are never
-    forgotten — the one thing every template needs, regardless of what page-specific data
-    it also needs."""
+    nav), `csrf_token` (base.html's logout form, and any page-specific form), and `theme`
+    (base.html's data-theme attribute + theme toggle, set by web/routers/theme.py) are
+    never forgotten — the one thing every template needs, regardless of what page-specific
+    data it also needs."""
     csrf_token = read_or_generate_csrf_token(request)
-    context = {"ctx": ctx, "csrf_token": csrf_token, **extra}
+    theme = request.cookies.get(THEME_COOKIE_NAME)
+    context = {"ctx": ctx, "csrf_token": csrf_token, "theme": theme, **extra}
     response = templates.TemplateResponse(request, name, context, status_code=status_code)
     set_csrf_cookie_if_new(request, response, csrf_token)
     return response

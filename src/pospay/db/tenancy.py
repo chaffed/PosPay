@@ -48,3 +48,16 @@ class TenantContext:
     # access_token_expire_minutes/refresh_token_expire_minutes params.
     access_token_expire_minutes: int | None = None
     refresh_token_expire_minutes: int | None = None
+
+    # Contact info for templates/base.html's footer (services/tenant_service.py::
+    # TenantBranding carries the identical set pre-login) — defaulted to None for the
+    # same reason as the two fields above: most tests that construct a TenantContext
+    # directly don't care about these and shouldn't have to pass them.
+    support_email: str | None = None
+    support_phone: str | None = None
+    website: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None

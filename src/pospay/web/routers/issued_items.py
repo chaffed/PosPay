@@ -12,7 +12,7 @@ from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.bulk_upload_file import BulkUploadKind
-from pospay.domain.issued_item import IssuedItemStatus
+from pospay.domain.issued_item import IssuedItem, IssuedItemStatus
 from pospay.repositories.issued_item_repo import IssuedItemRepository
 from pospay.services import (
     account_service,
@@ -22,6 +22,7 @@ from pospay.services import (
     issued_item_service,
 )
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/issued-items", tags=["web-issued-items"])
@@ -31,11 +32,18 @@ router = APIRouter(prefix="/ui/issued-items", tags=["web-issued-items"])
 def list_issued_items(
     request: Request,
     status: IssuedItemStatus | None = None,
+    page: int = 1,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("issued_item:read")),
 ) -> HTMLResponse:
-    items = issued_item_service.list_issued_items(db, ctx.tenant_id, status=status, customer_id=ctx.customer_id)
-    return render_template(request, "issued_items/list.html", ctx=ctx, items=items, status_filter=status)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: IssuedItemRepository(db, ctx.tenant_id, ctx.customer_id).count(status=status),
+        list_fn=lambda **kw: issued_item_service.list_issued_items(
+            db, ctx.tenant_id, status=status, customer_id=ctx.customer_id, order_by=IssuedItem.created_at.desc(), **kw
+        ),
+    )
+    return render_template(request, "issued_items/list.html", ctx=ctx, page_obj=page_obj, status_filter=status)
 
 
 @router.get("/new")

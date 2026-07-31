@@ -80,3 +80,39 @@ def test_issued_item_detail_404_for_unknown_id(client, tenant_factory):
 
     resp = client.get(f"/ui/issued-items/{uuid.uuid4()}")
     assert resp.status_code == 404
+
+
+def test_issued_items_list_paginates(client, db_session, tenant_factory):
+    from datetime import date
+    from decimal import Decimal
+
+    from pospay.services import issued_item_service
+
+    tenant, account, users = tenant_factory.make(slug="web-issued-items-pagination")
+    for i in range(60):
+        issued_item_service.create_issued_item(
+            db_session, tenant.id,
+            issued_item_service.IssuedItemInput(
+                account_id=account.id, check_number=str(9000 + i), amount=Decimal("10.00"), payee_name="V",
+                issue_date=date(2026, 1, 1),
+            ),
+            submitted_by_user_id=users["admin"].id,
+        )
+    db_session.commit()
+    _login(client, tenant.slug, users["admin"].email)
+
+    page1 = client.get("/ui/issued-items")
+    assert page1.status_code == 200
+    assert "Showing 1" in page1.text
+    assert "of 60" in page1.text
+
+    page2 = client.get("/ui/issued-items?page=2")
+    assert page2.status_code == 200
+    assert "Showing 51" in page2.text
+
+    # page=99 is clamped to the actual last page (2, at 50/page for 60 rows) rather than
+    # showing an empty page or erroring
+    out_of_range = client.get("/ui/issued-items?page=99")
+    assert out_of_range.status_code == 200
+    assert "Showing 51" in out_of_range.text
+    assert "9059" in out_of_range.text

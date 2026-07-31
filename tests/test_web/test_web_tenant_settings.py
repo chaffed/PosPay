@@ -39,6 +39,73 @@ def test_update_name_and_color(client, tenant_factory):
     assert "#112233" in page.text
 
 
+def test_update_contact_info_persists_and_renders_in_form(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-contact")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/contact",
+        data={
+            "csrf_token": csrf,
+            "support_email": "help@web-settings-contact.example.com",
+            "support_phone": "(555) 222-3333",
+            "website": "https://web-settings-contact.example.com",
+            "address_line1": "1 Main St",
+            "address_line2": "",
+            "city": "Springfield",
+            "state": "IL",
+            "postal_code": "62701",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    page = client.get("/ui/settings")
+    assert "help@web-settings-contact.example.com" in page.text
+    assert "(555) 222-3333" in page.text
+    assert "1 Main St" in page.text
+
+
+def test_update_contact_info_requires_permission(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-contact-forbidden")
+    csrf = _login(client, tenant.slug, users["viewer"].email)
+
+    resp = client.post(
+        "/ui/settings/contact",
+        data={"csrf_token": csrf, "support_email": "x@example.com", "support_phone": "", "website": "",
+              "address_line1": "", "address_line2": "", "city": "", "state": "", "postal_code": ""},
+    )
+    assert resp.status_code == 403
+
+
+def test_settings_shows_auto_import_status_disabled_by_default(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-auto-import-disabled")
+    _login(client, tenant.slug, users["admin"].email)
+
+    page = client.get("/ui/settings")
+    assert page.status_code == 200
+    assert "disabled" in page.text
+    assert "No files auto-imported yet" in page.text
+
+
+def test_settings_shows_recent_auto_imports(client, db_session, tenant_factory):
+    from pospay.domain.bulk_upload_file import BulkUploadKind, BulkUploadSource
+    from pospay.services import bulk_upload_file_service
+
+    tenant, _account, users = tenant_factory.make(slug="web-settings-auto-import-recent")
+    bulk_upload_file_service.record_uploaded_file(
+        db_session, tenant.id, kind=BulkUploadKind.ISSUED_ITEMS, filename="dropped.csv", content_type="text/csv",
+        data=b"account_number,check_number\n1,2\n", uploaded_by_user_id=None, source=BulkUploadSource.AUTO_IMPORT,
+    )
+    db_session.commit()
+    _login(client, tenant.slug, users["admin"].email)
+
+    page = client.get("/ui/settings")
+    assert page.status_code == 200
+    assert "dropped.csv" in page.text
+    assert "issued_items" in page.text
+
+
 def test_upload_and_serve_logo_and_favicon(client, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-settings-upload")
     csrf = _login(client, tenant.slug, users["admin"].email)

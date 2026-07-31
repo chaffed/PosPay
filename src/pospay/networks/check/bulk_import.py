@@ -25,7 +25,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from pospay.bulk_import.fields import RowFieldError, parse_date, parse_decimal, require_str
+from pospay.bulk_import.fields import RowFieldError, optional_str, parse_date, parse_decimal, require_str
 from pospay.bulk_import.images import UnsupportedImageError, normalize_and_split_image
 from pospay.bulk_import.results import BulkFileRowResult
 from pospay.bulk_import.x937 import X937CheckItem
@@ -136,6 +136,70 @@ def ingest_check_image_zip_rows(
         except (RowFieldError, UnsupportedImageError) as exc:
             session.rollback()
             results.append(BulkFileRowResult(row_label=row_label, success=False, error=str(exc)))
+        except Exception as exc:  # noqa: BLE001 — isolate row failures in a bulk file
+            session.rollback()
+            results.append(BulkFileRowResult(row_label=row_label, success=False, error=str(exc)))
+    return results
+
+
+def _submission_from_tabular_row(
+    session: Session,
+    tenant_id: uuid.UUID,
+    row: dict[str, Any],
+    *,
+    auto_create_accounts: bool = False,
+    scoped_customer_id: uuid.UUID | None = None,
+) -> uuid.UUID:
+    """Checks presented for payment as plain delimited data, with **no image** attached
+    — distinct from the ZIP+CSV/X9.37 formats above, which always carry one. Expected
+    (case/whitespace-insensitive) columns: account_number, check_number,
+    presented_amount, presented_date, and an optional account_name used only when
+    auto_create_accounts creates a new account — same shape as
+    networks/ach/bulk_import.py::_submission_from_row for ACH's own tabular path."""
+    account_number = require_str(row, "account_number")
+    if auto_create_accounts:
+        account = account_service.get_or_create_account_by_number(
+            session, tenant_id, account_number, default_name=optional_str(row, "account_name"), customer_id=scoped_customer_id
+        )
+    else:
+        account = account_service.get_account_by_number(session, tenant_id, account_number, customer_id=scoped_customer_id)
+        if account is None:
+            raise RowFieldError(f"No account found with account number {account_number!r}")
+
+    paid_item = ingest_paid_item(
+        session,
+        tenant_id,
+        PaidItemSubmission(
+            account_id=account.id,
+            check_number=require_str(row, "check_number"),
+            presented_amount=parse_decimal(row, "presented_amount"),
+            presented_date=parse_date(row, "presented_date"),
+            source=PaidItemSource.BULK_FILE,
+        ),
+        scoped_customer_id=scoped_customer_id,
+    )
+    return paid_item.id
+
+
+def ingest_paid_item_tabular_rows(
+    session: Session,
+    tenant_id: uuid.UUID,
+    rows: list[dict[str, Any]],
+    *,
+    auto_create_accounts: bool = False,
+    scoped_customer_id: uuid.UUID | None = None,
+) -> list[BulkFileRowResult]:
+    """Entry point for the no-image, delimited/Excel check-presentment format. One DB
+    transaction per row, same isolation pattern as every other bulk importer in this app."""
+    results: list[BulkFileRowResult] = []
+    for index, row in enumerate(rows):
+        row_label = f"row {index + 2}"  # +2: 1-based, plus the header row itself
+        try:
+            paid_item_id = _submission_from_tabular_row(
+                session, tenant_id, row, auto_create_accounts=auto_create_accounts, scoped_customer_id=scoped_customer_id
+            )
+            session.commit()
+            results.append(BulkFileRowResult(row_label=row_label, success=True, created_id=paid_item_id))
         except Exception as exc:  # noqa: BLE001 — isolate row failures in a bulk file
             session.rollback()
             results.append(BulkFileRowResult(row_label=row_label, success=False, error=str(exc)))

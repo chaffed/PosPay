@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from pospay.bulk_import.file_storage import read_uploaded_file, save_uploaded_file
 from pospay.bulk_import.signing import content_hash, sign_file, verify_signature
-from pospay.domain.bulk_upload_file import BulkUploadFile, BulkUploadKind
+from pospay.domain.bulk_upload_file import BulkUploadFile, BulkUploadKind, BulkUploadSource
 from pospay.repositories.bulk_upload_file_repo import BulkUploadFileRepository
 
 
@@ -19,8 +19,9 @@ def record_uploaded_file(
     filename: str,
     content_type: str | None,
     data: bytes,
-    uploaded_by_user_id: uuid.UUID,
+    uploaded_by_user_id: uuid.UUID | None,
     customer_id: uuid.UUID | None = None,
+    source: BulkUploadSource = BulkUploadSource.MANUAL,
 ) -> BulkUploadFile:
     """Called immediately after reading an uploaded bulk file, before parsing — so a
     rejected/malformed file is still captured for audit purposes, not just successful
@@ -28,11 +29,13 @@ def record_uploaded_file(
     afterward via set_result_counts once parsing has actually produced row results.
     `customer_id` is the uploader's own scope at upload time (None = tenant-wide staff,
     whose file could legitimately span several customers) — see
-    domain/bulk_upload_file.py."""
+    domain/bulk_upload_file.py. `uploaded_by_user_id` is None for an auto-imported file
+    (services/dropbox_import_service.py) — no human triggered it."""
     repo = BulkUploadFileRepository(session, tenant_id, customer_id)
     record = BulkUploadFile(
         customer_id=customer_id,
         kind=kind,
+        source=source,
         original_filename=filename,
         content_type=content_type,
         storage_path="",
@@ -59,6 +62,13 @@ def get_uploaded_file(
     session: Session, tenant_id: uuid.UUID, upload_id: uuid.UUID, customer_id: uuid.UUID | None = None
 ) -> BulkUploadFile | None:
     return BulkUploadFileRepository(session, tenant_id, customer_id).get(upload_id)
+
+
+def find_by_content_hash(session: Session, tenant_id: uuid.UUID, sha256_hex: str) -> BulkUploadFile | None:
+    """Used by services/dropbox_import_service.py to detect a byte-for-byte re-dropped
+    file already imported for this tenant, so it's skipped rather than reprocessed."""
+    matches = BulkUploadFileRepository(session, tenant_id).list(sha256_hex=sha256_hex)
+    return matches[0] if matches else None
 
 
 def verify_uploaded_file(

@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 from pospay.auth.permissions import PERMISSION_CATALOG
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.security_group import SecurityGroup
+from pospay.repositories.security_group_repo import SecurityGroupRepository
 from pospay.services import audit_log_service, security_group_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/security-groups", tags=["web-security-groups"])
@@ -19,11 +22,18 @@ router = APIRouter(prefix="/ui/security-groups", tags=["web-security-groups"])
 
 @router.get("")
 def list_security_groups(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("security_group:manage"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("security_group:manage")),
 ) -> HTMLResponse:
-    groups = security_group_service.list_security_groups(db, ctx.tenant_id)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: SecurityGroupRepository(db, ctx.tenant_id).count(),
+        list_fn=lambda **kw: security_group_service.list_security_groups(
+            db, ctx.tenant_id, order_by=SecurityGroup.created_at.desc(), **kw
+        ),
+    )
     return render_template(
-        request, "security_groups/list.html", ctx=ctx, groups=groups, catalog_size=len(PERMISSION_CATALOG)
+        request, "security_groups/list.html", ctx=ctx, page_obj=page_obj, catalog_size=len(PERMISSION_CATALOG)
     )
 
 

@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.decision import DecisionOutcome
-from pospay.domain.exception_item import ExceptionStatus
+from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
 from pospay.networks.registry import get_adapter
+from pospay.repositories.exception_repo import ExceptionRepository
 from pospay.services import ach_return_reason_service, audit_log_service, decision_service, exception_service
 from pospay.services.decision_service import DecisionError
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/exceptions", tags=["web-exceptions"])
@@ -36,7 +38,7 @@ def _parse_optional_uuid(raw: str) -> uuid.UUID | None:
     return uuid.UUID(raw) if raw else None
 
 
-def _summarize_source_item(network_code: str, source_item: Any) -> dict[str, str]:
+def _summarize_source_item(network_code: str, source_item: Any) -> dict[str, Any]:
     """The exceptions queue/detail is network-agnostic, but a reviewer still needs to see
     what the underlying check/ACH transaction actually was — this builds a small display
     dict from whichever concrete row networks.registry.get_adapter().load_source_item()
@@ -44,16 +46,16 @@ def _summarize_source_item(network_code: str, source_item: Any) -> dict[str, str
     if network_code == "check":
         return {
             "label": f"Check #{source_item.check_number}",
-            "amount": str(source_item.presented_amount),
+            "amount": source_item.presented_amount,
             "date": str(source_item.presented_date),
         }
     if network_code == "ach":
         return {
             "label": f"{source_item.originator_name} ({source_item.originator_id})",
-            "amount": str(source_item.amount),
+            "amount": source_item.amount,
             "date": str(source_item.effective_date),
         }
-    return {"label": str(source_item.id), "amount": "", "date": ""}
+    return {"label": str(source_item.id), "amount": None, "date": ""}
 
 
 @router.get("")
@@ -61,23 +63,37 @@ def list_exceptions(
     request: Request,
     network_code: str | None = None,
     status: ExceptionStatus | None = None,
+    page: int = 1,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("exception:read")),
 ) -> HTMLResponse:
-    items = exception_service.list_exceptions(
-        db, ctx.tenant_id, network_code=network_code, status=status, customer_id=ctx.customer_id
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: ExceptionRepository(db, ctx.tenant_id, ctx.customer_id).count(
+            network_code=network_code, status=status
+        ),
+        list_fn=lambda **kw: exception_service.list_exceptions(
+            db, ctx.tenant_id, network_code=network_code, status=status, customer_id=ctx.customer_id,
+            order_by=ExceptionItem.created_at.desc(), **kw,
+        ),
     )
+    # Per-row enrichment only ever runs over the current page's rows, not the whole
+    # filtered result set — a nice side effect of paginating this network-agnostic
+    # per-item load_source_item() call, which used to run once per row across every
+    # matching exception regardless of how many were ever shown at once.
     rows = []
-    for item in items:
+    for item in page_obj.items:
         adapter = get_adapter(item.network_code)
         source_item = adapter.load_source_item(db, item.source_item_id)
         rows.append(
             {
                 "exception": item,
-                "summary": _summarize_source_item(item.network_code, source_item) if source_item else {"label": "(missing)", "amount": "", "date": ""},
+                "summary": _summarize_source_item(item.network_code, source_item) if source_item else {"label": "(missing)", "amount": None, "date": ""},
             }
         )
-    return render_template(request, "exceptions/list.html", ctx=ctx, rows=rows, network_filter=network_code, status_filter=status)
+    return render_template(
+        request, "exceptions/list.html", ctx=ctx, rows=rows, page_obj=page_obj, network_filter=network_code, status_filter=status
+    )
 
 
 @router.get("/{exception_id}")

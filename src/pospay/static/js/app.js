@@ -63,15 +63,19 @@ function initSortableTables() {
       if (th.hasAttribute("data-no-sort") || !th.textContent.trim()) return;
       th.classList.add("sortable-col");
       th.tabIndex = 0;
+      th.setAttribute("role", "button");
+      th.setAttribute("aria-sort", "none");
 
       const sort = () => {
         const nextDir = th.dataset.sortDir === "asc" ? "desc" : "asc";
         headers.forEach((h) => {
           delete h.dataset.sortDir;
           h.classList.remove("sort-asc", "sort-desc");
+          h.setAttribute("aria-sort", "none");
         });
         th.dataset.sortDir = nextDir;
         th.classList.add(nextDir === "asc" ? "sort-asc" : "sort-desc");
+        th.setAttribute("aria-sort", nextDir === "asc" ? "ascending" : "descending");
 
         const isNumber = th.dataset.type === "number";
         const factor = nextDir === "asc" ? 1 : -1;

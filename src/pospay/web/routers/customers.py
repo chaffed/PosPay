@@ -9,8 +9,11 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.customer import Customer
+from pospay.repositories.customer_repo import CustomerRepository
 from pospay.services import account_service, audit_log_service, customer_ml_service, customer_service, sso_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/customers", tags=["web-customers"])
@@ -52,10 +55,15 @@ def _input_from_form(
 
 @router.get("")
 def list_customers(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("customer:manage"))
+    request: Request, page: int = 1, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("customer:manage")),
 ) -> HTMLResponse:
-    customers = customer_service.list_customers(db, ctx.tenant_id)
-    return render_template(request, "customers/list.html", ctx=ctx, customers=customers)
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: CustomerRepository(db, ctx.tenant_id).count(),
+        list_fn=lambda **kw: customer_service.list_customers(db, ctx.tenant_id, order_by=Customer.created_at.desc(), **kw),
+    )
+    return render_template(request, "customers/list.html", ctx=ctx, page_obj=page_obj)
 
 
 @router.get("/new")

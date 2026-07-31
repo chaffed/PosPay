@@ -3,6 +3,7 @@
 
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -39,8 +40,15 @@ def seed_default_security_groups(session: Session, tenant_id: uuid.UUID) -> dict
     return groups
 
 
-def list_security_groups(session: Session, tenant_id: uuid.UUID) -> list[SecurityGroup]:
-    return SecurityGroupRepository(session, tenant_id).list()
+def list_security_groups(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    limit: int | None = None,
+    offset: int | None = None,
+    order_by: Any = None,
+) -> list[SecurityGroup]:
+    return SecurityGroupRepository(session, tenant_id).list(limit=limit, offset=offset, order_by=order_by)
 
 
 def get_security_group(session: Session, tenant_id: uuid.UUID, group_id: uuid.UUID) -> SecurityGroup | None:
