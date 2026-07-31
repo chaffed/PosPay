@@ -7,9 +7,13 @@
 Seeds a throwaway demo tenant with realistic-looking data in a scratch SQLite database
 (never the real .pospay-run/ or project-root pospay.db), runs the actual app against it,
 and drives a real headless browser (Playwright) through the key screens to capture PNGs
-into docs/screenshots/. The screenshots are committed to the repo, so this is a manual,
-occasional dev task, not something CI runs — rerun it after a UI change significant
-enough to make the committed images visibly stale.
+into docs/screenshots/ — once in light mode (the existing filenames, e.g. dashboard.png)
+and once in dark mode (a `_dark` suffix, e.g. dashboard_dark.png), forcing the theme via
+the same cookie web/routers/theme.py sets rather than relying on OS color-scheme alone.
+The screenshots are committed to the repo, so this is a manual, occasional dev task, not
+something CI runs, and it does not commit or push anything itself — rerun it after a UI
+change significant enough to make the committed images visibly stale, then commit the
+result yourself.
 
 Usage:
     pip install -e ".[dev]"
@@ -329,6 +333,61 @@ PAGES: list[Page] = [
 ]
 
 
+def _run_capture_pass(browser, theme: str) -> None:
+    from pospay.web.security import THEME_COOKIE_NAME
+
+    # suffix distinguishes the dark-mode set on disk without disturbing the existing
+    # light-mode filenames README.md already references (dashboard.png stays
+    # dashboard.png; its dark twin is dashboard_dark.png).
+    suffix = "" if theme == "light" else f"_{theme}"
+
+    context = browser.new_context(viewport=VIEWPORT, color_scheme=theme)
+    if theme == "dark":
+        # Forces the cookie-based override (see web/routers/theme.py) rather than relying
+        # on color_scheme alone -- the app's dark mode is an explicit Light/Dark/System
+        # user preference, not just a `prefers-color-scheme` media query, so the
+        # System-scoped color_scheme setting above wouldn't otherwise be enough on its own.
+        context.add_cookies([{"name": THEME_COOKIE_NAME, "value": "dark", "url": BASE_URL}])
+    page = context.new_page()
+
+    print(f"Capturing login page ({theme})...")
+    page.goto(f"{BASE_URL}/ui/login")
+    page.wait_for_selector("form")
+    page.screenshot(path=str(SCREENSHOT_DIR / f"login{suffix}.png"))
+
+    page.fill('input[name="tenant_slug"]', TENANT_SLUG)
+    page.fill('input[name="email"]', ADMIN_EMAIL)
+    page.fill('input[name="password"]', ADMIN_PASSWORD)
+    page.click('button[type="submit"]')
+    page.wait_for_load_state("networkidle")
+
+    for spec in PAGES:
+        print(f"Capturing {spec.name} ({theme})...")
+        page.goto(f"{BASE_URL}{spec.path}")
+        if spec.wait_for_selector:
+            page.wait_for_selector(spec.wait_for_selector, timeout=10_000)
+        page.wait_for_load_state("networkidle")
+        page.screenshot(path=str(SCREENSHOT_DIR / f"{spec.name}{suffix}.png"), full_page=True)
+
+    # A single exception's detail/review page, not just the queue — needs a real id.
+    # Picks a still-*open* row (not an already-decided one) so the screenshot shows
+    # the actual pay/return review form, not just a read-only past decision.
+    print(f"Capturing exception_detail ({theme})...")
+    page.goto(f"{BASE_URL}/ui/exceptions")
+    page.wait_for_load_state("networkidle")
+    open_row_link = page.query_selector(
+        'table tr:has(td .badge:text-is("open")) a[href^="/ui/exceptions/"]'
+    ) or page.query_selector('table a[href^="/ui/exceptions/"]')
+    if open_row_link is not None:
+        open_row_link.click()
+        page.wait_for_load_state("networkidle")
+        page.screenshot(path=str(SCREENSHOT_DIR / f"exception_detail{suffix}.png"), full_page=True)
+    else:
+        print("  No exceptions found to open — skipping exception_detail screenshot")
+
+    context.close()
+
+
 def _capture_screenshots() -> None:
     from playwright.sync_api import sync_playwright
 
@@ -336,43 +395,8 @@ def _capture_screenshots() -> None:
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport=VIEWPORT, color_scheme="light")
-
-        print("Capturing login page...")
-        page.goto(f"{BASE_URL}/ui/login")
-        page.wait_for_selector("form")
-        page.screenshot(path=str(SCREENSHOT_DIR / "login.png"))
-
-        page.fill('input[name="tenant_slug"]', TENANT_SLUG)
-        page.fill('input[name="email"]', ADMIN_EMAIL)
-        page.fill('input[name="password"]', ADMIN_PASSWORD)
-        page.click('button[type="submit"]')
-        page.wait_for_load_state("networkidle")
-
-        for spec in PAGES:
-            print(f"Capturing {spec.name}...")
-            page.goto(f"{BASE_URL}{spec.path}")
-            if spec.wait_for_selector:
-                page.wait_for_selector(spec.wait_for_selector, timeout=10_000)
-            page.wait_for_load_state("networkidle")
-            page.screenshot(path=str(SCREENSHOT_DIR / f"{spec.name}.png"), full_page=True)
-
-        # A single exception's detail/review page, not just the queue — needs a real id.
-        # Picks a still-*open* row (not an already-decided one) so the screenshot shows
-        # the actual pay/return review form, not just a read-only past decision.
-        print("Capturing exception_detail...")
-        page.goto(f"{BASE_URL}/ui/exceptions")
-        page.wait_for_load_state("networkidle")
-        open_row_link = page.query_selector(
-            'table tr:has(td .badge:text-is("open")) a[href^="/ui/exceptions/"]'
-        ) or page.query_selector('table a[href^="/ui/exceptions/"]')
-        if open_row_link is not None:
-            open_row_link.click()
-            page.wait_for_load_state("networkidle")
-            page.screenshot(path=str(SCREENSHOT_DIR / "exception_detail.png"), full_page=True)
-        else:
-            print("  No exceptions found to open — skipping exception_detail.png")
-
+        _run_capture_pass(browser, "light")
+        _run_capture_pass(browser, "dark")
         browser.close()
 
 
