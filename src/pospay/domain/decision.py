@@ -16,6 +16,17 @@ class DecisionOutcome(str, enum.Enum):
     RETURN = "return"
 
 
+class DecisionSource(str, enum.Enum):
+    # A real human made this call — decision_service.py::decide(). The overwhelming
+    # majority of rows, and the only value that ever existed before auto-disposition.
+    HUMAN = "human"
+    # services/auto_disposition_service.py, a fixed pay/return default applied because no
+    # one decided before the exception's deadline.
+    AUTO_DEFAULT = "auto_default"
+    # services/auto_disposition_service.py, the ML model's own score picked the outcome.
+    AUTO_ML = "auto_ml"
+
+
 class Decision(Base):
     """The human pay/return decision on an exception — network-agnostic ground truth for
     ML training. `features_json` snapshots the feature vector as it was at decision time
@@ -42,7 +53,15 @@ class Decision(Base):
     return_transaction_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     submitted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)
-    decided_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), nullable=False)
+    # Nullable since services/auto_disposition_service.py's system-generated decisions have
+    # no human decider — see `source` below for how those are distinguished from a real one.
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    source: Mapped[DecisionSource] = mapped_column(
+        Enum(DecisionSource, name="decision_source", native_enum=False, length=15),
+        nullable=False,
+        default=DecisionSource.HUMAN,
+    )
 
     features_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -52,7 +52,11 @@ def _load_labeled_decisions(
     stmt = (
         select(Decision)
         .join(ExceptionItem, Decision.exception_item_id == ExceptionItem.id)
-        .where(ExceptionItem.network_code == network_code, Decision.features_json.is_not(None))
+        .where(
+            ExceptionItem.network_code == network_code,
+            Decision.features_json.is_not(None),
+            ExceptionItem.retracted_at.is_(None),
+        )
         .order_by(Decision.decided_at)
     )
     if customer_id is not None:

@@ -13,6 +13,17 @@
 <div class="card">
   <h1>ML Models</h1>
   <p>Networks registered: {{ networks | join(", ") }}</p>
+  <table>
+    <thead><tr><th>Network</th><th>Live decisions</th><th>Fraud training backfill</th></tr></thead>
+    <tbody>
+      {% for network_code, counts in backfill_counts.items() %}
+      <tr><td>{{ network_code }}</td><td>{{ counts.live }}</td><td>{{ counts.training_backfill }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">"Fraud training backfill" counts labels submitted from
+    <a href="/ui/ml-training/fraud-examples">Fraud Training Data</a> — both columns feed
+    the same training set a retrain will actually use.</p>
   <form method="post" action="/ui/admin/ml/retrain" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label style="max-width:220px;">Network

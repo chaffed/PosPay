@@ -16,6 +16,9 @@ class NotificationType(str, enum.Enum):
     RECOMMENDATION_AWAITING_APPROVAL = "recommendation_awaiting_approval"
     ACCOUNT_LOCKED = "account_locked"
     ACCOUNT_UNLOCKED = "account_unlocked"
+    # services/auto_disposition_service.py finalized an exception with no human decider —
+    # see domain/decision.py::DecisionSource.
+    EXCEPTION_AUTO_DECIDED = "exception_auto_decided"
 
 
 class NotificationChannel(str, enum.Enum):

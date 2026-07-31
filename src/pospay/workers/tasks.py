@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from pospay.config import get_settings
 from pospay.db.session import get_session_factory
 from pospay.domain.decision import Decision
-from pospay.domain.exception_item import ExceptionItem
+from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
 from pospay.domain.ml_model import MlModel, MlModelStatus
 from pospay.domain.notification import Notification, NotificationChannel, NotificationStatus
 from pospay.ml.registry import create_model_row
@@ -19,6 +19,7 @@ from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, tra
 from pospay.networks.registry import registered_codes
 from pospay.notifications.email.factory import get_email_provider
 from pospay.notifications.sms.factory import get_sms_provider
+from pospay.services import auto_disposition_service
 from pospay.services.dropbox_import_service import scan_and_import_all_tenants
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,52 @@ def dropbox_import_job() -> None:
         failed = sum(r.outcome == "failed" for r in results)
         duplicates = sum(r.outcome == "duplicate" for r in results)
         logger.info("Dropbox import scan: %d imported, %d failed, %d duplicates skipped", imported, failed, duplicates)
+    finally:
+        session.close()
+
+
+def sweep_expired_dispositions_job() -> None:
+    """Finds every OPEN/PENDING_APPROVAL exception whose decision_deadline has passed and
+    auto-decides it per its customer's CustomerDispositionSetting (services/
+    auto_disposition_service.py) -- one full cross-tenant pass, same "no per-tenant loop"
+    shape as every other job here. A PENDING_APPROVAL exception (a maker's recommendation
+    already awaiting a checker) is swept the same as OPEN -- the deadline is a hard
+    backstop regardless of in-flight working state. Per-row try/except + per-row commit so
+    one bad row can't lose the rest of the batch, same isolation as notification_dispatch_job.
+    auto_decide_exception() returning None means "leave it open, try again next sweep"
+    (no model/score yet, or no configured ACH return reason) -- not a failure."""
+    session = get_session_factory()()
+    try:
+        now = datetime.now(timezone.utc)
+        rows = (
+            session.execute(
+                select(ExceptionItem).where(
+                    ExceptionItem.status.in_([ExceptionStatus.OPEN, ExceptionStatus.PENDING_APPROVAL]),
+                    ExceptionItem.decision_deadline.is_not(None),
+                    ExceptionItem.decision_deadline <= now,
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        decided = 0
+        skipped = 0
+        for exception_item in rows:
+            try:
+                decision = auto_disposition_service.auto_decide_exception(session, exception_item)
+            except Exception:  # noqa: BLE001 -- isolate one exception's failure from the rest of the sweep
+                logger.exception("Auto-disposition failed for exception %s", exception_item.id)
+                session.rollback()
+                continue
+            session.commit()
+            if decision is not None:
+                decided += 1
+            else:
+                skipped += 1
+
+        if rows:
+            logger.info("Disposition sweep: %d auto-decided, %d skipped (no model/reason configured yet)", decided, skipped)
     finally:
         session.close()
 

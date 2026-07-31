@@ -21,6 +21,9 @@ class BulkUploadKind(str, enum.Enum):
     # distinct from CHECK_IMAGES, which always implies one. See
     # networks/check/bulk_import.py::ingest_paid_item_tabular_rows.
     PAID_ITEMS = "paid_items"
+    # Known-fraud training labels (check and ACH both land under this one kind) — see
+    # services/fraud_training_service.py.
+    FRAUD_TRAINING_EXAMPLES = "fraud_training_examples"
 
 
 class BulkUploadSource(str, enum.Enum):
@@ -50,7 +53,7 @@ class BulkUploadFile(Base):
     # uploaded within that one customer's scope — set from the uploader's own
     # ctx.customer_id at upload time (services/bulk_upload_file_service.py).
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
-    kind: Mapped[BulkUploadKind] = mapped_column(Enum(BulkUploadKind, name="bulk_upload_kind", native_enum=False, length=20), nullable=False)
+    kind: Mapped[BulkUploadKind] = mapped_column(Enum(BulkUploadKind, name="bulk_upload_kind", native_enum=False, length=30), nullable=False)
     source: Mapped[BulkUploadSource] = mapped_column(
         Enum(BulkUploadSource, name="bulk_upload_source", native_enum=False, length=20),
         nullable=False,

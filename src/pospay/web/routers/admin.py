@@ -6,17 +6,20 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.customer_disposition_setting import DispositionMode
 from pospay.domain.customer_ml_setting import MlScoringMode
+from pospay.domain.decision import Decision
+from pospay.domain.exception_item import ExceptionItem, ExceptionItemSource
 from pospay.domain.ml_model import MlModel
 from pospay.ml.registry import activate_model
 from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
-from pospay.services import customer_ml_service, customer_service
+from pospay.services import ach_return_reason_service, auto_disposition_service, customer_ml_service, customer_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -34,7 +37,32 @@ def admin_home(
     models = db.execute(
         select(MlModel).where(MlModel.customer_id.is_(None)).order_by(MlModel.network_code, MlModel.created_at.desc())
     ).scalars().all()
-    return render_template(request, "admin/ml_models.html", ctx=ctx, models=models, networks=registered_codes())
+
+    # A live "what would the next retrain actually use" count, per network — separate from
+    # trained_from_decision_count on each MlModel row above, which is frozen as of that
+    # model's own training run. See ml/train.py::_load_labeled_decisions for the exact
+    # eligibility filter this mirrors (features present, not retracted).
+    backfill_counts: dict[str, dict[str, int]] = {}
+    for network_code in registered_codes():
+        base_stmt = (
+            select(ExceptionItem.source, func.count(Decision.id))
+            .join(ExceptionItem, Decision.exception_item_id == ExceptionItem.id)
+            .where(
+                ExceptionItem.network_code == network_code,
+                Decision.features_json.is_not(None),
+                ExceptionItem.retracted_at.is_(None),
+            )
+            .group_by(ExceptionItem.source)
+        )
+        counts = dict(db.execute(base_stmt).all())
+        backfill_counts[network_code] = {
+            "live": counts.get(ExceptionItemSource.LIVE, 0),
+            "training_backfill": counts.get(ExceptionItemSource.TRAINING_BACKFILL, 0),
+        }
+
+    return render_template(
+        request, "admin/ml_models.html", ctx=ctx, models=models, networks=registered_codes(), backfill_counts=backfill_counts
+    )
 
 
 @router.post("/ml/retrain")
@@ -85,6 +113,8 @@ def customer_ml_detail(
     customer = _get_customer_or_404(db, ctx.tenant_id, customer_id)
     summary = customer_ml_service.get_ml_summary(db, ctx.tenant_id, customer_id)
     models = customer_ml_service.list_customer_models(db, customer_id)
+    disposition_summary = auto_disposition_service.get_disposition_summary(db, ctx.tenant_id, customer_id)
+    ach_return_reasons = ach_return_reason_service.list_ach_return_reasons(db, ctx.tenant_id, active_only=True)
     return render_template(
         request,
         "admin/customer_ml.html",
@@ -93,6 +123,9 @@ def customer_ml_detail(
         summary=summary,
         models=models,
         modes=list(MlScoringMode),
+        disposition_summary=disposition_summary,
+        disposition_modes=list(DispositionMode),
+        ach_return_reasons=ach_return_reasons,
     )
 
 
@@ -109,6 +142,36 @@ def set_customer_ml_mode(
     customer_ml_service.set_mode(db, ctx.tenant_id, customer_id, network_code, mode)
     db.commit()
     return RedirectResponse(f"/ui/admin/customers/{customer_id}/ml?flash=Scoring+mode+updated.", status_code=303)
+
+
+@router.post("/customers/{customer_id}/disposition")
+def set_customer_disposition(
+    customer_id: uuid.UUID,
+    network_code: str = Form(...),
+    mode: DispositionMode = Form(...),
+    response_window_hours: str = Form(""),
+    default_ach_return_reason_id: str = Form(""),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("admin:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    _get_customer_or_404(db, ctx.tenant_id, customer_id)
+    try:
+        hours = int(response_window_hours) if response_window_hours else None
+        if hours is not None and hours <= 0:
+            raise ValueError("response_window_hours must be positive")
+    except ValueError:
+        return RedirectResponse(
+            f"/ui/admin/customers/{customer_id}/ml?error={quote('Response window must be a positive whole number of hours, or blank.')}",
+            status_code=303,
+        )
+    reason_id = uuid.UUID(default_ach_return_reason_id) if default_ach_return_reason_id else None
+    auto_disposition_service.set_disposition_setting(
+        db, ctx.tenant_id, customer_id, network_code,
+        mode=mode, response_window_hours=hours, default_ach_return_reason_id=reason_id,
+    )
+    db.commit()
+    return RedirectResponse(f"/ui/admin/customers/{customer_id}/ml?flash=Default+disposition+updated.", status_code=303)
 
 
 @router.post("/customers/{customer_id}/ml/retrain")

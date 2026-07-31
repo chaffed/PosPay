@@ -12,13 +12,38 @@ from sqlalchemy.orm import Session
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.ach_authorization_rule import AchAuthorizationRule
+from pospay.networks.registry import get_adapter
 from pospay.repositories.ach_authorization_repo import AchAuthorizationRepository
-from pospay.services import account_service, ach_authorization_service, audit_log_service
+from pospay.services import account_service, ach_authorization_service, audit_log_service, exception_service
 from pospay.web.deps import render_template, require_web_permission
 from pospay.web.pagination import paginate
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorizations"])
+
+
+def _prefill_from_exception(db: Session, ctx: TenantContext, exception_id: uuid.UUID | None) -> dict | None:
+    """Builds the "New ACH authorization" form's prefill dict from an ACH exception's own
+    transaction -- see web/routers/exceptions.py's detail route for the identical
+    get_exception + load_source_item lookup this mirrors. Returns None (a blank form, no
+    error) for a missing exception, a non-ACH one, or no id at all -- a stale/bad link
+    should never be a hard failure here."""
+    if exception_id is None:
+        return None
+    item = exception_service.get_exception(db, ctx.tenant_id, exception_id, customer_id=ctx.customer_id)
+    if item is None or item.network_code != "ach":
+        return None
+    txn = get_adapter("ach").load_source_item(db, item.source_item_id)
+    if txn is None:
+        return None
+    return {
+        "account_id": txn.account_id,
+        "originator_id": txn.originator_id,
+        "originator_name": txn.originator_name,
+        "receiver_id": txn.receiver_id or "",
+        "allowed_sec_codes": txn.sec_code,
+        "effective_date": date.today().isoformat(),
+    }
 
 
 @router.get("")
@@ -39,11 +64,15 @@ def list_authorizations(
 @router.get("/new")
 def new_authorization_form(
     request: Request,
+    from_exception: uuid.UUID | None = None,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("ach_authorization:write")),
 ) -> HTMLResponse:
     accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
-    return render_template(request, "ach/authorization_form.html", ctx=ctx, accounts=accounts)
+    prefill = _prefill_from_exception(db, ctx, from_exception)
+    return render_template(
+        request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, prefill=prefill, from_exception_id=from_exception
+    )
 
 
 @router.post("")
@@ -58,10 +87,16 @@ def create_authorization(
     allowed_sec_codes: str = Form(""),
     effective_date: str = Form(...),
     expiration_date: str = Form(""),
+    from_exception_id: str = Form(""),
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("ach_authorization:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> HTMLResponse:
+    try:
+        prefill = _prefill_from_exception(db, ctx, uuid.UUID(from_exception_id) if from_exception_id else None)
+    except ValueError:
+        prefill = None
+
     try:
         parsed_max_amount = Decimal(max_amount) if max_amount else None
         parsed_frequency_limit = int(frequency_limit) if frequency_limit else None
@@ -71,7 +106,8 @@ def create_authorization(
     except (InvalidOperation, ValueError):
         accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
-            request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, error="Invalid input.", status_code=422
+            request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, prefill=prefill,
+            from_exception_id=from_exception_id or None, error="Invalid input.", status_code=422,
         )
 
     try:
@@ -96,15 +132,19 @@ def create_authorization(
         db.rollback()
         accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
-            request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, error=f"Could not create authorization: {exc}", status_code=422
+            request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, prefill=prefill,
+            from_exception_id=from_exception_id or None, error=f"Could not create authorization: {exc}", status_code=422,
         )
+    summary = f"Authorized ACH originator {rule.originator_name} ({rule.originator_id})"
+    if from_exception_id:
+        summary += f" (from exception {from_exception_id})"
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
         actor_user_id=ctx.user_id,
         channel="web",
         action="ach_authorization.create",
-        summary=f"Authorized ACH originator {rule.originator_name} ({rule.originator_id})",
+        summary=summary,
         resource_type="ach_authorization",
         resource_id=rule.id,
     )

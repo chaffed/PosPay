@@ -1,0 +1,11 @@
+A {{ network_code }} exception was auto-decided because no one responded within its
+configured window.
+
+Outcome: {{ outcome }}
+Reason: {{ reason_code }}
+{% if is_ml %}This was determined by the ML model, not a fixed default.{% else %}This was the configured fixed default outcome.{% endif %}
+
+View it here: {{ exception_url }}
+
+You're receiving this because your role can finalize exception decisions. You can
+change what you're notified about at /ui/security/notifications.

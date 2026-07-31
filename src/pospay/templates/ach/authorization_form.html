@@ -5,7 +5,10 @@
 <p>An authorization is a standing rule pre-approving future ACH activity from one
   originator on this account. Leave receiver ID blank for a "blanket" authorization
   covering any receiver from that originator; leave max amount, frequency limit, or
-  allowed SEC codes blank for no limit on that dimension.</p>
+  allowed SEC codes blank for no limit on that dimension.
+  {% if prefill %} This form was pre-filled from an exception's own transaction — it
+  only authorizes matching transactions going forward; it doesn't decide that exception
+  itself. Still make a pay/return decision on it from the Exceptions queue.{% endif %}</p>
 {% endblock %}
 {% block content %}
 <div class="card card-narrow">
@@ -13,19 +16,20 @@
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
   <form method="post" action="/ui/ach/authorizations">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if from_exception_id %}<input type="hidden" name="from_exception_id" value="{{ from_exception_id }}">{% endif %}
     <label>Account
       <select name="account_id" required>
-        {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }} ({{ a.account_number }})</option>{% endfor %}
+        {% for a in accounts %}<option value="{{ a.id }}" {{ "selected" if prefill and a.id == prefill.account_id else "" }}>{{ a.name }} ({{ a.account_number }})</option>{% endfor %}
       </select>
     </label>
-    <label>Originator (company) ID <input type="text" name="originator_id" required></label>
-    <label>Originator name <input type="text" name="originator_name" required></label>
+    <label>Originator (company) ID <input type="text" name="originator_id" value="{{ prefill.originator_id if prefill else '' }}" required></label>
+    <label>Originator name <input type="text" name="originator_name" value="{{ prefill.originator_name if prefill else '' }}" required></label>
     <label>Receiver ID (optional — leave blank to authorize any receiver for this originator)
-      <input type="text" name="receiver_id"></label>
+      <input type="text" name="receiver_id" value="{{ prefill.receiver_id if prefill else '' }}"></label>
     <label>Max amount (optional) <input type="text" name="max_amount" placeholder="0.00"></label>
     <label>Frequency limit per 30 days (optional) <input type="number" name="frequency_limit" min="1"></label>
-    <label>Allowed SEC codes, comma-separated (optional, e.g. PPD,WEB) <input type="text" name="allowed_sec_codes"></label>
-    <label>Effective date <input type="date" name="effective_date" required></label>
+    <label>Allowed SEC codes, comma-separated (optional, e.g. PPD,WEB) <input type="text" name="allowed_sec_codes" value="{{ prefill.allowed_sec_codes if prefill else '' }}"></label>
+    <label>Effective date <input type="date" name="effective_date" value="{{ prefill.effective_date if prefill else '' }}" required></label>
     <label>Expiration date (optional) <input type="date" name="expiration_date"></label>
     <button type="submit">Create</button>
   </form>

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from pospay.db.tenancy import TenantContext
 from pospay.domain.ach_transaction import AchSettlementStatus, AchTransaction
-from pospay.domain.decision import Decision, DecisionOutcome
+from pospay.domain.decision import Decision, DecisionOutcome, DecisionSource
 from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
 from pospay.domain.tenant import Tenant
 from pospay.networks.registry import get_adapter
@@ -162,6 +162,7 @@ def decide(
         notes=notes,
         submitted_by_user_id=submitted_by_user_id,
         decided_by_user_id=ctx.user_id,
+        source=DecisionSource.HUMAN,
         features_json=features,
     )
     decision_repo.add(decision)

@@ -41,6 +41,7 @@ PERMISSION_CATALOG: dict[str, str] = {
     "wsud:sign": "Sign a Written Statement of Unauthorized Debit (customer-scoped)",
     "wsud:read": "View signed Written Statements of Unauthorized Debit across customers",
     "bulk_import:run": "Trigger an on-demand auto-import scan of dropped files",
+    "ml_training_example:write": "Submit or retract known-fraud training examples for the ML model",
 }
 
 # Masked out of TenantContext.permissions whenever the active membership is
@@ -66,8 +67,10 @@ CUSTOMER_SCOPE_MASKED_PERMISSIONS: frozenset[str] = frozenset(
 # a pattern to extend casually — most new permissions should still join Admin normally.
 # wsud:sign joins it for the same reason: signing a legal unauthorized-debit attestation
 # on the account holder's behalf is a distinct, deliberate-opt-in class of action, not
-# something every Admin group should silently gain.
-_NOT_ADMIN_DEFAULT = {"data_export:run", "wsud:sign"}
+# something every Admin group should silently gain. ml_training_example:write joins for the
+# same reason again: a bad or malicious label here silently shapes what the fraud model
+# learns for every tenant, at least as consequential as the other two.
+_NOT_ADMIN_DEFAULT = {"data_export:run", "wsud:sign", "ml_training_example:write"}
 
 _ALL = [key for key in PERMISSION_CATALOG if key not in _NOT_ADMIN_DEFAULT]
 

@@ -224,6 +224,79 @@ def test_activate_customer_model_rejects_another_customers_model(client, db_sess
     assert other_customers_model.status == MlModelStatus.TRAINING
 
 
+def test_customer_ml_page_shows_default_disposition_table(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-cust-disp-show")
+    customer, _account2 = _make_customer(db_session, tenant)
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get(f"/ui/admin/customers/{customer.id}/ml")
+    assert resp.status_code == 200
+    assert "Default disposition" in resp.text
+
+
+def test_set_customer_disposition_fixed_pay(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-cust-disp-fixed-pay")
+    customer, _account2 = _make_customer(db_session, tenant)
+    _login(client, tenant.slug, users["admin"].email)
+    client.get(f"/ui/admin/customers/{customer.id}/ml")
+
+    resp = client.post(
+        f"/ui/admin/customers/{customer.id}/disposition",
+        data={"network_code": "check", "mode": "fixed_pay", "response_window_hours": "12", "csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "error" not in resp.headers["location"]
+
+    from pospay.domain.customer_disposition_setting import DispositionMode
+    from pospay.services import auto_disposition_service
+
+    db_session.expire_all()
+    assert auto_disposition_service.get_disposition_mode(db_session, tenant.id, customer.id, "check") == DispositionMode.FIXED_PAY
+    assert auto_disposition_service.get_response_window_hours(db_session, tenant.id, customer.id, "check") == 12
+
+
+def test_set_customer_disposition_with_ach_return_reason(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-cust-disp-ach-reason")
+    customer, _account2 = _make_customer(db_session, tenant)
+    _login(client, tenant.slug, users["admin"].email)
+    client.get(f"/ui/admin/customers/{customer.id}/ml")
+
+    from pospay.services import ach_return_reason_service, auto_disposition_service
+
+    reason = ach_return_reason_service.list_ach_return_reasons(db_session, tenant.id, active_only=True)[0]
+
+    resp = client.post(
+        f"/ui/admin/customers/{customer.id}/disposition",
+        data={
+            "network_code": "ach", "mode": "fixed_return", "response_window_hours": "",
+            "default_ach_return_reason_id": str(reason.id), "csrf_token": _csrf(client),
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "error" not in resp.headers["location"]
+
+    db_session.expire_all()
+    summary = {s.network_code: s for s in auto_disposition_service.get_disposition_summary(db_session, tenant.id, customer.id)}
+    assert summary["ach"].default_ach_return_reason_id == reason.id
+
+
+def test_set_customer_disposition_rejects_non_positive_window(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-cust-disp-bad-window")
+    customer, _account2 = _make_customer(db_session, tenant)
+    _login(client, tenant.slug, users["admin"].email)
+    client.get(f"/ui/admin/customers/{customer.id}/ml")
+
+    resp = client.post(
+        f"/ui/admin/customers/{customer.id}/disposition",
+        data={"network_code": "check", "mode": "fixed_pay", "response_window_hours": "0", "csrf_token": _csrf(client)},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert "error" in resp.headers["location"]
+
+
 def test_customer_detail_page_shows_ml_scoring_card_for_admin_only(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-cust-ml-card")
     customer, _account2 = _make_customer(db_session, tenant)

@@ -9,6 +9,13 @@
   global" and "Always this customer" override that: pin scoring to one source
   regardless of what's available. Retraining and activating below work exactly like the
   bank-wide models on the main ML Models page, just scoped to this one customer.</p>
+<p>Default disposition decides what happens to an exception if no one responds within
+  its response window: "None" (default) leaves it open indefinitely; "Always pay"/
+  "Always return" apply a fixed outcome; "ML-determined" re-scores the exception at the
+  deadline and picks pay/return from the model's own probability. An ACH return
+  (fixed or ML-determined) needs a return reason from this tenant's own catalog — if
+  none is configured, that customer+ACH auto-decisioning is skipped rather than guessed,
+  and retried on the next sweep.</p>
 {% endblock %}
 {% block content %}
 <div class="card">
@@ -55,6 +62,45 @@
             <button type="submit" class="secondary">Retrain</button>
           </form>
         </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h1>Default disposition — {{ customer.name }}</h1>
+  <table>
+    <thead><tr><th>Network</th><th>Mode</th><th>Response window (hours)</th><th>ACH return reason</th><th></th></tr></thead>
+    <tbody>
+      {% for row in disposition_summary %}
+      {% set form_id = "disposition-form-" ~ row.network_code %}
+      <tr>
+        <td>
+          {{ row.network_code }}
+          <form id="{{ form_id }}" method="post" action="/ui/admin/customers/{{ customer.id }}/disposition"></form>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}" form="{{ form_id }}">
+          <input type="hidden" name="network_code" value="{{ row.network_code }}" form="{{ form_id }}">
+        </td>
+        <td>
+          <select name="mode" form="{{ form_id }}">
+            {% for m in disposition_modes %}
+            <option value="{{ m.value }}" {{ "selected" if m == row.mode else "" }}>{{ m.value | replace("_", " ") | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td><input type="number" name="response_window_hours" min="1" value="{{ row.response_window_hours }}" style="width:6em;" form="{{ form_id }}"></td>
+        <td>
+          {% if row.network_code == "ach" %}
+          <select name="default_ach_return_reason_id" form="{{ form_id }}">
+            <option value="">— none configured —</option>
+            {% for reason in ach_return_reasons %}
+            <option value="{{ reason.id }}" {{ "selected" if reason.id == row.default_ach_return_reason_id else "" }}>{{ reason.reason_text }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </td>
+        <td><button type="submit" class="secondary" form="{{ form_id }}">Save</button></td>
       </tr>
       {% endfor %}
     </tbody>

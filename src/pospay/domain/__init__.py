@@ -17,6 +17,7 @@ from pospay.domain import (  # noqa: F401
     bulk_upload_file,
     check_image,
     customer,
+    customer_disposition_setting,
     customer_ml_setting,
     data_export_job,
     decision,

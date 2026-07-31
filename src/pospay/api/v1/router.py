@@ -11,6 +11,7 @@ from pospay.api.v1.check_images import router as check_images_router
 from pospay.api.v1.decisions import router as decisions_router
 from pospay.api.v1.dropbox_import import router as dropbox_import_router
 from pospay.api.v1.exceptions import router as exceptions_router
+from pospay.api.v1.fraud_training import router as fraud_training_router
 from pospay.api.v1.issued_items import router as issued_items_router
 from pospay.api.v1.paid_items import router as paid_items_router
 from pospay.api.v1.stop_payments import router as stop_payments_router
@@ -27,6 +28,7 @@ api_router.include_router(check_images_router)
 api_router.include_router(ach_authorizations_router)
 api_router.include_router(ach_transactions_router)
 api_router.include_router(exceptions_router)
+api_router.include_router(fraud_training_router)
 api_router.include_router(decisions_router)
 api_router.include_router(admin_router)
 api_router.include_router(users_router)

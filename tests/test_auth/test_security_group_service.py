@@ -10,12 +10,16 @@ def test_seed_default_security_groups_matches_old_role_behavior(db_session, tena
     groups = {g.name: g for g in security_group_service.list_security_groups(db_session, tenant.id)}
 
     assert set(groups) == {"Admin", "Preparer", "Approver", "Viewer", "Bookkeeper"}
-    # Every catalog permission EXCEPT data_export:run and wsud:sign, both deliberately
-    # excluded from Admin's default grant (see auth/permissions.py::_NOT_ADMIN_DEFAULT) —
-    # a bank must explicitly add either to a security group, even its own Admin group.
-    assert set(groups["Admin"].permissions) == set(PERMISSION_CATALOG) - {"data_export:run", "wsud:sign"}
+    # Every catalog permission EXCEPT data_export:run, wsud:sign, and
+    # ml_training_example:write, all deliberately excluded from Admin's default grant (see
+    # auth/permissions.py::_NOT_ADMIN_DEFAULT) — a bank must explicitly add any of these to
+    # a security group, even its own Admin group.
+    assert set(groups["Admin"].permissions) == set(PERMISSION_CATALOG) - {
+        "data_export:run", "wsud:sign", "ml_training_example:write"
+    }
     assert "data_export:run" not in groups["Admin"].permissions
     assert "wsud:sign" not in groups["Admin"].permissions
+    assert "ml_training_example:write" not in groups["Admin"].permissions
     assert "issued_item:write" in groups["Preparer"].permissions
     assert "exception:decide" not in groups["Preparer"].permissions
     assert "exception:decide" in groups["Approver"].permissions

@@ -5,10 +5,19 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pospay.db.base import Base, new_uuid
+
+
+class ExceptionItemSource(str, enum.Enum):
+    LIVE = "live"
+    # Created by services/fraud_training_service.py, not the real matching pipeline — see
+    # that module for why: a known-fraud transaction can clear the real rules cleanly (no
+    # OCR payee check, an authorized-looking ACH debit), so it needs a way into the
+    # training set that doesn't depend on ever tripping an exception for real.
+    TRAINING_BACKFILL = "training_backfill"
 
 
 class ExceptionStatus(str, enum.Enum):
@@ -68,3 +77,18 @@ class ExceptionItem(Base):
 
     decision_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    source: Mapped[ExceptionItemSource] = mapped_column(
+        Enum(ExceptionItemSource, name="exception_item_source", native_enum=False, length=20),
+        nullable=False,
+        default=ExceptionItemSource.LIVE,
+    )
+    # True when this TRAINING_BACKFILL exception points at a source_item_id that already
+    # had a prior LIVE exception decided PAY/RETURN — i.e. this label is correcting a past
+    # live decision, not just adding a fresh one. Display-only (see
+    # services/fraud_training_service.py for how it's computed).
+    is_correction: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # One-way soft-retraction, mirrors BulkUploadFile.backed_out_at/backed_out_by_user_id —
+    # only ever set on a TRAINING_BACKFILL exception (see fraud_training_service.retract_*).
+    retracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retracted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)

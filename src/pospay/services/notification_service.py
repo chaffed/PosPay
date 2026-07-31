@@ -19,6 +19,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from pospay.config import get_settings
+from pospay.domain.decision import Decision, DecisionSource
 from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.notification import Notification, NotificationChannel, NotificationPreference, NotificationType
 from pospay.domain.security_group import SecurityGroup
@@ -37,6 +38,7 @@ _EMAIL_SUBJECTS: dict[NotificationType, str] = {
     NotificationType.RECOMMENDATION_AWAITING_APPROVAL: "A recommendation is awaiting your approval",
     NotificationType.ACCOUNT_LOCKED: "Your PosPay account has been locked",
     NotificationType.ACCOUNT_UNLOCKED: "Your PosPay account has been unlocked",
+    NotificationType.EXCEPTION_AUTO_DECIDED: "An exception was auto-decided",
 }
 
 
@@ -194,6 +196,33 @@ def notify_recommendation_awaiting_approval(session: Session, exception_item: Ex
             tenant_id=exception_item.tenant_id,
             recipient=recipient,
             notification_type=NotificationType.RECOMMENDATION_AWAITING_APPROVAL,
+            template_context=context,
+            resource_type="exception_item",
+            resource_id=exception_item.id,
+        )
+
+
+def notify_exception_auto_decided(session: Session, exception_item: ExceptionItem, decision: Decision) -> None:
+    """Sent when services/auto_disposition_service.py finalizes an exception with no
+    human decider -- recipients are the same people who'd normally have finalized it
+    themselves (exception:decide), so no one is surprised to see it already closed."""
+    recipients = _recipients_for_permission(
+        session, exception_item.tenant_id, "exception:decide", customer_id=exception_item.customer_id
+    )
+    context = {
+        "network_code": exception_item.network_code,
+        "exception_id": str(exception_item.id),
+        "outcome": decision.outcome.value,
+        "reason_code": decision.reason_code,
+        "is_ml": decision.source == DecisionSource.AUTO_ML,
+        "exception_url": _absolute_url(f"/ui/exceptions/{exception_item.id}"),
+    }
+    for recipient in recipients:
+        _queue(
+            session,
+            tenant_id=exception_item.tenant_id,
+            recipient=recipient,
+            notification_type=NotificationType.EXCEPTION_AUTO_DECIDED,
             template_context=context,
             resource_type="exception_item",
             resource_id=exception_item.id,

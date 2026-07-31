@@ -36,6 +36,7 @@ _NOTIFICATION_TYPE_LABELS = {
     NotificationType.EXCEPTION_CREATED: "New exception ready for review",
     NotificationType.RECOMMENDATION_AWAITING_APPROVAL: "A recommendation is awaiting your approval",
     NotificationType.ACCOUNT_UNLOCKED: "Your account was unlocked",
+    NotificationType.EXCEPTION_AUTO_DECIDED: "An exception was auto-decided",
 }
 
 

@@ -17,6 +17,7 @@ from pospay.web.routers.customers import router as customers_router
 from pospay.web.routers.dashboard import router as dashboard_router
 from pospay.web.routers.data_export import router as data_export_router
 from pospay.web.routers.exceptions import router as exceptions_router
+from pospay.web.routers.fraud_training import router as fraud_training_router
 from pospay.web.routers.issued_items import router as issued_items_router
 from pospay.web.routers.paid_items import router as paid_items_router
 from pospay.web.routers.security_groups import router as security_groups_router
@@ -47,6 +48,7 @@ web_router.include_router(ach_authorizations_router)
 web_router.include_router(ach_transactions_router)
 web_router.include_router(ach_return_reasons_router)
 web_router.include_router(exceptions_router)
+web_router.include_router(fraud_training_router)
 web_router.include_router(admin_router)
 web_router.include_router(users_router)
 web_router.include_router(security_groups_router)

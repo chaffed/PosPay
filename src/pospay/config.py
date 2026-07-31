@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     notification_dispatch_interval_seconds: int = 30
     notification_dispatch_batch_size: int = 200
     email_provider: str = "smtp"  # see notifications/email/factory.py
+
+    # Default disposition (services/auto_disposition_service.py, workers/tasks.py::
+    # sweep_expired_dispositions_job) — auto-decides an exception whose decision_deadline
+    # has passed with no human decision, per a per-customer CustomerDispositionSetting.
+    enable_disposition_scheduler: bool = False  # opt-in: off by default, same reasoning as enable_ml_scheduler
+    disposition_sweep_interval_seconds: int = 300
+    # Fallback for CustomerDispositionSetting.response_window_hours when a customer's own
+    # setting leaves it unset — same nullable-override-falls-back-to-global-default shape
+    # as data_export_timeout_seconds above.
+    default_disposition_response_window_hours: int = 24
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

@@ -19,7 +19,7 @@ from pospay.domain.exception_item import ExceptionItem
 from pospay.ml.predict import score_exception
 from pospay.networks.ach.adapter import AchAdapter
 from pospay.repositories.account_repo import AccountRepository
-from pospay.services import notification_service
+from pospay.services import auto_disposition_service, notification_service
 
 _adapter = AchAdapter()
 
@@ -82,6 +82,7 @@ def ingest_ach_transaction(
         txn.settlement_status = AchSettlementStatus.PAID
     else:
         txn.match_status = AchMatchStatus.EXCEPTION
+        deadline = auto_disposition_service.compute_decision_deadline(session, tenant_id, txn.customer_id, "ach")
         exception_item = ExceptionItem(
             tenant_id=tenant_id,
             network_code="ach",
@@ -89,6 +90,7 @@ def ingest_ach_transaction(
             source_item_id=txn.id,
             related_reference_id=result.related_reference_id,
             exception_types=",".join(result.exception_types),
+            decision_deadline=deadline,
         )
         session.add(exception_item)
         session.flush()

@@ -41,6 +41,7 @@
         <p class="nav-section">Review</p>
         {{ nav_link("/ui/exceptions", "Exceptions") }}
         {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement") }}{% endif %}
+        {% if can(ctx, "ml_training_example:write") %}{{ nav_link("/ui/ml-training/fraud-examples", "Fraud Training Data") }}{% endif %}
 
         {% if show_org_section %}
         <p class="nav-section">Organization</p>

@@ -9,7 +9,11 @@
 {% endblock %}
 {% block content %}
 <div class="card">
-  <h1>Exception <span class="badge">{{ item.network_code }}</span></h1>
+  <h1>Exception <span class="badge">{{ item.network_code }}</span>
+    {% if item.source.value == "training_backfill" %}
+    <span class="badge badge-warn">{{ "Correction of a prior decision" if item.is_correction else "Training example" }}</span>
+    {% endif %}
+  </h1>
   {% if summary %}
   <p>{{ summary.label }} — {{ summary.amount }} ({{ summary.date }})</p>
   {% else %}
@@ -26,6 +30,9 @@
   {% endif %}
   {% if decision %}
   <p>Decision: <strong>{{ decision.outcome.value }}</strong> ({{ decision.reason_code }}{% if decision.return_transaction_code %}, trancode {{ decision.return_transaction_code }}{% endif %}){% if decision.notes %} — {{ decision.notes }}{% endif %}, decided {{ decision.decided_at.strftime("%Y-%m-%d %H:%M") }}</p>
+  {% endif %}
+  {% if item.network_code == "ach" and can(ctx, "ach_authorization:write") %}
+  <p><a href="/ui/ach/authorizations/new?from_exception={{ item.id }}">Add originator to ACH allow list</a> — authorizes future matching transactions; doesn't decide this exception.</p>
   {% endif %}
 </div>
 

@@ -14,7 +14,7 @@ from pospay.domain.paid_item import PaidItem, PaidItemMatchStatus, PaidItemSettl
 from pospay.ml.predict import score_exception
 from pospay.networks.check.adapter import CheckAdapter
 from pospay.repositories.account_repo import AccountRepository
-from pospay.services import notification_service
+from pospay.services import auto_disposition_service, notification_service
 
 _adapter = CheckAdapter()
 
@@ -74,6 +74,7 @@ def ingest_paid_item(
             issued_item.status = IssuedItemStatus.PAID
     else:
         paid_item.match_status = PaidItemMatchStatus.EXCEPTION
+        deadline = auto_disposition_service.compute_decision_deadline(session, tenant_id, paid_item.customer_id, "check")
         exception_item = ExceptionItem(
             tenant_id=tenant_id,
             network_code="check",
@@ -81,6 +82,7 @@ def ingest_paid_item(
             source_item_id=paid_item.id,
             related_reference_id=result.related_reference_id,
             exception_types=",".join(result.exception_types),
+            decision_deadline=deadline,
         )
         session.add(exception_item)
         session.flush()

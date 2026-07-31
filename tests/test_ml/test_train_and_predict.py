@@ -121,6 +121,49 @@ def test_train_then_score_populates_ml_score_on_new_exceptions(db_session, tenan
     assert new_exception.ml_model_version == train_result.model_row.version
 
 
+def test_retracted_backfilled_decision_excluded_from_training(db_session, tenant_factory, monkeypatch):
+    from pospay.config import get_settings
+    from pospay.ml.train import InsufficientTrainingData, train_model
+    from pospay.services.fraud_training_service import CheckFraudRawInput, retract_fraud_example, submit_check_fraud_example
+
+    monkeypatch.setattr(get_settings(), "ml_retrain_cooldown_seconds", 0)
+    tenant, account, users = tenant_factory.make(slug="ml-retract-excluded", require_dual_control=False)
+    ctx = TenantContext(
+        tenant_id=tenant.id,
+        user_id=users["admin"].id,
+        security_group_id=uuid.uuid4(),
+        permissions=frozenset(),
+        tenant_slug=tenant.slug,
+        tenant_name=tenant.name,
+        accent_color=None,
+        has_logo=False,
+        has_favicon=False,
+        customer_id=None,
+        customer_name=None,
+    )
+
+    # 9 live decisions plus 1 backfilled one = 10, exactly MIN_DECISIONS_TO_TRAIN.
+    for i in range(9):
+        exception = _make_exception(db_session, tenant, account, users, f"95{i:02d}", "100.00", "999.00" if i % 2 == 0 else "888.00")
+        outcome = DecisionOutcome.RETURN if i % 2 == 0 else DecisionOutcome.PAY
+        _decide(db_session, tenant, users, exception, outcome)
+    backfilled = submit_check_fraud_example(
+        db_session, tenant.id, ctx,
+        new_item=CheckFraudRawInput(account_id=account.id, check_number="9599", presented_amount=Decimal("500.00"), presented_date=date(2026, 1, 15)),
+        reason_code="known fraud",
+    )
+    db_session.commit()
+
+    train_result = train_model(db_session, "check")
+    assert train_result.model_row.trained_from_decision_count == 10
+
+    retract_fraud_example(db_session, tenant.id, ctx, backfilled.id)
+    db_session.commit()
+
+    with pytest.raises(InsufficientTrainingData):
+        train_model(db_session, "check")
+
+
 def test_retrain_job_skips_networks_below_threshold(db_session, tenant_factory, monkeypatch):
     import pospay.workers.tasks as tasks_module
 
