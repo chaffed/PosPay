@@ -19,9 +19,15 @@ from pospay.domain.ml_model import MlModel
 from pospay.ml.registry import activate_model
 from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
-from pospay.services import ach_return_reason_service, auto_disposition_service, customer_ml_service, customer_service
+from pospay.services import (
+    ach_return_reason_service,
+    auto_disposition_service,
+    customer_ml_service,
+    customer_service,
+    demo_tenant_service,
+)
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
-from pospay.web.security import verify_csrf
+from pospay.web.security import clear_auth_cookies, verify_csrf
 
 router = APIRouter(prefix="/ui/admin", tags=["web-admin"])
 
@@ -60,9 +66,41 @@ def admin_home(
             "training_backfill": counts.get(ExceptionItemSource.TRAINING_BACKFILL, 0),
         }
 
+    demo_tenant = demo_tenant_service.get_demo_tenant(db)
+    is_demo_tenant = demo_tenant is not None and demo_tenant.id == ctx.tenant_id
+
     return render_template(
-        request, "admin/ml_models.html", ctx=ctx, models=models, networks=registered_codes(), backfill_counts=backfill_counts
+        request, "admin/ml_models.html", ctx=ctx, models=models, networks=registered_codes(),
+        backfill_counts=backfill_counts, is_demo_tenant=is_demo_tenant,
     )
+
+
+@router.post("/demo/reset")
+def reset_demo(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("admin:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    # Defense in depth beyond the permission gate: this must never be reachable against
+    # any tenant other than the one actually flagged is_demo, even by a crafted request —
+    # reset_demo_tenant() itself also only ever looks up the demo tenant fresh, never
+    # accepting a caller-supplied id, but this 404s before it even gets that far.
+    demo_tenant = demo_tenant_service.get_demo_tenant(db)
+    if demo_tenant is None or demo_tenant.id != ctx.tenant_id:
+        raise WebNotFound()
+
+    demo_tenant_service.reset_demo_tenant(db)
+    db.commit()
+
+    # The current session's user/membership rows were just recreated with new ids —
+    # rather than try to keep this session alive against data that changed out from
+    # under it, send them back to the login page to sign in again with the same demo
+    # credentials.
+    response = RedirectResponse(
+        "/ui/login?flash=" + quote("Demo data reset — log back in with the demo credentials."), status_code=303
+    )
+    clear_auth_cookies(response)
+    return response
 
 
 @router.post("/ml/retrain")

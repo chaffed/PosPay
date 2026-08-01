@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 Chaffed
+
+"""Maps each released version to the Alembic revision that was `head` at release time.
+Add one new entry here as part of cutting each release whose head revision actually
+changed (a patch that adds no migration doesn't need a new entry) -- never edit or remove
+a past entry, they're the record tests/test_migrations/test_upgrade_downgrade_policy.py
+checks the downgrade-two-minor-versions policy against.
+
+See README.md's "Upgrade and downgrade support" section for the full policy this backs:
+upgrading is always supported, from any prior version; downgrading is only supported up
+to 2 minor versions back, and never across a major version boundary.
+"""
+
+VERSION_HISTORY: dict[str, str] = {
+    "1.0.0": "b2c3d4e5f6a7",  # head as of this policy's introduction
+}
+
+
+def _parse(version: str) -> tuple[int, int, int]:
+    major, minor, patch = version.split(".")
+    return int(major), int(minor), int(patch)
+
+
+def minor_versions_back(version_history: dict[str, str], current: str, count: int) -> str | None:
+    """The revision `count` minor versions before `current`'s, within the same major
+    version only -- crossing a major-version boundary is never required by policy, so
+    this returns None rather than reaching across one. Also None if there simply isn't
+    `count` minor versions of recorded history yet (never an error -- callers should
+    treat this as "not enough history to test yet", not a failure)."""
+    current_major, current_minor, _ = _parse(current)
+
+    # One entry per distinct (major, minor), keeping whichever recorded patch is highest
+    # for it -- a patch release that adds no new migration/minor bump isn't its own step
+    # "back".
+    by_minor: dict[tuple[int, int], tuple[int, str]] = {}
+    for version, revision in version_history.items():
+        major, minor, patch = _parse(version)
+        key = (major, minor)
+        if key not in by_minor or patch > by_minor[key][0]:
+            by_minor[key] = (patch, revision)
+
+    candidates = sorted(
+        (key for key in by_minor if key[0] == current_major and key <= (current_major, current_minor)),
+        reverse=True,
+    )
+    if len(candidates) <= count:
+        return None
+    return by_minor[candidates[count]][1]

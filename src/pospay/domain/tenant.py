@@ -34,6 +34,11 @@ class Tenant(Base):
     # services/tenant_service.py::set_data_export_timeout.
     data_export_timeout_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # At most one tenant ever has this set (enforced at the application level in
+    # services/demo_tenant_service.py, not a DB constraint) — the persistent sales-demo
+    # tenant. Gates the reactive reset-on-idle check in the login flow and the manual
+    # "reset now" admin action; never affects any other tenant's behavior.
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Branding — local disk paths (see web/branding_storage.py), never the blob itself in

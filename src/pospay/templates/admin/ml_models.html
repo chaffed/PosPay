@@ -10,6 +10,18 @@
   worse.</p>
 {% endblock %}
 {% block content %}
+{% if is_demo_tenant %}
+<div class="card card-narrow">
+  <h1>Demo data</h1>
+  <p>This is the sales demo tenant. It resets to its original seeded state on its own the
+    next time anyone logs in after being idle past its session window — or reset it
+    immediately below.</p>
+  <form method="post" action="/ui/admin/demo/reset" data-confirm="Reset all demo data now? You will be signed out and need to log back in.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="danger">Reset demo data now</button>
+  </form>
+</div>
+{% endif %}
 <div class="card">
   <h1>ML Models</h1>
   <p>Networks registered: {{ networks | join(", ") }}</p>

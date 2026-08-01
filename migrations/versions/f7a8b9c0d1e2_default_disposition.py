@@ -56,12 +56,15 @@ def upgrade() -> None:
 
     with op.batch_alter_table('decision') as batch_op:
         batch_op.alter_column('decided_by_user_id', existing_type=sa.Uuid(), nullable=True)
+        # server_default must be the enum member's NAME ("HUMAN"), not its value ("human")
+        # -- see domain/decision.py's DecisionSource column and
+        # migrations/versions/9327972d0952_....py's own fix for the identical bug.
         batch_op.add_column(
             sa.Column(
                 'source',
                 sa.Enum('HUMAN', 'AUTO_DEFAULT', 'AUTO_ML', name='decision_source', native_enum=False, length=15),
                 nullable=False,
-                server_default='human',
+                server_default='HUMAN',
             )
         )
 

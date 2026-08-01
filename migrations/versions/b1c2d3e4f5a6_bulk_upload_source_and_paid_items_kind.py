@@ -22,7 +22,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     with op.batch_alter_table('bulk_upload_file') as batch_op:
-        batch_op.add_column(sa.Column('source', sa.String(length=20), server_default='manual', nullable=False))
+        # server_default must be the enum member's NAME ("MANUAL"), not its value
+        # ("manual") -- see domain/bulk_upload_file.py's BulkUploadSource column and
+        # migrations/versions/9327972d0952_....py's own fix for the identical bug.
+        batch_op.add_column(sa.Column('source', sa.String(length=20), server_default='MANUAL', nullable=False))
         batch_op.alter_column('uploaded_by_user_id', existing_type=sa.Uuid(), nullable=True)
     # bulk_upload_kind/BulkUploadKind is stored as a plain non-native String column
     # (native_enum=False), so adding the PAID_ITEMS value is an app-level Python enum

@@ -27,6 +27,7 @@ from pospay.domain import (  # noqa: F401
     notification,
     paid_item,
     payment_network,
+    platform_api_key,
     security_group,
     sso_connection,
     stop_payment,

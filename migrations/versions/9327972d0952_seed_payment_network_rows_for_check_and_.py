@@ -30,11 +30,16 @@ payment_network = sa.table(
 
 
 def upgrade() -> None:
+    # settlement_timing must be the enum member's NAME ("ASYNC_REVIEWABLE"), not its value
+    # ("async_reviewable") -- SQLAlchemy's default Enum(SettlementTiming, ...) column type
+    # (domain/payment_network.py) serializes/deserializes by member name with no
+    # values_callable configured anywhere in this app, so a lowercase value here would
+    # insert fine but raise LookupError the moment anything reads it back through the ORM.
     op.bulk_insert(
         payment_network,
         [
-            {"code": "check", "name": "Check", "settlement_timing": "async_reviewable", "is_active": True},
-            {"code": "ach", "name": "ACH", "settlement_timing": "async_reviewable", "is_active": True},
+            {"code": "check", "name": "Check", "settlement_timing": "ASYNC_REVIEWABLE", "is_active": True},
+            {"code": "ach", "name": "ACH", "settlement_timing": "ASYNC_REVIEWABLE", "is_active": True},
         ],
     )
 

@@ -29,6 +29,7 @@ prerequisites and step-by-step setup, also available as an in-app guided checkli
 - [Signing keys](#signing-keys)
 - [Postgres](#postgres)
 - [MSSQL](#mssql)
+- [Upgrade and downgrade support](#upgrade-and-downgrade-support)
 - [Web UI](#web-ui)
 - [Architecture at a glance](#architecture-at-a-glance)
 - [License](#license)
@@ -590,6 +591,29 @@ Known friction points, not yet exercised against a live instance in this build:
   solely on the repository-layer filter for tenant isolation, same as SQLite.
 - Alembic's autogenerate has known rough edges on MSSQL around identity columns and
   server-side defaults; review generated migrations before applying against MSSQL.
+
+## Upgrade and downgrade support
+
+- **Upgrading is always supported**, from any prior version straight to the latest —
+  `alembic upgrade head` must work regardless of how old your starting version is. This is
+  enforced by `tests/test_migrations/test_upgrade_downgrade_policy.py::
+  test_full_upgrade_from_base_succeeds`, run as part of the normal test suite.
+- **Downgrading is only supported up to 2 minor versions back**, and never across a major
+  version boundary — a migration introduced at a major version bump is allowed to have an
+  irreversible `downgrade()` (raising, or a documented no-op), reserving room for
+  genuinely breaking changes to exactly that boundary.
+
+`migrations/version_history.py` records which Alembic revision was `head` at each release
+— `test_downgrade_two_minor_versions_supported` resolves "2 minor versions back" from
+there and actually runs the downgrade against a scratch database. It skips cleanly (not
+silently, not failing) whenever there isn't yet 2 minor versions of recorded history to
+test against.
+
+**Cutting a release**: bump the version in `pyproject.toml` and `src/pospay/main.py`
+together, then add one new entry to `VERSION_HISTORY` in `migrations/version_history.py`
+mapping the new version to the current Alembic head — only if that release actually added
+a migration (a patch that doesn't touch the schema doesn't need an entry). Never edit or
+remove a past entry.
 
 ## Web UI
 

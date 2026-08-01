@@ -131,6 +131,15 @@ class Settings(BaseSettings):
     # setting leaves it unset — same nullable-override-falls-back-to-global-default shape
     # as data_export_timeout_seconds above.
     default_disposition_response_window_hours: int = 24
+
+    # Persistent sales-demo tenant (services/demo_tenant_service.py) — a fully-seeded,
+    # real tenant that resets to its pristine state the next time anyone logs into it
+    # after its own (short) session window has elapsed. Off by default; a password must
+    # also be set, since there's no safe hardcoded default for a real credential.
+    demo_tenant_enabled: bool = False
+    demo_tenant_password: str | None = None
+    demo_tenant_session_minutes: int = 60
+
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

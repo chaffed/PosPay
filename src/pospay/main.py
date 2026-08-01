@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
@@ -15,16 +16,36 @@ from pospay.web.deps import WebAuthRequired, WebForbidden, WebNotFound, render_t
 from pospay.web.router import web_router
 
 _STATIC_DIR = Path(__file__).parent / "static"
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     scheduler = None
     settings = get_settings()
-    if settings.enable_ml_scheduler or settings.auto_import_enabled or settings.notifications_enabled:
+    if settings.enable_ml_scheduler or settings.auto_import_enabled or settings.notifications_enabled or settings.enable_disposition_scheduler:
         from pospay.workers.scheduler import start_scheduler, stop_scheduler
 
         scheduler = start_scheduler()
+
+    if settings.demo_tenant_enabled:
+        # Idempotent -- a safe no-op on every restart after the first. Best-effort: a
+        # seeding failure (e.g. the DB isn't migrated yet) must never prevent the app
+        # itself from starting.
+        from pospay.db.session import get_session_factory
+        from pospay.services.demo_tenant_service import DemoTenantNotConfigured, ensure_demo_tenant
+
+        session = get_session_factory()()
+        try:
+            ensure_demo_tenant(session)
+        except DemoTenantNotConfigured as exc:
+            logger.warning("Demo tenant not provisioned at startup: %s", exc)
+        except Exception:  # noqa: BLE001 -- seeding failure must never block app startup
+            logger.exception("Failed to ensure the demo tenant exists at startup")
+            session.rollback()
+        finally:
+            session.close()
+
     yield
     if scheduler is not None:
         stop_scheduler()
@@ -36,7 +57,7 @@ def create_app() -> FastAPI:
     # even finish starting (see SECURITY_REVIEW.md and config.py::assert_production_safe).
     assert_production_safe(get_settings())
 
-    app = FastAPI(title="PosPay", version="0.1.0", lifespan=_lifespan)
+    app = FastAPI(title="PosPay", version="1.0.0", lifespan=_lifespan)
 
     # Importing each network package triggers its register_adapter() call at import
     # time (see networks/registry.py). Adding a new network later means adding one

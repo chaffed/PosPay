@@ -22,8 +22,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     with op.batch_alter_table('exception_item') as batch_op:
+        # server_default must be the enum member's NAME ("LIVE"), not its value ("live")
+        # -- see domain/exception_item.py's ExceptionItemSource column and
+        # migrations/versions/9327972d0952_....py's own fix for the identical bug.
         batch_op.add_column(
-            sa.Column('source', sa.String(length=20), nullable=False, server_default='live')
+            sa.Column('source', sa.String(length=20), nullable=False, server_default='LIVE')
         )
         batch_op.add_column(
             sa.Column('is_correction', sa.Boolean(), nullable=False, server_default=sa.false())

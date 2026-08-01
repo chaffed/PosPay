@@ -27,7 +27,7 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.tenant import Tenant
 from pospay.domain.user import User
 from pospay.schemas.webauthn import AuthenticationVerifyRequest, RegistrationVerifyRequest
-from pospay.services import audit_log_service, customer_service, sso_service, user_service
+from pospay.services import audit_log_service, customer_service, demo_tenant_service, sso_service, user_service
 from pospay.services.tenant_service import get_tenant_branding_by_slug
 from pospay.web.deps import WebNotFound, get_mfa_pending_web_context, render_template
 from pospay.web.security import (
@@ -73,6 +73,12 @@ def login_submit(
     _csrf: None = Depends(verify_csrf),
 ) -> HTMLResponse:
     next_path = safe_next_path(next)
+    # Reactive demo-tenant reset: runs *before* any identity for this request is
+    # resolved, specifically so a reset-triggering login can't end up minting a token
+    # against a user/membership row the reset just deleted out from under it -- a no-op
+    # for every non-demo tenant. See demo_tenant_service.maybe_reset_if_demo_idle_by_slug.
+    demo_tenant_service.maybe_reset_if_demo_idle_by_slug(db, tenant_slug)
+    db.commit()
     result = authenticate_password(db, tenant_slug, email, password)
     # authenticate_password only flushes (see its docstring) — commit unconditionally,
     # even on a failed attempt, so the incremented failed_login_attempts/locked_until

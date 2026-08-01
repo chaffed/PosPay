@@ -15,13 +15,17 @@ from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.schemas.auth import LoginRequest, LoginResponse, RefreshRequest, TokenResponse
-from pospay.services import user_service
+from pospay.services import demo_tenant_service, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+    # See web/routers/auth.py::login_submit's identical call for why this runs before
+    # any identity for this request is resolved -- a no-op for every non-demo tenant.
+    demo_tenant_service.maybe_reset_if_demo_idle_by_slug(db, payload.tenant_slug)
+    db.commit()
     result = authenticate_password(db, payload.tenant_slug, payload.email, payload.password)
     # authenticate_password only flushes (see its docstring) — commit unconditionally,
     # even on a failed attempt, so the incremented failed_login_attempts/locked_until
