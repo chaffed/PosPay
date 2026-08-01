@@ -1,0 +1,25 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Login, SSO &amp; Account Lockout</h1>
+<p>PosPay supports password login (with optional passkey step-up) out of the box, plus
+single sign-on your organization can configure.</p>
+
+{{ docs.screenshot("login", "Login screen") }}
+
+<h2>Single sign-on</h2>
+<p>Configure an SSO connection at the tenant level from
+<a href="/ui/settings">Settings &rarr; SSO</a>, or at the customer level from a customer's
+own detail page, if you want a specific customer's users to authenticate through their own
+identity provider instead of a password.</p>
+
+<h2>Account lockout</h2>
+<p>An account locks automatically after too many failed login attempts, as a brute-force
+protection. There's no self-service "forgot password" reset — a locked or otherwise
+stuck account must be unlocked by an administrator from
+<a href="/ui/users">Users</a>. The affected user always receives a lockout email
+regardless of their own notification preferences, since it's a security event they need to
+know about — the follow-up unlock notification, once an administrator resolves it, does
+respect the user's own notification preferences.</p>
+{% endblock %}

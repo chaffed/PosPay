@@ -1,0 +1,26 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Paid Items</h1>
+<p>A paid item is a check that has actually cleared and been presented for payment.
+Submitting paid items is what drives the matching process: each one is compared against
+recorded issued items, and any mismatch or unknown item automatically becomes an
+exception in the review queue.</p>
+
+{{ docs.screenshot("paid_items", "Paid items list") }}
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Enter a single paid item</strong> — open <a href="/ui/paid-items">Paid
+  Items</a> and choose "New," providing the account, check number, and amount as
+  presented.</li>
+  <li><strong>Submit a batch</strong> — use bulk upload for a full day's or run's worth of
+  cleared checks at once.</li>
+</ul>
+{{ docs.screenshot("paid_items_bulk", "Paid items bulk upload") }}
+<p>See <a href="/ui/docs/end-user/bulk-uploads">Bulk File Uploads</a> for the general
+upload and undo (back-out) workflow, and
+<a href="/ui/docs/end-user/exceptions">Exceptions &amp; Decisioning</a> for what happens
+next when a paid item doesn't match cleanly.</p>
+{% endblock %}

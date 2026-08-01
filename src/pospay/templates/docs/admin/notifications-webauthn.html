@@ -1,0 +1,20 @@
+{% extends "docs/_layout.html" %}
+
+{% block doc_body %}
+<h1>Notifications &amp; Account Security</h1>
+<p>These are self-service settings — every signed-in user manages their own, regardless of
+security group, from <a href="/ui/security">Security</a>.</p>
+
+<h2>Notification preferences</h2>
+<p>Users can turn email and SMS notifications on or off per event type: a new exception
+was created, a recommendation is awaiting approval, an account was unlocked, or an
+exception was auto-decided by the default disposition. One notification — that an account
+was locked — is always sent by email and isn't a user preference, since it's a security
+event the account holder needs to know about regardless of their other settings. SMS
+requires a phone number to be on file.</p>
+
+<h2>Passkeys (WebAuthn)</h2>
+<p>Users can register one or more passkeys (security keys, or platform authenticators like
+a fingerprint or face unlock) for passwordless or step-up multi-factor login, and remove
+any they no longer use, all from the same Security page.</p>
+{% endblock %}

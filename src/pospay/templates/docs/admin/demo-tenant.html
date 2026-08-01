@@ -1,0 +1,21 @@
+{% extends "docs/_layout.html" %}
+
+{% block doc_body %}
+<h1>Demo Tenant</h1>
+<p>If your deployment has a demo tenant enabled, it's a fully functioning, pre-populated
+organization sales teams can show off to prospects — real issued items, exceptions, users,
+and its own trained ML model, without touching any real customer's data.</p>
+
+<h2>How resets work</h2>
+<ul>
+  <li><strong>Automatic reset</strong> — if the demo tenant sits idle past its configured
+  session window, the very next login to it wipes any changes a previous demo made and
+  reseeds it fresh, before that login is even processed. Prospects always see a clean demo.</li>
+  <li><strong>Manual reset</strong> — from <a href="/ui/admin">Admin</a>, an administrator
+  can trigger a reset on demand, useful right before a scheduled demo rather than waiting
+  for the idle window to lapse.</li>
+</ul>
+
+<p>This action is scoped tightly to the actual flagged demo tenant — it can't be triggered
+against a real customer's organization.</p>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} — {{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}
+
+{% block content %}
+<div class="doc-layout">
+  <nav class="doc-toc" aria-label="Documentation topics">
+    <a href="{{ base_path }}">&larr; All topics</a>
+    <p class="nav-section">Topics</p>
+    {% for p in pages %}
+    <a href="{{ base_path }}/{{ p.slug }}" class="{{ 'active' if p.slug == page.slug else '' }}">{{ p.title }}</a>
+    {% endfor %}
+  </nav>
+  <div class="doc-body">
+    {% block doc_body %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

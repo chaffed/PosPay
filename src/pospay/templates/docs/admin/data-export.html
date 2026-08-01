@@ -1,0 +1,22 @@
+{% extends "docs/_layout.html" %}
+
+{% block doc_body %}
+<h1>Data Export</h1>
+<p>Data export bundles all of a tenant's or a single customer's data into a downloadable
+file — useful for migrating to another system, or for offboarding a customer. This is a
+deliberately opt-in permission, not automatically granted even to Admin, since a full
+export is a single action capable of moving everything a tenant or customer has to an
+outside party.</p>
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Export an entire tenant</strong> — from
+  <a href="/ui/settings/data-export">Settings &rarr; Data Export</a>, start a job and
+  download it once it completes.</li>
+  <li><strong>Export a single customer</strong> — from that customer's detail page, use its
+  own data export option to scope the export to just that customer's records.</li>
+</ul>
+
+<p>Export jobs run asynchronously and the resulting file is retained for a limited time
+(configurable in Settings) before it expires and must be regenerated.</p>
+{% endblock %}

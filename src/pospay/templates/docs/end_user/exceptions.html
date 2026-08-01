@@ -1,0 +1,35 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Exceptions &amp; Decisioning</h1>
+<p>The exceptions queue is where checks and ACH items that couldn't be automatically
+cleared land for review — a check with no matching issued item, or an ACH transaction not
+covered by an authorization rule. It's a single, network-agnostic queue: check and ACH
+exceptions are reviewed the same way.</p>
+
+{{ docs.screenshot("exceptions", "Exceptions queue") }}
+
+<h2>Reviewing an exception</h2>
+{{ docs.screenshot("exception_detail", "Exception detail and decision screen") }}
+<p>Each exception shows the underlying item's details and, where enough history exists to
+score it, a machine-learning fraud score with the model version that produced it (items
+without enough history show "not enough data to score yet" instead of a potentially
+misleading score).</p>
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Recommend a decision</strong> — enter a proposed pay or return outcome with
+  a reason.</li>
+  <li><strong>Finalize a decision</strong> — approve or override the recommendation. If
+  your organization requires <strong>dual control</strong>, the person who finalizes a
+  decision must be someone other than whoever recommended it — PosPay enforces this
+  automatically and blocks a user from finalizing their own recommendation.</li>
+  <li><strong>Return an ACH exception</strong> — you'll be asked to pick a return reason
+  from your organization's managed list of NACHA codes rather than typing free text.</li>
+</ul>
+
+<p>If an exception isn't decided before your organization's response window closes, it may
+be auto-decided by a default disposition your administrator configured — see
+<a href="/ui/docs/admin/ml-admin">ML Scoring &amp; Default Disposition</a>.</p>
+{% endblock %}

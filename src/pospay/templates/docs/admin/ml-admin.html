@@ -1,0 +1,28 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>ML Scoring &amp; Default Disposition</h1>
+<p>Two related settings, both configured per customer and per payment network (check and
+ACH separately): how confident the fraud model needs to be before a score is shown, and
+what should happen automatically if nobody responds to an exception in time.</p>
+
+{{ docs.screenshot("admin_ml_models", "ML models admin screen") }}
+
+<h2>ML scoring mode</h2>
+<p>From <a href="/ui/admin">Admin</a>, open a customer's ML settings to choose its scoring
+mode for each network. Models can also be retrained and, once ready, activated — either
+for a single customer or, for the shared baseline model, tenant-wide.</p>
+
+<h2>Default disposition</h2>
+<p>Set what happens when an exception's response window closes with no human decision: a
+fixed <strong>pay</strong> or <strong>return</strong> outcome, or let the ML model's score
+decide. You also configure the response window itself (in hours) and, for ACH, the default
+return reason to use. If ML-determined disposition is selected but there isn't yet enough
+model data to score an item, it's skipped rather than guessed — it stays open for a human
+to review rather than risk an under-informed automatic decision.</p>
+
+<p>A scheduled sweep applies these defaults to any exception whose window has expired;
+decisions it makes are marked as automatic in the audit log and exception history, so
+they're always distinguishable from a human's decision.</p>
+{% endblock %}

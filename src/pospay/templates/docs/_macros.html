@@ -1,0 +1,4 @@
+{% macro screenshot(name, alt) %}
+<img class="doc-screenshot doc-shot-light" src="/static/docs-screenshots/{{ name }}.png" alt="{{ alt }}" loading="lazy">
+<img class="doc-screenshot doc-shot-dark" src="/static/docs-screenshots/{{ name }}_dark.png" alt="{{ alt }}" loading="lazy">
+{% endmacro %}

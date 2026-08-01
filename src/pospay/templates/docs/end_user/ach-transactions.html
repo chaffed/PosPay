@@ -1,0 +1,23 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>ACH Transactions</h1>
+<p>ACH transactions are incoming debits and credits presented against an account over the
+ACH network. Each one is automatically screened against that account's ACH authorizations
+(allow rules) — anything not matched by an existing rule becomes an exception for review,
+the ACH equivalent of a positive-pay mismatch.</p>
+
+{{ docs.screenshot("ach_transactions", "ACH transactions list") }}
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Enter a single transaction</strong> — open
+  <a href="/ui/ach/transactions">ACH Transactions</a> and choose "New."</li>
+  <li><strong>Submit a batch</strong> — use bulk upload for a full batch of incoming ACH
+  activity; see <a href="/ui/docs/end-user/bulk-uploads">Bulk File Uploads</a>.</li>
+</ul>
+
+<p>To pre-approve activity from a known originator so it stops triggering exceptions, see
+<a href="/ui/docs/end-user/ach-authorizations">ACH Authorizations &amp; Allow Rules</a>.</p>
+{% endblock %}

@@ -42,6 +42,8 @@ PERMISSION_CATALOG: dict[str, str] = {
     "wsud:read": "View signed Written Statements of Unauthorized Debit across customers",
     "bulk_import:run": "Trigger an on-demand auto-import scan of dropped files",
     "ml_training_example:write": "Submit or retract known-fraud training examples for the ML model",
+    "end_user_documentation:read": "View the End User documentation",
+    "admin_documentation:read": "View the Bank Administrator documentation",
 }
 
 # Masked out of TenantContext.permissions whenever the active membership is
@@ -74,13 +76,15 @@ _NOT_ADMIN_DEFAULT = {"data_export:run", "wsud:sign", "ml_training_example:write
 
 _ALL = [key for key in PERMISSION_CATALOG if key not in _NOT_ADMIN_DEFAULT]
 
-# audit_log:read and wsud:read are deliberately excluded from the general read-permission
-# bucket below — every other *:read key lands in Preparer/Approver/Viewer by default
-# (they already see the underlying business records), but "who did what, when" and
-# "every customer's signed unauthorized-debit attestations" are both more sensitive,
-# cross-cutting views than any single resource's own data, and default to Admin-only,
-# same posture as the *:manage permissions. A tenant can still grant either to a custom group.
-_READS = [key for key in _ALL if key.endswith(":read") and key not in ("audit_log:read", "wsud:read")]
+# audit_log:read, wsud:read, and admin_documentation:read are deliberately excluded from
+# the general read-permission bucket below — every other *:read key lands in
+# Preparer/Approver/Viewer by default (they already see the underlying business records),
+# but "who did what, when", "every customer's signed unauthorized-debit attestations", and
+# the Bank Administrator documentation are all more sensitive/admin-facing than any single
+# resource's own data, and default to Admin-only, same posture as the *:manage
+# permissions. A tenant can still grant any of them to a custom group.
+_ADMIN_ONLY_READS = ("audit_log:read", "wsud:read", "admin_documentation:read")
+_READS = [key for key in _ALL if key.endswith(":read") and key not in _ADMIN_ONLY_READS]
 
 # Default groups seeded into every new tenant (provisioning_service.py, tests'
 # TenantFactory) — chosen to exactly reproduce the old Admin/Preparer/Approver/Viewer
@@ -96,8 +100,11 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
         "ach_authorization:read", "ach_authorization:write",
         "ach_transaction:read", "ach_transaction:write",
         "exception:read", "exception:recommend",
-        "wsud:sign", "bulk_import:run",
+        "wsud:sign", "bulk_import:run", "end_user_documentation:read",
     ],
+    # end_user_documentation:read isn't listed explicitly here -- it's already included
+    # via _READS (it isn't one of the _ADMIN_ONLY_READS above), same as every other
+    # ordinary *:read permission.
     "Approver": [*_READS, "exception:decide"],
     "Viewer": [*_READS],
     # For an outside bookkeeper who services one or more customers (of this bank, and
@@ -119,6 +126,6 @@ DEFAULT_SECURITY_GROUPS: dict[str, list[str]] = {
         "ach_authorization:read", "ach_authorization:write",
         "ach_transaction:read", "ach_transaction:write",
         "exception:read", "exception:recommend", "exception:decide",
-        "wsud:sign", "bulk_import:run",
+        "wsud:sign", "bulk_import:run", "end_user_documentation:read",
     ],
 }

@@ -16,6 +16,7 @@ from pospay.web.routers.check_images import router as check_images_router
 from pospay.web.routers.customers import router as customers_router
 from pospay.web.routers.dashboard import router as dashboard_router
 from pospay.web.routers.data_export import router as data_export_router
+from pospay.web.routers.docs import router as docs_router
 from pospay.web.routers.exceptions import router as exceptions_router
 from pospay.web.routers.fraud_training import router as fraud_training_router
 from pospay.web.routers.issued_items import router as issued_items_router
@@ -59,3 +60,4 @@ web_router.include_router(data_export_router)
 web_router.include_router(wizard_router)
 web_router.include_router(wsud_router)
 web_router.include_router(theme_router)
+web_router.include_router(docs_router)

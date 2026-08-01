@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Bank Administrator Documentation — {{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}
+
+{% block content %}
+<h1>Bank Administrator Documentation</h1>
+<p>Setup and configuration guides for managing your organization: users and permissions,
+customers and accounts, fraud-model behavior, branding, and compliance-facing records
+like the audit log and data export.</p>
+<div class="doc-index-grid">
+  {% for p in pages %}
+  <a class="doc-index-card" href="/ui/docs/admin/{{ p.slug }}">
+    <h3>{{ p.title }}</h3>
+    <p>{{ p.summary }}</p>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "docs/_layout.html" %}
+
+{% block doc_body %}
+<h1>Unauthorized Debit Statements</h1>
+<p>A Written Statement of Unauthorized Debit (WSUD) is a legal attestation that a returned
+ACH debit against your account was not authorized. If you have access to this feature, you
+can review your organization's returned, consumer-type ACH transactions and sign the
+statement electronically.</p>
+
+<h2>How to</h2>
+<ul>
+  <li>Open <a href="/ui/wsud">Unauthorized Debit Statement</a> to see any returned ACH
+  debits eligible for a statement.</li>
+  <li>Review the transaction details, then check the consent and attestation boxes and
+  type your name to sign. Your signature records your typed name along with the IP address
+  and browser used at the time, for audit purposes.</li>
+</ul>
+
+<p>This is a customer-side, opt-in feature — if you don't see it in your navigation, ask
+your administrator to grant the "Sign a Written Statement of Unauthorized Debit"
+permission to your security group.</p>
+{% endblock %}

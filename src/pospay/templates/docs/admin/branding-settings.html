@@ -1,0 +1,30 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Organization Settings &amp; Branding</h1>
+<p>Tenant-wide configuration lives at <a href="/ui/settings">Settings</a>.</p>
+
+{{ docs.screenshot("settings", "Organization settings screen") }}
+
+<h2>What you can configure</h2>
+<ul>
+  <li><strong>Branding</strong> — display name, accent color, logo, and favicon. These
+  appear across the whole application, including the login page for your organization.</li>
+  <li><strong>Contact info</strong> — support email, phone, website, and address, shown in
+  the footer of every page.</li>
+  <li><strong>Dual control</strong> — require that the person who finalizes an exception
+  decision be different from whoever recommended it. See
+  <a href="/ui/docs/end-user/exceptions">Exceptions &amp; Decisioning</a> for how this
+  plays out for reviewers.</li>
+  <li><strong>Session timeout</strong> — how long a signed-in session stays valid before
+  re-authentication is required.</li>
+  <li><strong>Data export timeout</strong> — how long an export job is retained before it
+  expires. See <a href="/ui/docs/admin/data-export">Data Export</a>.</li>
+</ul>
+
+<h2>Dark mode</h2>
+<p>Each user can set their own display theme — System, Light, or Dark — from the control at
+the top of every page. There's no organization-wide setting to force one; it's always an
+individual preference.</p>
+{% endblock %}

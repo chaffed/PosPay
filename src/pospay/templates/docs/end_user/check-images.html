@@ -1,0 +1,24 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Check Images</h1>
+<p>Check images are the front and back scans of a physical check, attached to a paid item
+so reviewers can visually verify signatures, endorsements, and alterations during
+exception review.</p>
+
+{{ docs.screenshot("check_images_bulk", "Check image bulk upload") }}
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Upload a single image pair</strong> — open <a href="/ui/check-images">Check
+  Images</a> and choose "Upload," providing the front and back image files for a check.</li>
+  <li><strong>Upload in bulk</strong> — submit a batch of image files at once (typically
+  alongside a matching paid-items file for the same day's activity). See
+  <a href="/ui/docs/end-user/bulk-uploads">Bulk File Uploads</a> for the general workflow.</li>
+  <li><strong>Reprocess</strong> — if an image failed to link to its paid item correctly,
+  trigger reprocessing from the image's detail page to re-run matching.</li>
+  <li><strong>View</strong> — front and back images are viewable (and downloadable)
+  individually from each check's detail page.</li>
+</ul>
+{% endblock %}

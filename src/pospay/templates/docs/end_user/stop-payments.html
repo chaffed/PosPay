@@ -1,0 +1,24 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Stop Payments</h1>
+<p>A stop payment flags a specific check so that if it's ever presented for payment, it's
+caught and reviewed rather than paid automatically — useful for lost, stolen, or
+disputed checks.</p>
+
+{{ docs.screenshot("stop_payments", "Stop payments list") }}
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Place a stop</strong> — open <a href="/ui/stop-payments">Stop Payments</a>
+  and choose "New." You can stop a specific check number and amount, or leave the amount
+  open to stop the check number regardless of amount. An optional expiration date lets the
+  stop lapse automatically.</li>
+  <li><strong>Cancel a stop</strong> — once the concern is resolved, cancel the stop from
+  its detail page so a legitimate presentment isn't blocked.</li>
+</ul>
+
+<p>Your dashboard's "active stop payments" count reflects stops that haven't been
+cancelled or expired.</p>
+{% endblock %}

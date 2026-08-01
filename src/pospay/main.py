@@ -16,6 +16,7 @@ from pospay.web.deps import WebAuthRequired, WebForbidden, WebNotFound, render_t
 from pospay.web.router import web_router
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_DOCS_SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "docs" / "screenshots"
 logger = logging.getLogger(__name__)
 
 
@@ -85,6 +86,15 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router)
     app.include_router(web_router)
+    # Registered before the broader "/static" mount below -- Starlette matches mounts by
+    # prefix in registration order, so the more specific path must come first or every
+    # request under it would be swallowed by "/static" (and 404, since that directory has
+    # no "docs-screenshots" subfolder of its own).
+    app.mount(
+        "/static/docs-screenshots",
+        StaticFiles(directory=str(_DOCS_SCREENSHOTS_DIR), check_dir=False),
+        name="docs_screenshots",
+    )
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     @app.exception_handler(WebAuthRequired)

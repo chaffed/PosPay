@@ -1,0 +1,28 @@
+{% extends "docs/_layout.html" %}
+{% import "docs/_macros.html" as docs %}
+
+{% block doc_body %}
+<h1>Customers &amp; Accounts</h1>
+<p>A <strong>customer</strong> is one of your bank's own business clients — the layer
+between your organization (the tenant) and the individual bank accounts you're protecting.
+Customer records hold contact information and identifying details, and every account,
+issued item, exception, and setting ultimately belongs to one.</p>
+
+{{ docs.screenshot("customers", "Customers list") }}
+
+<h2>How to</h2>
+<ul>
+  <li><strong>Add or edit a customer</strong> — from <a href="/ui/customers">Customers</a>,
+  create a new client or update an existing one's details.</li>
+  <li>A customer's detail page links out to that customer's own ML settings, SSO
+  configuration, unauthorized-debit statements, getting-started wizard, and data export —
+  most per-customer administration starts there.</li>
+</ul>
+
+<h2>Accounts</h2>
+{{ docs.screenshot("accounts", "Accounts list") }}
+<ul>
+  <li><strong>Add an account</strong> — from <a href="/ui/accounts">Accounts</a>, create a
+  single account under a customer, or use bulk upload to add several at once.</li>
+</ul>
+{% endblock %}
