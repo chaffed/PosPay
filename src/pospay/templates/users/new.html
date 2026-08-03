@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Add User — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this form{% endblock %}
 {% block help_body %}
@@ -18,7 +19,9 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Email <input type="email" name="email" required autofocus></label>
     <label>Password <input type="password" name="password"></label>
-    <p class="hint">Only used if this email doesn't already belong to an existing user.</p>
+    <p class="hint">Only used if this email doesn't already belong to an existing user.
+      Must be {{ password_policy_hint }} (a customer scope selected below may require
+      more).</p>
     <label>Security group
       <select name="security_group_id" required>
         {% for group in groups %}
@@ -34,7 +37,7 @@
         {% endfor %}
       </select>
     </label>
-    <button type="submit">Add user</button>
+    <button type="submit">{{ icon("person_add") }}Add user</button>
   </form>
 </div>
 {% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Data Export — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this customer's data export{% endblock %}
 {% block help_body %}
@@ -21,7 +22,7 @@
       I understand this generates a complete, downloadable copy of this customer's data
       and files.
     </label>
-    <button type="submit">Start export</button>
+    <button type="submit">{{ icon("download") }}Start export</button>
   </form>
   <p><a href="/ui/customers/{{ customer.id }}">Back to customer</a></p>
 </div>

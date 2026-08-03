@@ -10,10 +10,13 @@ from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from pospay.auth.password_policy import describe as describe_password_policy
+from pospay.auth.password_policy import effective_policy
 from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.bulk_upload_file import BulkUploadKind
+from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
@@ -116,7 +119,11 @@ def new_user_form(
 ) -> HTMLResponse:
     groups = security_group_service.list_security_groups(db, ctx.tenant_id)
     customers = customer_service.list_customers(db, ctx.tenant_id)
-    return render_template(request, "users/new.html", ctx=ctx, groups=groups, customers=customers)
+    tenant = db.get(Tenant, ctx.tenant_id)
+    password_policy_hint = describe_password_policy(effective_policy(tenant, None))
+    return render_template(
+        request, "users/new.html", ctx=ctx, groups=groups, customers=customers, password_policy_hint=password_policy_hint
+    )
 
 
 @router.post("")
@@ -168,8 +175,10 @@ def create_user(
     db.rollback()
     groups = security_group_service.list_security_groups(db, ctx.tenant_id)
     customers = customer_service.list_customers(db, ctx.tenant_id)
+    tenant = db.get(Tenant, ctx.tenant_id)
     return render_template(
-        request, "users/new.html", ctx=ctx, groups=groups, customers=customers, error=result.error, status_code=422
+        request, "users/new.html", ctx=ctx, groups=groups, customers=customers, error=result.error, status_code=422,
+        password_policy_hint=describe_password_policy(effective_policy(tenant, None)),
     )
 
 
@@ -432,8 +441,11 @@ def access_lookup(
     rows = user_service.get_access_for_email(db, ctx.tenant_id, email) if email else []
     groups = security_group_service.list_security_groups(db, ctx.tenant_id)
     customers = customer_service.list_customers(db, ctx.tenant_id)
+    tenant = db.get(Tenant, ctx.tenant_id)
+    password_policy_hint = describe_password_policy(effective_policy(tenant, None))
     return render_template(
-        request, "users/access.html", ctx=ctx, email=email, rows=rows, groups=groups, customers=customers
+        request, "users/access.html", ctx=ctx, email=email, rows=rows, groups=groups, customers=customers,
+        password_policy_hint=password_policy_hint,
     )
 
 
@@ -453,10 +465,12 @@ def access_grant(
     customers = customer_service.list_customers(db, ctx.tenant_id)
 
     if not customer_ids:
+        tenant = db.get(Tenant, ctx.tenant_id)
         return render_template(
             request, "users/access.html", ctx=ctx, email=email, rows=user_service.get_access_for_email(db, ctx.tenant_id, email),
             groups=groups, customers=customers, status_code=422,
             error="Select at least one customer (or bank-wide) to grant access to.",
+            password_policy_hint=describe_password_policy(effective_policy(tenant, None)),
         )
 
     resolved_ids: list[uuid.UUID | None] = [uuid.UUID(c) if c else None for c in customer_ids]

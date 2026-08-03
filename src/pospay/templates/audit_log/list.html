@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Audit Log — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About the audit log{% endblock %}
 {% block help_body %}
@@ -15,7 +16,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Audit log</h1>
-    <a href="/ui/audit-log/verify" class="button secondary">Verify chain</a>
+    <a href="/ui/audit-log/verify" class="button secondary">{{ icon("verified") }}Verify chain</a>
   </div>
   {% if verification %}
   <p>

@@ -1,11 +1,12 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Security key — {{ ctx.tenant_name if ctx else "PosPay" }}{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <h1>Verify with your security key</h1>
   <p>This account has a security key registered. Insert/tap it to finish signing in.</p>
   <p id="webauthn-error" class="flash flash-error" style="display:none;"></p>
-  <button type="button" id="webauthn-login-btn">Use security key</button>
+  <button type="button" id="webauthn-login-btn">{{ icon("vpn_key") }}Use security key</button>
 </div>
 {% endblock %}
 {% block scripts %}

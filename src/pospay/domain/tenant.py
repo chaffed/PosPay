@@ -33,6 +33,19 @@ class Tenant(Base):
     # services/data_export_service.py::run_export_job and
     # services/tenant_service.py::set_data_export_timeout.
     data_export_timeout_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Password policy applied at account-creation time (services/user_service.py::
+    # create_user_with_membership is the only place a password is ever set — there's no
+    # self-service change/reset flow) — see auth/password_policy.py. A customer's own
+    # policy (domain/customer.py) can only add to this, never weaken it: the effective
+    # policy for a user is always max(tenant, customer) per numeric field and
+    # tenant-OR-customer per boolean field, by construction. Defaults are deliberately
+    # permissive (no complexity required) so existing behavior is unaffected until a
+    # tenant admin opts in.
+    password_min_length: Mapped[int] = mapped_column(Integer, nullable=False, default=8)
+    password_require_uppercase: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    password_require_lowercase: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    password_require_number: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    password_require_symbol: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # At most one tenant ever has this set (enforced at the application level in
     # services/demo_tenant_service.py, not a DB constraint) — the persistent sales-demo

@@ -7,7 +7,7 @@ import pytest
 
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
-from pospay.services import customer_service, security_group_service, user_service
+from pospay.services import customer_service, security_group_service, tenant_service, user_service
 
 
 def test_add_user_creates_brand_new_identity(db_session, tenant_factory):
@@ -288,3 +288,93 @@ def test_grant_multi_customer_access_cross_tenant_email_needs_confirmation(db_se
 
     assert [result.outcome for _cid, result in pairs] == ["needs_confirmation", "needs_confirmation"]
     assert TenantMembershipRepository(db_session, tenant_b.id).list(user_id=users_a["preparer"].id) == []
+
+
+# --- Password policy enforcement ---
+
+
+def test_create_user_with_membership_rejects_password_below_tenant_policy(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="user-password-policy-reject")
+    tenant_service.set_password_policy(
+        db_session, tenant.id, min_length=12, require_uppercase=True, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    db_session.commit()
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+
+    with pytest.raises(ValueError, match="at least 12 characters"):
+        user_service.create_user_with_membership(
+            db_session, tenant.id, email="weakpass@example.com", password="short", security_group_id=group.id
+        )
+    assert UserRepository(db_session).get_by_email("weakpass@example.com") is None
+
+
+def test_create_user_with_membership_accepts_password_meeting_tenant_policy(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="user-password-policy-accept")
+    tenant_service.set_password_policy(
+        db_session, tenant.id, min_length=12, require_uppercase=True, require_lowercase=True,
+        require_number=True, require_symbol=False,
+    )
+    db_session.commit()
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+
+    user = user_service.create_user_with_membership(
+        db_session, tenant.id, email="strongpass@example.com", password="Str0ngPassword", security_group_id=group.id
+    )
+    db_session.commit()
+
+    assert UserRepository(db_session).get_by_email("strongpass@example.com").id == user.id
+
+
+def test_add_user_returns_failed_outcome_for_password_policy_violation(db_session, tenant_factory):
+    """add_user (the router-facing entry point) must convert the ValueError
+    create_user_with_membership raises into the same AddUserResult(outcome="failed")
+    shape every other failure already uses -- not an uncaught exception."""
+    tenant, _account, _users = tenant_factory.make(slug="user-password-policy-add-user")
+    tenant_service.set_password_policy(
+        db_session, tenant.id, min_length=20, require_uppercase=False, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    db_session.commit()
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+
+    result = user_service.add_user(
+        db_session, tenant.id, email="tooshort@example.com", password="short-password", security_group_id=group.id
+    )
+
+    assert result.outcome == "failed"
+    assert "at least 20 characters" in result.error
+    assert UserRepository(db_session).get_by_email("tooshort@example.com") is None
+
+
+def test_create_user_with_membership_enforces_customer_stricter_policy(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="user-password-policy-customer")
+    tenant_service.set_password_policy(
+        db_session, tenant.id, min_length=8, require_uppercase=False, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme")
+    )
+    customer_service.set_password_policy(
+        db_session, tenant.id, customer.id, min_length=None, require_uppercase=True, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    db_session.commit()
+    group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Preparer")
+
+    # Meets the tenant's own (permissive) policy but not this customer's additional
+    # uppercase requirement -- and a bank-wide (customer_id=None) user with the exact
+    # same password is unaffected, since the customer's stricter rule only applies within
+    # that customer's own scope.
+    with pytest.raises(ValueError, match="uppercase"):
+        user_service.create_user_with_membership(
+            db_session, tenant.id, email="scoped@example.com", password="lowercase-only-1",
+            security_group_id=group.id, customer_id=customer.id,
+        )
+
+    user = user_service.create_user_with_membership(
+        db_session, tenant.id, email="bankwide@example.com", password="lowercase-only-1", security_group_id=group.id
+    )
+    db_session.commit()
+    assert UserRepository(db_session).get_by_email("bankwide@example.com").id == user.id

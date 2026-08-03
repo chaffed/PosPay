@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Exception — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About deciding this exception{% endblock %}
 {% block help_body %}
@@ -63,7 +64,7 @@
     <label>Reason code <input type="text" name="reason_code" required></label>
     {% endif %}
     <label>Notes <input type="text" name="notes"></label>
-    <button type="submit">Submit recommendation</button>
+    <button type="submit">{{ icon("send") }}Submit recommendation</button>
   </form>
 </div>
 {% endif %}
@@ -93,7 +94,7 @@
     <label>Reason code <input type="text" name="reason_code" required></label>
     {% endif %}
     <label>Notes <input type="text" name="notes"></label>
-    <button type="submit">Submit decision</button>
+    <button type="submit">{{ icon("send") }}Submit decision</button>
   </form>
 </div>
 {% endif %}

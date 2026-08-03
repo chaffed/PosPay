@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}New Stop Payment — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this form{% endblock %}
 {% block help_body %}
@@ -21,7 +22,7 @@
     <label>Effective date <input type="date" name="effective_date" required></label>
     <label>Expiration date (optional) <input type="date" name="expiration_date"></label>
     <label>Reason <input type="text" name="reason"></label>
-    <button type="submit">Create</button>
+    <button type="submit">{{ icon("add") }}Create</button>
   </form>
 </div>
 {% endblock %}

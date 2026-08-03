@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}ACH Authorizations — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ACH authorizations{% endblock %}
 {% block help_body %}
@@ -17,7 +18,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>ACH Authorizations</h1>
-    {% if can(ctx, "ach_authorization:write") %}<a href="/ui/ach/authorizations/new" class="button">New authorization</a>{% endif %}
+    {% if can(ctx, "ach_authorization:write") %}<a href="/ui/ach/authorizations/new" class="button">{{ icon("add") }}New authorization</a>{% endif %}
   </div>
   {% if page_obj.total_count > 0 %}
   <table data-sortable>
@@ -35,7 +36,7 @@
           {% if rule.status.value == "active" and can(ctx, "ach_authorization:write") %}
           <form method="post" action="/ui/ach/authorizations/{{ rule.id }}/revoke" class="inline-form" data-confirm="Revoke this authorization?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="danger">Revoke</button>
+            <button type="submit" class="danger">{{ icon("block") }}Revoke</button>
           </form>
           {% endif %}
         </td>

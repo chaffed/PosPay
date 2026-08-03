@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Log in — {{ branding.name if branding else "PosPay" }}{% endblock %}
 {% block head_extra %}
 {% if branding and branding.has_favicon %}<link rel="icon" href="/ui/branding/{{ branding.slug }}/favicon">{% endif %}
@@ -17,7 +18,7 @@
   {% if sso_connections %}
   <div class="sso-buttons">
     {% for conn in sso_connections %}
-    <a class="button secondary" href="/ui/login/sso/{{ conn.id }}/start?tenant_id={{ branding.id }}{% if next_path %}&next={{ next_path | urlencode }}{% endif %}">Sign in with {{ conn.display_name }}</a>
+    <a class="button secondary" href="/ui/login/sso/{{ conn.id }}/start?tenant_id={{ branding.id }}{% if next_path %}&next={{ next_path | urlencode }}{% endif %}">{{ icon("login") }}Sign in with {{ conn.display_name }}</a>
     {% endfor %}
   </div>
   {% if password_enabled %}<p style="text-align:center;">or</p>{% endif %}
@@ -39,7 +40,7 @@
       Password
       <input type="password" name="password" required>
     </label>
-    <button type="submit">Log in</button>
+    <button type="submit">{{ icon("login") }}Log in</button>
   </form>
   {% elif not sso_connections %}
   <p>No sign-in method is currently available. Contact your administrator.</p>

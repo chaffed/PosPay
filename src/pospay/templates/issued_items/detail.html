@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Issued Item {{ item.check_number }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this issued item{% endblock %}
 {% block help_body %}
@@ -19,7 +20,7 @@
   <form method="post" action="/ui/issued-items/{{ item.id }}/void" data-confirm="Void this issued item?">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Reason <input type="text" name="reason" required></label>
-    <button type="submit" class="danger">Void</button>
+    <button type="submit" class="danger">{{ icon("cancel") }}Void</button>
   </form>
   {% endif %}
 </div>

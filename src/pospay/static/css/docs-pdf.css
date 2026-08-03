@@ -1,0 +1,124 @@
+/* Stylesheet for the documentation PDF export (services/doc_pdf_service.py). Deliberately
+separate from app.css: the PDF document never shares base.html's nav/sidebar markup, and
+WeasyPrint only supports a subset of CSS (no data-sortable JS behavior needed here -- plain
+<table> markup is enough at print resolution). Read from disk and inlined into a <style>
+tag so WeasyPrint never has to fetch it. */
+
+@page {
+  size: A4;
+  margin: 2cm 1.75cm;
+}
+
+@page landscape {
+  size: A4 landscape;
+  margin: 1.5cm;
+}
+
+body {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+h1 {
+  font-size: 20pt;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 15pt;
+  margin-top: 1.5em;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 0.2em;
+}
+
+h3 {
+  font-size: 12pt;
+  margin-top: 1.3em;
+}
+
+a {
+  color: #1a1a1a;
+  text-decoration: underline;
+}
+
+.pdf-cover {
+  page-break-after: always;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  height: 90vh;
+}
+
+.pdf-cover h1 {
+  font-size: 28pt;
+}
+
+.pdf-cover-meta {
+  color: #666;
+  font-size: 10pt;
+  margin-top: 2em;
+}
+
+.pdf-topic {
+  page-break-before: always;
+}
+
+.pdf-diagram-page {
+  page: landscape;
+  page-break-before: always;
+  page-break-after: always;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 95vh;
+}
+
+.pdf-diagram-img {
+  width: 100%;
+  height: auto;
+}
+
+.doc-screenshot {
+  max-width: 100%;
+  border: 1px solid #ccc;
+  margin: 0.75em 0;
+}
+
+/* Only one of the light/dark screenshot pair is ever meaningful in a static PDF --
+always the light variant, since there's no user theme preference to honor here. */
+.doc-shot-dark {
+  display: none;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0 1.25em;
+  font-size: 9pt;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f0f0f0;
+}
+
+.hint {
+  font-size: 9pt;
+  color: #555;
+  font-style: italic;
+}
+
+.pdf-summary {
+  page-break-before: always;
+}

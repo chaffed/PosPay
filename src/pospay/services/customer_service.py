@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from pospay.domain.customer import Customer
+from pospay.domain.tenant import Tenant
 from pospay.repositories.customer_repo import CustomerRepository
 
 
@@ -85,3 +86,42 @@ def get_customer_by_number(session: Session, tenant_id: uuid.UUID, customer_numb
     our UUIDs, only the number a bank employee would actually recognize."""
     matches = CustomerRepository(session, tenant_id).list(customer_number=customer_number)
     return matches[0] if matches else None
+
+
+def set_password_policy(
+    session: Session,
+    tenant_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    *,
+    min_length: int | None,
+    require_uppercase: bool,
+    require_lowercase: bool,
+    require_number: bool,
+    require_symbol: bool,
+) -> Customer | None:
+    """This customer's own ADDITIONAL password requirements, on top of the tenant's own
+    baseline (services/tenant_service.py::set_password_policy) — see
+    auth/password_policy.py::effective_policy for how the two combine. Rejects a
+    min_length weaker than the tenant's own with a clear error rather than silently
+    accepting a value that would just be a no-op once combined; the boolean flags need no
+    such check since OR-combining a customer's own value with the tenant's already makes
+    weakening structurally impossible regardless of what's submitted."""
+    customer = CustomerRepository(session, tenant_id).get(customer_id)
+    if customer is None:
+        return None
+
+    if min_length is not None:
+        tenant = session.get(Tenant, tenant_id)
+        if min_length < tenant.password_min_length:
+            raise ValueError(
+                f"This customer's minimum length can't be less than the tenant's own minimum "
+                f"of {tenant.password_min_length} characters. Leave it blank to just use the tenant's minimum."
+            )
+
+    customer.password_min_length = min_length
+    customer.password_require_uppercase = require_uppercase
+    customer.password_require_lowercase = require_lowercase
+    customer.password_require_number = require_number
+    customer.password_require_symbol = require_symbol
+    session.flush()
+    return customer

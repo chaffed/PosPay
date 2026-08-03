@@ -126,3 +126,35 @@ def test_dual_control_toggle_via_web(client, db_session, tenant_factory):
     assert resp2.status_code == 303
     db_session.expire_all()
     assert db_session.get(Tenant, tenant.id).require_dual_control is False
+
+
+def test_every_bank_wizard_step_link_resolves(client, tenant_factory):
+    """Regression test: every step's link_url must actually be a real, reachable page --
+    catches exactly the class of bug where a step still points at a URL that moved or
+    never existed (e.g. wizard_service.py once linked "Add an account" to
+    /ui/accounts/new before that page existed, and separately kept pointing SSO at
+    /ui/settings/sso after it moved to /ui/admin/sso)."""
+    from pospay.services import wizard_service
+
+    tenant, _account, users = tenant_factory.make(slug="web-wizard-links-bank")
+    _login(client, tenant.slug, users["admin"].email)
+
+    for step in wizard_service.BANK_STEPS:
+        resp = client.get(step.link_url, follow_redirects=False)
+        assert resp.status_code in (200, 303), f"{step.key} -> {step.link_url} returned {resp.status_code}"
+
+
+def test_every_customer_wizard_step_link_resolves(client, db_session, tenant_factory):
+    from pospay.services import wizard_service
+
+    tenant, _account, users = tenant_factory.make(slug="web-wizard-links-customer")
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme Co")
+    )
+    db_session.commit()
+    _login(client, tenant.slug, users["admin"].email)
+
+    for step in wizard_service.CUSTOMER_STEPS:
+        link_url = step.link_url.format(customer_id=customer.id)
+        resp = client.get(link_url, follow_redirects=False)
+        assert resp.status_code in (200, 303), f"{step.key} -> {link_url} returned {resp.status_code}"

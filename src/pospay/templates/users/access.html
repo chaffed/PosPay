@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Access Lookup — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this page{% endblock %}
 {% block help_body %}
@@ -13,7 +14,7 @@
   <h1>Look up access</h1>
   <form method="get" action="/ui/users/access">
     <label>Email <input type="email" name="email" value="{{ email }}" autofocus></label>
-    <button type="submit">Look up</button>
+    <button type="submit">{{ icon("search") }}Look up</button>
   </form>
 </div>
 
@@ -49,7 +50,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="email" value="{{ email }}">
     <label>Password <input type="password" name="password"></label>
-    <p class="hint">Only used if this email doesn't already belong to an existing user.</p>
+    <p class="hint">Only used if this email doesn't already belong to an existing user.
+      Must be {{ password_policy_hint }} (a selected customer may require more).</p>
     <label>Security group
       <select name="security_group_id" required>
         {% for group in groups %}
@@ -68,7 +70,7 @@
     <p class="hint">Allows password login here even where this tenant or customer otherwise
       requires single sign-on, provided a security key is registered — a fresh key check is
       also required every time this identity switches into one of these scopes.</p>
-    <button type="submit">Grant access</button>
+    <button type="submit">{{ icon("person_add") }}Grant access</button>
   </form>
 </div>
 {% endif %}

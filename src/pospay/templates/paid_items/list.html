@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Paid Items — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About paid items{% endblock %}
 {% block help_body %}
@@ -18,8 +19,8 @@
 <div class="card">
   <div class="toolbar">
     <h1>Paid Items</h1>
-    {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/new" class="button">Submit paid item</a>{% endif %}
-    {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/bulk" class="button secondary">Bulk upload</a>{% endif %}
+    {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/new" class="button">{{ icon("send") }}Submit paid item</a>{% endif %}
+    {% if can(ctx, "paid_item:write") %}<a href="/ui/paid-items/bulk" class="button secondary">{{ icon("upload_file") }}Bulk upload</a>{% endif %}
   </div>
   {% if page_obj.total_count > 0 %}
   <table data-sortable>

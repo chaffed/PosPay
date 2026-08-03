@@ -1,0 +1,13 @@
+<section class="pdf-summary">
+<h2>Appendix: Table Record Counts</h2>
+<p>Row counts for every table holding data belonging to your organization, as of the
+time this PDF was generated.</p>
+<table>
+<thead><tr><th>Table</th><th>Row Count</th></tr></thead>
+<tbody>
+{% for table_name, count in counts %}
+<tr><td>{{ table_name }}</td><td>{{ "{:,}".format(count) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</section>

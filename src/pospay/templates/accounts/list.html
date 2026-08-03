@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Accounts — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About accounts{% endblock %}
 {% block help_body %}
@@ -17,7 +18,15 @@
 {% endblock %}
 {% block content %}
 <div class="card">
-  <h1>Accounts</h1>
+  <div class="toolbar">
+    <h1>Accounts</h1>
+    {% if can(ctx, "account:write") %}
+    <div class="actions">
+      <a href="/ui/accounts/new" class="button">{{ icon("add") }}New account</a>
+      <a href="/ui/accounts/bulk" class="button secondary">{{ icon("upload_file") }}Bulk upload</a>
+    </div>
+    {% endif %}
+  </div>
   {% if page_obj.total_count > 0 %}
   <table data-sortable>
     <thead><tr><th>Account number</th><th>Name</th>{% if not ctx.customer_id %}<th>Customer</th>{% endif %}<th>ACH debit mode</th><th>External ID</th></tr></thead>
@@ -38,30 +47,4 @@
   <p>No accounts yet.</p>
   {% endif %}
 </div>
-
-{% if can(ctx, "account:write") %}
-<div class="card card-narrow">
-  <div class="toolbar">
-    <h1>Add account</h1>
-    <a href="/ui/accounts/bulk" class="button secondary">Bulk upload</a>
-  </div>
-  <form method="post" action="/ui/accounts">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Account number <input type="text" name="account_number" required></label>
-    <label>Name <input type="text" name="name" required></label>
-    <label>External account ID (optional) <input type="text" name="external_account_id"></label>
-    {% if not ctx.customer_id %}
-    <label>Customer (optional)
-      <select name="customer_id">
-        <option value="">— unassigned (house account) —</option>
-        {% for customer in customers %}
-        <option value="{{ customer.id }}">{{ customer.name }} ({{ customer.customer_number }})</option>
-        {% endfor %}
-      </select>
-    </label>
-    {% endif %}
-    <button type="submit">Create</button>
-  </form>
-</div>
-{% endif %}
 {% endblock %}

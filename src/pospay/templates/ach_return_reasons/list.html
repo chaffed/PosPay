@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}ACH Return Reasons — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ACH return reasons{% endblock %}
 {% block help_body %}
@@ -16,7 +17,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>ACH Return Reasons</h1>
-    <a href="/ui/ach-return-reasons/new" class="button">New return reason</a>
+    <a href="/ui/ach-return-reasons/new" class="button">{{ icon("add") }}New return reason</a>
   </div>
   {% if page_obj.total_count > 0 %}
   <table data-sortable>

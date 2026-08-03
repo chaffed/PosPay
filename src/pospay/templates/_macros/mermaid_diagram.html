@@ -1,0 +1,11 @@
+{% from "_macros/icon.html" import icon %}
+{% macro diagram(slug) %}
+<div class="mermaid-wrap" data-diagram-slug="{{ slug }}">
+  <div class="mermaid-toolbar">
+    <button type="button" class="mermaid-zoom-in" aria-label="Zoom in">{{ icon("zoom_in") }}</button>
+    <button type="button" class="mermaid-zoom-out" aria-label="Zoom out">{{ icon("zoom_out") }}</button>
+    <button type="button" class="mermaid-zoom-reset" aria-label="Reset zoom">{{ icon("restart_alt") }}</button>
+  </div>
+  <div class="mermaid-container"><pre class="mermaid">{{ caller()|safe }}</pre></div>
+</div>
+{% endmacro %}

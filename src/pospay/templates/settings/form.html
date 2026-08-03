@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Settings — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About organization settings{% endblock %}
 {% block help_body %}
@@ -15,6 +16,8 @@
 <p>Data export timeout bounds how long a background export job may run before it's
   stopped and marked failed — a large organization may need more time than the platform
   default; leave it blank to use that default.</p>
+<p>Password policy applies to every new user created in this organization — see each
+  customer's own detail page to let that customer require more (never less).</p>
 <p>Auto-import watches a drop directory (issued items, ACH, and check-presentment files
   your bank's own file transmission can land automatically) and is a single on/off
   setting for this whole deployment, configured by whoever runs PosPay — not something
@@ -24,81 +27,116 @@
   least one field here is filled in.</p>
 {% endblock %}
 {% block content %}
-<div class="card card-narrow">
-  <h1>Organization settings</h1>
-  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
-  <form method="post" action="/ui/settings" enctype="multipart/form-data">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Display name <input type="text" name="name" value="{{ tenant_display_name }}" required></label>
-    <label>Accent color
-      <input type="color" name="accent_color" value="{{ accent_color if accent_color else '#2563eb' }}">
-    </label>
+<h1>Organization settings</h1>
+{% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+<div class="settings-grid">
+  <div class="card">
+    <h2>Branding</h2>
+    <form method="post" action="/ui/settings" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Display name <input type="text" name="name" value="{{ tenant_display_name }}" required></label>
+      <label>Accent color
+        <input type="color" name="accent_color" value="{{ accent_color if accent_color else '#2563eb' }}">
+      </label>
 
-    <label>Logo
-      {% if ctx.has_logo %}<p><img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="Current logo" class="brand-logo"></p>{% endif %}
-      <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml">
-    </label>
+      <label>Logo
+        {% if ctx.has_logo %}<p><img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="Current logo" class="brand-logo"></p>{% endif %}
+        <input type="file" name="logo" accept="image/png,image/jpeg,image/svg+xml">
+      </label>
 
-    <label>Favicon
-      {% if ctx.has_favicon %}<p><img src="/ui/branding/{{ ctx.tenant_slug }}/favicon" alt="Current favicon" style="max-height:20px;"></p>{% endif %}
-      <input type="file" name="favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml">
-    </label>
+      <label>Favicon
+        {% if ctx.has_favicon %}<p><img src="/ui/branding/{{ ctx.tenant_slug }}/favicon" alt="Current favicon" style="max-height:20px;"></p>{% endif %}
+        <input type="file" name="favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml">
+      </label>
 
-    <button type="submit">Save</button>
-  </form>
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+  </div>
 
-  <form method="post" action="/ui/settings/session-timeout">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Access token timeout (minutes)
-      <input type="number" name="access_token_expire_minutes" min="1" step="1"
-             value="{{ access_token_expire_minutes if access_token_expire_minutes is not none else '' }}"
-             placeholder="Default: {{ default_access_token_expire_minutes }}">
-    </label>
-    <label>Refresh token timeout (minutes)
-      <input type="number" name="refresh_token_expire_minutes" min="1" step="1"
-             value="{{ refresh_token_expire_minutes if refresh_token_expire_minutes is not none else '' }}"
-             placeholder="Default: {{ default_refresh_token_expire_minutes }}">
-    </label>
-    <button type="submit">Save</button>
-  </form>
+  <div class="card">
+    <h2>Timeouts</h2>
+    <form method="post" action="/ui/settings/session-timeout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Access token timeout (minutes)
+        <input type="number" name="access_token_expire_minutes" min="1" step="1"
+               value="{{ access_token_expire_minutes if access_token_expire_minutes is not none else '' }}"
+               placeholder="Default: {{ default_access_token_expire_minutes }}">
+      </label>
+      <label>Refresh token timeout (minutes)
+        <input type="number" name="refresh_token_expire_minutes" min="1" step="1"
+               value="{{ refresh_token_expire_minutes if refresh_token_expire_minutes is not none else '' }}"
+               placeholder="Default: {{ default_refresh_token_expire_minutes }}">
+      </label>
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+    <form method="post" action="/ui/settings/data-export-timeout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Data export timeout (seconds)
+        <input type="number" name="timeout_seconds" min="1" step="1"
+               value="{{ data_export_timeout_seconds if data_export_timeout_seconds is not none else '' }}"
+               placeholder="Default: {{ default_data_export_timeout_seconds }}">
+      </label>
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+  </div>
 
-  <form method="post" action="/ui/settings/data-export-timeout">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Data export timeout (seconds)
-      <input type="number" name="timeout_seconds" min="1" step="1"
-             value="{{ data_export_timeout_seconds if data_export_timeout_seconds is not none else '' }}"
-             placeholder="Default: {{ default_data_export_timeout_seconds }}">
-    </label>
-    <button type="submit">Save</button>
-  </form>
+  <div class="card">
+    <h2>Decision controls</h2>
+    <form method="post" action="/ui/settings/dual-control">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>
+        <input type="checkbox" name="require_dual_control" value="true" {{ "checked" if require_dual_control else "" }}>
+        Require dual control (maker/checker) on pay/return decisions
+      </label>
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+  </div>
 
-  <form method="post" action="/ui/settings/dual-control">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>
-      <input type="checkbox" name="require_dual_control" value="true" {{ "checked" if require_dual_control else "" }}>
-      Require dual control (maker/checker) on pay/return decisions
-    </label>
-    <button type="submit">Save</button>
-  </form>
+  <div class="card">
+    <h2>Password policy</h2>
+    <p>Applies to every new user created in this organization. A customer can require
+      more, but never less, than this baseline.</p>
+    <form method="post" action="/ui/settings/password-policy">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Minimum length <input type="number" name="min_length" min="1" value="{{ password_min_length }}" required style="max-width:8em;"></label>
+      <label><input type="checkbox" name="require_uppercase" {{ "checked" if password_require_uppercase else "" }}> Require an uppercase letter</label>
+      <label><input type="checkbox" name="require_lowercase" {{ "checked" if password_require_lowercase else "" }}> Require a lowercase letter</label>
+      <label><input type="checkbox" name="require_number" {{ "checked" if password_require_number else "" }}> Require a number</label>
+      <label><input type="checkbox" name="require_symbol" {{ "checked" if password_require_symbol else "" }}> Require a symbol</label>
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+  </div>
 
-  <h1>Contact info</h1>
-  <form method="post" action="/ui/settings/contact">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Support email <input type="email" name="support_email" value="{{ support_email or '' }}"></label>
-    <label>Support phone <input type="tel" name="support_phone" value="{{ support_phone or '' }}"></label>
-    <label>Website <input type="url" name="website" value="{{ website or '' }}" placeholder="https://"></label>
-    <label>Address line 1 <input type="text" name="address_line1" value="{{ address_line1 or '' }}"></label>
-    <label>Address line 2 <input type="text" name="address_line2" value="{{ address_line2 or '' }}"></label>
-    <label>City <input type="text" name="city" value="{{ city or '' }}"></label>
-    <label>State <input type="text" name="state" value="{{ state or '' }}"></label>
-    <label>Postal code <input type="text" name="postal_code" value="{{ postal_code or '' }}"></label>
-    <button type="submit">Save</button>
-  </form>
+  <div class="card">
+    <h2>Contact info</h2>
+    <form method="post" action="/ui/settings/contact">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Support email <input type="email" name="support_email" value="{{ support_email or '' }}"></label>
+      <label>Support phone <input type="tel" name="support_phone" value="{{ support_phone or '' }}"></label>
+      <label>Website <input type="url" name="website" value="{{ website or '' }}" placeholder="https://"></label>
+      <label>Address line 1 <input type="text" name="address_line1" value="{{ address_line1 or '' }}"></label>
+      <label>Address line 2 <input type="text" name="address_line2" value="{{ address_line2 or '' }}"></label>
+      <label>City <input type="text" name="city" value="{{ city or '' }}"></label>
+      <label>State <input type="text" name="state" value="{{ state or '' }}"></label>
+      <label>Postal code <input type="text" name="postal_code" value="{{ postal_code or '' }}"></label>
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+  </div>
 
-  <p><a href="/ui/settings/sso">Single sign-on (Okta / Azure AD)</a></p>
-  {% if can(ctx, "data_export:run") %}<p><a href="/ui/settings/data-export">Data export</a></p>{% endif %}
+  {% if can(ctx, "data_export:run") %}
+  <div class="card">
+    <div class="toolbar">
+      <h2>Data export</h2>
+      <a href="/ui/settings/data-export" class="button secondary">{{ icon("tune") }}Manage</a>
+    </div>
+    <p>Generate a downloadable archive of everything belonging to your organization, for
+      migrating away from PosPay.</p>
+  </div>
+  {% endif %}
+</div>
 
-  <h1>Auto-import</h1>
+<div class="card">
+  <h2>Auto-import</h2>
   <p>
     <span class="badge {{ 'badge-ok' if auto_import_enabled else '' }}">{{ 'enabled' if auto_import_enabled else 'disabled' }}</span>
     {% if auto_import_enabled %}— scanning every {{ auto_import_interval_seconds }} seconds{% endif %}

@@ -124,6 +124,40 @@ def _check_tesseract() -> None:
         )
 
 
+def _ensure_pdf_extra_installed() -> None:
+    """Installs the "pdf" extra (weasyprint, for the documentation PDF export) if it's
+    not already present — separate from _create_venv_and_install's one-time setup so an
+    environment created by an *older* version of this launcher (before this extra
+    existed) also picks it up, without paying the cost of reinstalling every dependency
+    on every single launch. The `pip show` check keeps this a fast no-op on every run
+    after the first one that actually needs to install something."""
+    venv_python = str(_venv_python())
+    already_installed = subprocess.run(
+        [venv_python, "-m", "pip", "show", "weasyprint"], capture_output=True
+    ).returncode == 0
+    if already_installed:
+        return
+    print("  Installing PDF export support...")
+    subprocess.run([venv_python, "-m", "pip", "install", "--quiet", "-e", f"{PROJECT_ROOT}[pdf]"], check=True)
+
+
+def _check_weasyprint() -> None:
+    # Mirrors _check_tesseract()'s soft-warn posture: weasyprint (the pip package) is
+    # always installed by _ensure_pdf_extra_installed() above, but *importing* it can
+    # still raise OSError if the host is missing the underlying Pango/Cairo/GLib system
+    # libraries, which pip can't install for you.
+    from pospay.services.doc_pdf_service import weasyprint_usable
+
+    if not weasyprint_usable():
+        print(
+            "NOTE: PDF export (in the documentation pages) needs Pango, Cairo, and GLib\n"
+            "      on your system, which weren't found. PosPay will still run —\n"
+            "      everything else works normally — until you install them:\n"
+            "        macOS:  brew install pango\n"
+            "        Linux:  apt install libpango-1.0-0 libcairo2\n"
+        )
+
+
 def _run_migrations() -> None:
     from alembic import command
     from alembic.config import Config
@@ -208,6 +242,8 @@ def main() -> None:
 
     _configure_run_env()
     _check_tesseract()
+    _ensure_pdf_extra_installed()
+    _check_weasyprint()
     _run_migrations()
     _prompt_first_run_setup()
 

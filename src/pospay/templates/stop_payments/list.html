@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Stop Payments — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About stop payments{% endblock %}
 {% block help_body %}
@@ -18,7 +19,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Stop Payments</h1>
-    {% if can(ctx, "stop_payment:write") %}<a href="/ui/stop-payments/new" class="button">New stop payment</a>{% endif %}
+    {% if can(ctx, "stop_payment:write") %}<a href="/ui/stop-payments/new" class="button">{{ icon("add") }}New stop payment</a>{% endif %}
   </div>
   {% if page_obj.total_count > 0 %}
   <table data-sortable>
@@ -35,7 +36,7 @@
           {% if stop.status.value == "active" and can(ctx, "stop_payment:write") %}
           <form method="post" action="/ui/stop-payments/{{ stop.id }}/cancel" class="inline-form" data-confirm="Cancel this stop payment?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="secondary">Cancel</button>
+            <button type="submit" class="secondary">{{ icon("close") }}Cancel</button>
           </form>
           {% endif %}
         </td>

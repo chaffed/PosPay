@@ -17,10 +17,29 @@ def _csrf(client):
     return client.cookies.get("csrf_token")
 
 
+def test_new_account_form_renders(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-acct-new-form")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get("/ui/accounts/new")
+    assert resp.status_code == 200
+    assert 'name="account_number"' in resp.text
+    assert 'action="/ui/accounts"' in resp.text
+
+
+def test_accounts_list_links_to_new_account_page(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-acct-list-links-new")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get("/ui/accounts")
+    assert resp.status_code == 200
+    assert 'href="/ui/accounts/new"' in resp.text
+
+
 def test_create_account_with_external_id_via_web_form(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-acct-external")
     _login(client, tenant.slug, users["admin"].email)
-    client.get("/ui/accounts")
+    client.get("/ui/accounts/new")
 
     resp = client.post(
         "/ui/accounts",

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Unauthorized Debit Statement — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this statement{% endblock %}
 {% block help_body %}
@@ -56,7 +57,7 @@
       <input type="text" name="signer_typed_name" required>
     </label>
 
-    <button type="submit">Sign statement</button>
+    <button type="submit">{{ icon("draw") }}Sign statement</button>
   </form>
   {% else %}
   <p>No eligible transactions right now — a transaction must already be returned and

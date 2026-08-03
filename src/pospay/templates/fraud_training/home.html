@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Fraud Training Data — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About fraud training examples{% endblock %}
 {% block help_body %}
@@ -29,7 +30,7 @@
     <label>Presented date <input type="date" name="presented_date"></label>
     <label>Reason <input type="text" name="reason_code" required placeholder="e.g. confirmed check kiting"></label>
     <label>Notes <input type="text" name="notes"></label>
-    <button type="submit">Submit</button>
+    <button type="submit">{{ icon("send") }}Submit</button>
   </form>
   <p><a href="/ui/ml-training/fraud-examples/check/bulk">Bulk upload check examples</a></p>
 </div>
@@ -68,7 +69,7 @@
       </select>
     </label>
     <label>Notes <input type="text" name="notes"></label>
-    <button type="submit">Submit</button>
+    <button type="submit">{{ icon("send") }}Submit</button>
   </form>
   <p><a href="/ui/ml-training/fraud-examples/ach/bulk">Bulk upload ACH examples</a></p>
 </div>
@@ -90,7 +91,7 @@
           {% else %}
           <form method="post" action="/ui/ml-training/fraud-examples/{{ item.id }}/retract" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="secondary">Retract</button>
+            <button type="submit" class="secondary">{{ icon("undo") }}Retract</button>
           </form>
           {% endif %}
         </td>

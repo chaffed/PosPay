@@ -160,3 +160,53 @@ def test_admin_ml_page_lists_networks(client, tenant_factory):
     assert resp.status_code == 200
     assert "check" in resp.text
     assert "ach" in resp.text
+
+
+def _make_single_permission_user(db_session, tenant, *, permission: str, email: str):
+    from pospay.services import security_group_service, user_service
+    from pospay.services.security_group_service import SecurityGroupInput
+
+    group = security_group_service.create_security_group(
+        db_session, tenant.id, SecurityGroupInput(name=f"Only {permission}", permissions=[permission])
+    )
+    user = user_service.create_user_with_membership(
+        db_session, tenant.id, email=email, password=TenantFactory.PASSWORD, security_group_id=group.id,
+    )
+    db_session.commit()
+    return user
+
+
+def test_admin_page_shared_by_tenant_manage_and_admin_manage_each_seeing_only_their_own_section(client, db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="web-flow-admin-shared")
+    tenant_only = _make_single_permission_user(db_session, tenant, permission="tenant:manage", email="tenantonly@example.com")
+    admin_only = _make_single_permission_user(db_session, tenant, permission="admin:manage", email="adminonly@example.com")
+
+    _login(client, tenant.slug, tenant_only.email)
+    tenant_only_page = client.get("/ui/admin")
+    assert tenant_only_page.status_code == 200
+    assert "Single Sign-On" in tenant_only_page.text
+    assert "ML Models" not in tenant_only_page.text
+
+    client.cookies.clear()
+    _login(client, tenant.slug, admin_only.email)
+    admin_only_page = client.get("/ui/admin")
+    assert admin_only_page.status_code == 200
+    assert "ML Models" in admin_only_page.text
+    assert "Single Sign-On" not in admin_only_page.text
+
+
+def test_admin_nav_link_visible_to_tenant_manage_without_admin_manage(client, db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="web-flow-admin-nav")
+    tenant_only = _make_single_permission_user(db_session, tenant, permission="tenant:manage", email="navonly@example.com")
+
+    _login(client, tenant.slug, tenant_only.email)
+    dashboard = client.get("/ui/")
+    assert 'href="/ui/admin"' in dashboard.text
+
+
+def test_admin_page_still_403s_for_neither_permission(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-flow-admin-neither")
+    _login(client, tenant.slug, users["viewer"].email)
+
+    resp = client.get("/ui/admin", follow_redirects=False)
+    assert resp.status_code == 403

@@ -7,13 +7,16 @@ Administrator (setup/configuration topics, gated by admin_documentation:read). S
 auth/permissions.py for which default security groups get each permission."""
 
 from dataclasses import dataclass
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.services import schema_summary_service
+from pospay.services.doc_pdf_service import render_doc_pdf, weasyprint_usable
 from pospay.web.deps import render_template, require_web_permission
 
 router = APIRouter(prefix="/ui/docs", tags=["web-docs"])
@@ -51,6 +54,7 @@ ADMIN_DOC_PAGES: list[DocPage] = [
     DocPage("data-export", "Data Export", "Exporting all tenant or customer data for migration or offboarding."),
     DocPage("authentication", "Login, SSO & Account Lockout", "Configuring single sign-on and handling locked-out users."),
     DocPage("demo-tenant", "Demo Tenant", "Resetting the sales demo environment to a clean state."),
+    DocPage("data-dictionary", "Data Dictionary & Schema", "Every table and column in the database, with ER diagrams grouped by subsystem."),
 ]
 ADMIN_DOC_PAGES_BY_SLUG: dict[str, DocPage] = {p.slug: p for p in ADMIN_DOC_PAGES}
 
@@ -61,6 +65,27 @@ def end_user_index(
     ctx: TenantContext = Depends(require_web_permission("end_user_documentation:read")),
 ) -> HTMLResponse:
     return render_template(request, "docs/end_user/index.html", ctx=ctx, pages=END_USER_DOC_PAGES)
+
+
+@router.get("/end-user/pdf")
+def end_user_pdf(
+    request: Request, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("end_user_documentation:read")),
+) -> Response:
+    # Registered before "/end-user/{slug}" -- FastAPI matches routes in registration
+    # order, so a static "/pdf" path must come first or it would be swallowed by the
+    # slug route (treating "pdf" as a topic slug, 404ing since no such topic exists).
+    if not weasyprint_usable():
+        return render_template(request, "docs/pdf_unavailable.html", ctx=ctx, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, back_href="/ui/docs/end-user")
+    pdf_bytes = render_doc_pdf(
+        pages=END_USER_DOC_PAGES, template_dir="docs/end_user", base_path="/ui/docs/end-user",
+        title="PosPay — End User Guide", subtitle="Day-to-day operational how-tos.", tenant_name=ctx.tenant_name,
+    )
+    filename = "pospay-end-user-guide.pdf"
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"export.pdf\"; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @router.get("/end-user/{slug}")
@@ -82,6 +107,27 @@ def admin_index(
     ctx: TenantContext = Depends(require_web_permission("admin_documentation:read")),
 ) -> HTMLResponse:
     return render_template(request, "docs/admin/index.html", ctx=ctx, pages=ADMIN_DOC_PAGES)
+
+
+@router.get("/admin/pdf")
+def admin_pdf(
+    request: Request, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("admin_documentation:read")),
+) -> Response:
+    # Registered before "/admin/{slug}" -- see end_user_pdf's comment on route order.
+    if not weasyprint_usable():
+        return render_template(request, "docs/pdf_unavailable.html", ctx=ctx, status_code=status.HTTP_503_SERVICE_UNAVAILABLE, back_href="/ui/docs/admin")
+    counts = schema_summary_service.table_record_counts(db, ctx.tenant_id)
+    pdf_bytes = render_doc_pdf(
+        pages=ADMIN_DOC_PAGES, template_dir="docs/admin", base_path="/ui/docs/admin",
+        title="PosPay — Bank Administrator Guide", subtitle="Setup and configuration guides.", tenant_name=ctx.tenant_name,
+        summary_counts=counts,
+    )
+    filename = "pospay-admin-guide.pdf"
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"export.pdf\"; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @router.get("/admin/{slug}")

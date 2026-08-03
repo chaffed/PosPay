@@ -190,7 +190,7 @@ def test_bank_sso_settings_requires_tenant_manage_permission(client, tenant_fact
     tenant, _account, users = tenant_factory.make(slug="web-sso-admin-forbidden")
     _login(client, tenant.slug, users["preparer"].email)
 
-    resp = client.get("/ui/settings/sso", follow_redirects=False)
+    resp = client.get("/ui/admin/sso", follow_redirects=False)
 
     assert resp.status_code == 403
 
@@ -198,10 +198,10 @@ def test_bank_sso_settings_requires_tenant_manage_permission(client, tenant_fact
 def test_create_bank_connection_and_add_mapping_via_web(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-sso-admin-create")
     _login(client, tenant.slug, users["admin"].email)
-    client.get("/ui/settings/sso/new")
+    client.get("/ui/admin/sso/new")
 
     create_resp = client.post(
-        "/ui/settings/sso",
+        "/ui/admin/sso",
         data={
             "provider": "okta", "display_name": "New Connection", "issuer": "https://idp.example.com",
             "client_id": "cid", "client_secret": "shh", "groups_claim_name": "groups",
@@ -210,14 +210,14 @@ def test_create_bank_connection_and_add_mapping_via_web(client, db_session, tena
         follow_redirects=False,
     )
     assert create_resp.status_code == 303
-    connection_id = create_resp.headers["location"].split("/ui/settings/sso/")[1].split("/edit")[0]
+    connection_id = create_resp.headers["location"].split("/ui/admin/sso/")[1].split("/edit")[0]
 
     # Not usable as a login option yet — zero mappings.
     assert sso_service.get_login_connections(db_session, tenant.id) == []
 
     group = security_group_service.get_security_group_by_name(db_session, tenant.id, "Viewer")
     map_resp = client.post(
-        f"/ui/settings/sso/{connection_id}/mappings",
+        f"/ui/admin/sso/{connection_id}/mappings",
         data={"external_group": "ext-group", "security_group_id": str(group.id), "priority": "100", "csrf_token": _csrf(client)},
         follow_redirects=False,
     )
@@ -231,14 +231,14 @@ def test_deactivate_and_reactivate_bank_connection_via_web(client, db_session, t
     tenant, _account, users = tenant_factory.make(slug="web-sso-admin-deact")
     connection, _group = _make_mapped_connection(db_session, tenant)
     _login(client, tenant.slug, users["admin"].email)
-    client.get("/ui/settings/sso")
+    client.get("/ui/admin/sso")
 
-    deact = client.post(f"/ui/settings/sso/{connection.id}/deactivate", data={"csrf_token": _csrf(client)}, follow_redirects=False)
+    deact = client.post(f"/ui/admin/sso/{connection.id}/deactivate", data={"csrf_token": _csrf(client)}, follow_redirects=False)
     assert deact.status_code == 303
     db_session.expire_all()
     assert sso_service.get_connection(db_session, tenant.id, connection.id).is_active is False
 
-    react = client.post(f"/ui/settings/sso/{connection.id}/reactivate", data={"csrf_token": _csrf(client)}, follow_redirects=False)
+    react = client.post(f"/ui/admin/sso/{connection.id}/reactivate", data={"csrf_token": _csrf(client)}, follow_redirects=False)
     assert react.status_code == 303
     db_session.expire_all()
     assert sso_service.get_connection(db_session, tenant.id, connection.id).is_active is True
@@ -247,18 +247,18 @@ def test_deactivate_and_reactivate_bank_connection_via_web(client, db_session, t
 def test_require_sso_toggle_via_web_guards_against_lockout(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="web-sso-admin-toggle")
     _login(client, tenant.slug, users["admin"].email)
-    client.get("/ui/settings/sso")
+    client.get("/ui/admin/sso")
 
     # No connections yet — attempting to require SSO must fail with an error, not lock everyone out.
     resp = client.post(
-        "/ui/settings/sso/password-login", data={"require_sso": "true", "csrf_token": _csrf(client)}, follow_redirects=False
+        "/ui/admin/sso/password-login", data={"require_sso": "true", "csrf_token": _csrf(client)}, follow_redirects=False
     )
     assert resp.status_code == 303
     assert "error" in resp.headers["location"]
 
     _make_mapped_connection(db_session, tenant)
     resp2 = client.post(
-        "/ui/settings/sso/password-login", data={"require_sso": "true", "csrf_token": _csrf(client)}, follow_redirects=False
+        "/ui/admin/sso/password-login", data={"require_sso": "true", "csrf_token": _csrf(client)}, follow_redirects=False
     )
     assert resp2.status_code == 303
     assert "error" not in resp2.headers["location"]

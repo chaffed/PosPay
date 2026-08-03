@@ -15,6 +15,7 @@ from pospay.services import audit_log_service
 from pospay.services.tenant_service import (
     InvalidTenantSettingsInput,
     set_data_export_timeout,
+    set_password_policy,
     set_require_dual_control,
     set_session_timeouts,
     update_tenant_branding,
@@ -24,6 +25,16 @@ from pospay.web.deps import render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/settings", tags=["web-tenant-settings"])
+
+
+def _password_policy_kwargs(tenant: Tenant) -> dict:
+    return {
+        "password_min_length": tenant.password_min_length,
+        "password_require_uppercase": tenant.password_require_uppercase,
+        "password_require_lowercase": tenant.password_require_lowercase,
+        "password_require_number": tenant.password_require_number,
+        "password_require_symbol": tenant.password_require_symbol,
+    }
 
 
 @router.get("")
@@ -59,6 +70,7 @@ def settings_form(
         city=tenant.city,
         state=tenant.state,
         postal_code=tenant.postal_code,
+        **_password_policy_kwargs(tenant),
     )
 
 
@@ -159,6 +171,7 @@ def update_session_timeout(
             default_data_export_timeout_seconds=settings.data_export_timeout_seconds,
             error=str(exc),
             status_code=422,
+            **_password_policy_kwargs(current),
         )
 
     if tenant is not None:
@@ -209,6 +222,7 @@ def update_data_export_timeout(
             default_data_export_timeout_seconds=settings.data_export_timeout_seconds,
             error=str(exc),
             status_code=422,
+            **_password_policy_kwargs(current),
         )
 
     if tenant is not None:
@@ -275,6 +289,64 @@ def update_dual_control(
             channel="web",
             action="tenant.update_dual_control",
             summary=f"{'Enabled' if require_dual_control else 'Disabled'} dual control",
+            resource_type="tenant",
+            resource_id=ctx.tenant_id,
+        )
+    db.commit()
+    return RedirectResponse("/ui/settings?flash=Settings+updated.", status_code=303)
+
+
+@router.post("/password-policy")
+def update_password_policy(
+    request: Request,
+    min_length: int = Form(...),
+    require_uppercase: bool = Form(False),
+    require_lowercase: bool = Form(False),
+    require_number: bool = Form(False),
+    require_symbol: bool = Form(False),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    try:
+        tenant = set_password_policy(
+            db, ctx.tenant_id, min_length=min_length, require_uppercase=require_uppercase,
+            require_lowercase=require_lowercase, require_number=require_number, require_symbol=require_symbol,
+        )
+    except InvalidTenantSettingsInput as exc:
+        db.rollback()
+        current = db.get(Tenant, ctx.tenant_id)
+        settings = get_settings()
+        return render_template(
+            request,
+            "settings/form.html",
+            ctx=ctx,
+            tenant_display_name=ctx.tenant_name,
+            accent_color=ctx.accent_color or "",
+            require_dual_control=current.require_dual_control,
+            access_token_expire_minutes=current.access_token_expire_minutes,
+            refresh_token_expire_minutes=current.refresh_token_expire_minutes,
+            default_access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+            default_refresh_token_expire_minutes=settings.jwt_refresh_token_expire_minutes,
+            data_export_timeout_seconds=current.data_export_timeout_seconds,
+            default_data_export_timeout_seconds=settings.data_export_timeout_seconds,
+            error=str(exc),
+            status_code=422,
+            password_min_length=min_length,
+            password_require_uppercase=require_uppercase,
+            password_require_lowercase=require_lowercase,
+            password_require_number=require_number,
+            password_require_symbol=require_symbol,
+        )
+
+    if tenant is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="tenant.update_password_policy",
+            summary=f"Updated password policy (min length: {tenant.password_min_length})",
             resource_type="tenant",
             resource_id=ctx.tenant_id,
         )

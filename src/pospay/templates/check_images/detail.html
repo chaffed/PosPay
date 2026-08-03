@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Check Image — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this check image{% endblock %}
 {% block help_body %}
@@ -33,7 +34,7 @@
   {% if can(ctx, "check_image:write") %}
   <form method="post" action="/ui/check-images/{{ image.id }}/reprocess" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="secondary">Reprocess</button>
+    <button type="submit" class="secondary">{{ icon("refresh") }}Reprocess</button>
   </form>
   {% endif %}
 </div>

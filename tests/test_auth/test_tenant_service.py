@@ -8,6 +8,7 @@ from pospay.services.tenant_service import (
     get_tenant_branding_by_id,
     get_tenant_branding_by_slug,
     set_data_export_timeout,
+    set_password_policy,
     set_session_timeouts,
     update_tenant_branding,
     update_tenant_contact_info,
@@ -233,3 +234,41 @@ def test_branding_includes_contact_info(db_session, tenant_factory):
 
     by_slug = get_tenant_branding_by_slug(db_session, tenant.slug)
     assert by_slug.support_email == "help@example.com"
+
+
+def test_set_password_policy_updates_tenant(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-password-policy")
+
+    updated = set_password_policy(
+        db_session, tenant.id, min_length=12, require_uppercase=True, require_lowercase=True,
+        require_number=True, require_symbol=True,
+    )
+    db_session.commit()
+
+    assert updated.password_min_length == 12
+    assert updated.password_require_uppercase is True
+    assert updated.password_require_lowercase is True
+    assert updated.password_require_number is True
+    assert updated.password_require_symbol is True
+
+
+def test_set_password_policy_rejects_non_positive_min_length(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-password-policy-invalid")
+
+    with pytest.raises(InvalidTenantSettingsInput):
+        set_password_policy(
+            db_session, tenant.id, min_length=0, require_uppercase=False, require_lowercase=False,
+            require_number=False, require_symbol=False,
+        )
+
+
+def test_set_password_policy_unknown_tenant_returns_none(db_session):
+    import uuid
+
+    assert (
+        set_password_policy(
+            db_session, uuid.uuid4(), min_length=8, require_uppercase=False, require_lowercase=False,
+            require_number=False, require_symbol=False,
+        )
+        is None
+    )

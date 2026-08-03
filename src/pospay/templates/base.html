@@ -13,8 +13,9 @@
   <a href="#main-content" class="skip-link">Skip to content</a>
   <div class="app-shell">
     {% if ctx %}
-    {% macro nav_link(href, label) %}
-    <a href="{{ href }}" class="{{ 'active' if (request.url.path == href or request.url.path.startswith(href + '/')) else '' }}">{{ label }}</a>
+    {% from "_macros/icon.html" import icon %}
+    {% macro nav_link(href, label, icon_name) %}
+    <a href="{{ href }}" class="{{ 'active' if (request.url.path == href or request.url.path.startswith(href + '/')) else '' }}">{{ icon(icon_name) }}{{ label }}</a>
     {% endmacro %}
     {% set show_ach_return_reasons = can(ctx, "ach_return_reason:manage") %}
     {% set show_wsud = ctx.customer_id is not none and can(ctx, "wsud:sign") %}
@@ -23,48 +24,55 @@
     {% set show_end_user_docs = can(ctx, "end_user_documentation:read") %}
     {% set show_admin_docs = can(ctx, "admin_documentation:read") %}
     <nav class="sidenav">
-      <a href="/ui/" class="brand">
-        {% if ctx.has_logo %}<img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="{{ ctx.tenant_name }}" class="brand-logo">{% else %}{{ ctx.tenant_name }}{% endif %}
-      </a>
+      <div class="sidenav-header">
+        <a href="/ui/" class="brand">
+          {% if ctx.has_logo %}<img src="/ui/branding/{{ ctx.tenant_slug }}/logo" alt="{{ ctx.tenant_name }}" class="brand-logo">{% else %}{{ ctx.tenant_name }}{% endif %}
+        </a>
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidenav-panel">
+          {{ icon("menu") }}
+        </button>
+      </div>
+      <div class="sidenav-panel" id="sidenav-panel">
       {% if ctx.customer_id %}<p class="customer-scope-badge">Scoped to <strong>{{ ctx.customer_name }}</strong></p>{% endif %}
       <div class="nav-links">
         <p class="nav-section">Positive Pay</p>
-        {{ nav_link("/ui/accounts", "Accounts") }}
-        {{ nav_link("/ui/issued-items", "Issued Items") }}
-        {{ nav_link("/ui/stop-payments", "Stop Payments") }}
-        {{ nav_link("/ui/paid-items", "Paid Items") }}
-        {{ nav_link("/ui/check-images", "Check Images") }}
+        {{ nav_link("/ui/accounts", "Accounts", "account_balance") }}
+        {{ nav_link("/ui/issued-items", "Issued Items", "receipt_long") }}
+        {{ nav_link("/ui/stop-payments", "Stop Payments", "block") }}
+        {{ nav_link("/ui/paid-items", "Paid Items", "paid") }}
+        {{ nav_link("/ui/check-images", "Check Images", "image") }}
 
         <p class="nav-section">ACH</p>
-        {{ nav_link("/ui/ach/authorizations", "ACH Authorizations") }}
-        {{ nav_link("/ui/ach/transactions", "ACH Transactions") }}
-        {% if show_ach_return_reasons %}{{ nav_link("/ui/ach-return-reasons", "ACH Return Reasons") }}{% endif %}
+        {{ nav_link("/ui/ach/authorizations", "ACH Authorizations", "fact_check") }}
+        {{ nav_link("/ui/ach/transactions", "ACH Transactions", "sync_alt") }}
+        {% if show_ach_return_reasons %}{{ nav_link("/ui/ach-return-reasons", "ACH Return Reasons", "assignment_return") }}{% endif %}
 
         <p class="nav-section">Review</p>
-        {{ nav_link("/ui/exceptions", "Exceptions") }}
-        {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement") }}{% endif %}
-        {% if can(ctx, "ml_training_example:write") %}{{ nav_link("/ui/ml-training/fraud-examples", "Fraud Training Data") }}{% endif %}
+        {{ nav_link("/ui/exceptions", "Exceptions", "flag") }}
+        {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement", "gavel") }}{% endif %}
+        {% if can(ctx, "ml_training_example:write") %}{{ nav_link("/ui/ml-training/fraud-examples", "Fraud Training Data", "model_training") }}{% endif %}
 
         {% if show_org_section %}
         <p class="nav-section">Organization</p>
-        {% if can(ctx, "customer:manage") %}{{ nav_link("/ui/customers", "Customers") }}{% endif %}
-        {% if can(ctx, "user:manage") %}{{ nav_link("/ui/users", "Users") }}{% endif %}
-        {% if can(ctx, "security_group:manage") %}{{ nav_link("/ui/security-groups", "Security Groups") }}{% endif %}
-        {% if can(ctx, "tenant:manage") %}{{ nav_link("/ui/wizard/bank", "Getting Started") }}{% endif %}
-        {% if can(ctx, "tenant:manage") %}{{ nav_link("/ui/settings", "Settings") }}{% endif %}
-        {% if can(ctx, "audit_log:read") %}{{ nav_link("/ui/audit-log", "Audit Log") }}{% endif %}
-        {% if can(ctx, "admin:manage") %}{{ nav_link("/ui/admin", "Admin") }}{% endif %}
+        {% if can(ctx, "customer:manage") %}{{ nav_link("/ui/customers", "Customers", "groups") }}{% endif %}
+        {% if can(ctx, "user:manage") %}{{ nav_link("/ui/users", "Users", "person") }}{% endif %}
+        {% if can(ctx, "security_group:manage") %}{{ nav_link("/ui/security-groups", "Security Groups", "admin_panel_settings") }}{% endif %}
+        {% if can(ctx, "tenant:manage") %}{{ nav_link("/ui/wizard/bank", "Getting Started", "checklist") }}{% endif %}
+        {% if can(ctx, "tenant:manage") %}{{ nav_link("/ui/settings", "Settings", "settings") }}{% endif %}
+        {% if can(ctx, "audit_log:read") %}{{ nav_link("/ui/audit-log", "Audit Log", "history") }}{% endif %}
+        {% if can(ctx, "admin:manage") or can(ctx, "tenant:manage") %}{{ nav_link("/ui/admin", "Admin", "tune") }}{% endif %}
         {% endif %}
       </div>
       <div class="nav-bottom">
-        {% if show_end_user_docs %}{{ nav_link("/ui/docs/end-user", "End User Documentation") }}{% endif %}
-        {% if show_admin_docs %}{{ nav_link("/ui/docs/admin", "Admin Documentation") }}{% endif %}
-        <a href="/ui/switch-tenant">Switch organization</a>
-        <a href="/ui/security">Security</a>
+        {% if show_end_user_docs %}{{ nav_link("/ui/docs/end-user", "End User Documentation", "menu_book") }}{% endif %}
+        {% if show_admin_docs %}{{ nav_link("/ui/docs/admin", "Admin Documentation", "library_books") }}{% endif %}
+        {{ nav_link("/ui/switch-tenant", "Switch organization", "swap_horiz") }}
+        {{ nav_link("/ui/security", "Security", "vpn_key") }}
         <form method="post" action="/ui/logout" class="inline-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="link-button">Log out</button>
         </form>
+      </div>
       </div>
     </nav>
     {% endif %}
@@ -93,15 +101,18 @@
       {% endif %}
       {% block content %}{% endblock %}
       {% set contact = ctx if ctx else branding %}
-      {% if contact and (contact.support_email or contact.support_phone or contact.website or contact.address_line1) %}
       <footer class="app-footer">
-        {{ contact.tenant_name if ctx else contact.name }}
-        {%- if contact.address_line1 %} · {{ contact.address_line1 }}{% if contact.address_line2 %}, {{ contact.address_line2 }}{% endif %}{% if contact.city %}, {{ contact.city }}{% endif %}{% if contact.state %}, {{ contact.state }}{% endif %} {{ contact.postal_code or "" }}{% endif -%}
-        {%- if contact.support_email %} · <a href="mailto:{{ contact.support_email }}">{{ contact.support_email }}</a>{% endif -%}
-        {%- if contact.support_phone %} · {{ contact.support_phone }}{% endif -%}
-        {%- if contact.website %} · <a href="{{ contact.website }}">{{ contact.website }}</a>{% endif -%}
+        {% if contact and (contact.support_email or contact.support_phone or contact.website or contact.address_line1) %}
+        <p>
+          {{ contact.tenant_name if ctx else contact.name }}
+          {%- if contact.address_line1 %} · {{ contact.address_line1 }}{% if contact.address_line2 %}, {{ contact.address_line2 }}{% endif %}{% if contact.city %}, {{ contact.city }}{% endif %}{% if contact.state %}, {{ contact.state }}{% endif %} {{ contact.postal_code or "" }}{% endif -%}
+          {%- if contact.support_email %} · <a href="mailto:{{ contact.support_email }}">{{ contact.support_email }}</a>{% endif -%}
+          {%- if contact.support_phone %} · {{ contact.support_phone }}{% endif -%}
+          {%- if contact.website %} · <a href="{{ contact.website }}">{{ contact.website }}</a>{% endif -%}
+        </p>
+        {% endif %}
+        <p class="app-footer-license">PosPay is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation. <a href="/ui/license">View the full license</a>.</p>
       </footer>
-      {% endif %}
     </div>
   </div>
 

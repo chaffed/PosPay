@@ -230,6 +230,36 @@ def set_data_export_timeout(session: Session, tenant_id: uuid.UUID, *, timeout_s
     return tenant
 
 
+def set_password_policy(
+    session: Session,
+    tenant_id: uuid.UUID,
+    *,
+    min_length: int,
+    require_uppercase: bool,
+    require_lowercase: bool,
+    require_number: bool,
+    require_symbol: bool,
+) -> Tenant | None:
+    """The organization's baseline password policy, checked once at account-creation
+    time (see auth/password_policy.py) — never retroactively against an existing user's
+    password, since there's no password-change flow to re-check anyway. A customer can
+    only add to this (services/customer_service.py::set_password_policy), never weaken
+    it. Raises InvalidTenantSettingsInput for a non-positive minimum length."""
+    if min_length < 1:
+        raise InvalidTenantSettingsInput("Minimum password length must be at least 1")
+
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        return None
+    tenant.password_min_length = min_length
+    tenant.password_require_uppercase = require_uppercase
+    tenant.password_require_lowercase = require_lowercase
+    tenant.password_require_number = require_number
+    tenant.password_require_symbol = require_symbol
+    session.flush()
+    return tenant
+
+
 def update_tenant_contact_info(
     session: Session,
     tenant_id: uuid.UUID,

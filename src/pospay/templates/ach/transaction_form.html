@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Submit ACH Transaction — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this form{% endblock %}
 {% block help_body %}
@@ -32,7 +33,7 @@
     <label>SEC code <input type="text" name="sec_code" placeholder="PPD" required></label>
     <label>Trace number <input type="text" name="trace_number" required></label>
     <label>Effective date <input type="date" name="effective_date" required></label>
-    <button type="submit">Submit</button>
+    <button type="submit">{{ icon("send") }}Submit</button>
   </form>
 </div>
 {% endblock %}

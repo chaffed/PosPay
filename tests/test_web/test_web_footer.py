@@ -24,12 +24,17 @@ def _set_contact_info(db_session, tenant, **overrides):
     db_session.commit()
 
 
-def test_footer_absent_when_no_contact_info_configured(client, tenant_factory):
+def test_footer_shows_license_but_no_contact_line_when_none_configured(client, tenant_factory):
+    # The footer itself always renders now (it carries the AGPL license notice on every
+    # page), but the tenant-contact paragraph inside it stays conditional.
     tenant, _account, users = tenant_factory.make(slug="footer-absent")
     _login(client, tenant.slug, users["admin"].email)
 
     resp = client.get("/ui/")
-    assert "app-footer" not in resp.text
+    assert "app-footer" in resp.text
+    footer_html = resp.text.split('class="app-footer"')[1].split("</footer>")[0]
+    assert 'href="/ui/license"' in footer_html
+    assert "·" not in footer_html
 
 
 def test_footer_present_post_login_when_contact_info_set(client, db_session, tenant_factory):
@@ -53,12 +58,13 @@ def test_footer_present_on_branded_login_page(client, db_session, tenant_factory
     assert "(555) 444-5555" in resp.text
 
 
-def test_footer_absent_on_generic_unbranded_login_page(client, db_session, tenant_factory):
+def test_footer_shows_license_but_no_contact_info_on_generic_unbranded_login_page(client, db_session, tenant_factory):
     tenant, _account, _users = tenant_factory.make(slug="footer-generic-login")
     _set_contact_info(db_session, tenant, support_email="help@footer-generic-login.example.com")
 
     resp = client.get("/ui/login")
-    assert "app-footer" not in resp.text
+    assert "app-footer" in resp.text
+    assert 'href="/ui/license"' in resp.text
     assert "help@footer-generic-login.example.com" not in resp.text
 
 
@@ -74,11 +80,15 @@ def test_footer_omits_unset_fields(client, db_session, tenant_factory):
     assert footer_html.count("·") == 1
 
 
-def test_footer_disappears_after_clearing_all_fields(client, db_session, tenant_factory):
+def test_footer_contact_line_disappears_after_clearing_all_fields(client, db_session, tenant_factory):
     tenant, _account, users = tenant_factory.make(slug="footer-clear")
     _set_contact_info(db_session, tenant, support_email="help@footer-clear.example.com")
     _login(client, tenant.slug, users["admin"].email)
-    assert "app-footer" in client.get("/ui/").text
+    assert "help@footer-clear.example.com" in client.get("/ui/").text
 
     _set_contact_info(db_session, tenant)  # all fields back to None
-    assert "app-footer" not in client.get("/ui/").text
+    resp = client.get("/ui/")
+    # The footer itself (with its license notice) never disappears -- only the
+    # now-empty contact line does.
+    assert "app-footer" in resp.text
+    assert "help@footer-clear.example.com" not in resp.text

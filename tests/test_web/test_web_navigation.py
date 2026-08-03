@@ -18,9 +18,11 @@ def test_nav_marks_current_page_active(client, tenant_factory):
 
     resp = client.get("/ui/issued-items")
     assert resp.status_code == 200
-    assert '<a href="/ui/issued-items" class="active">Issued Items</a>' in resp.text
+    # Nav links render an icon before the label (templates/_macros/icon.html), so match
+    # on the opening tag + class rather than the full element contents.
+    assert '<a href="/ui/issued-items" class="active">' in resp.text
     # a different nav link on the same page must not also be marked active
-    assert '<a href="/ui/accounts" class="active">Accounts</a>' not in resp.text
+    assert '<a href="/ui/accounts" class="active">' not in resp.text
 
 
 def test_nav_is_grouped_into_labeled_sections(client, tenant_factory):

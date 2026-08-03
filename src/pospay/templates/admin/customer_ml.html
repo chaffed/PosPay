@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}ML scoring — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About per-customer ML scoring{% endblock %}
 {% block help_body %}
@@ -59,7 +60,7 @@
           <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/retrain" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="network_code" value="{{ row.network_code }}">
-            <button type="submit" class="secondary">Retrain</button>
+            <button type="submit" class="secondary">{{ icon("refresh") }}Retrain</button>
           </form>
         </td>
       </tr>
@@ -100,7 +101,7 @@
           </select>
           {% endif %}
         </td>
-        <td><button type="submit" class="secondary" form="{{ form_id }}">Save</button></td>
+        <td><button type="submit" class="secondary" form="{{ form_id }}">{{ icon("save") }}Save</button></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -124,7 +125,7 @@
           {% if m.status.value not in ["active", "failed"] %}
           <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/models/{{ m.id }}/activate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="secondary">Activate</button>
+            <button type="submit" class="secondary">{{ icon("check_circle") }}Activate</button>
           </form>
           {% endif %}
         </td>

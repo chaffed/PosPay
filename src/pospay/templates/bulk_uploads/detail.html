@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}{{ record.original_filename }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this upload record{% endblock %}
 {% block help_body %}
@@ -33,7 +34,7 @@
       <tr><th>SHA-256</th><td><code>{{ record.sha256_hex }}</code></td></tr>
     </tbody>
   </table>
-  <p><a href="/ui/bulk-uploads/{{ record.id }}/download" class="button">Download original file</a></p>
+  <p><a href="/ui/bulk-uploads/{{ record.id }}/download" class="button">{{ icon("download") }}Download original file</a></p>
 
   {% if record.backed_out_at %}
   <p><span class="badge">Backed out on {{ record.backed_out_at.strftime("%Y-%m-%d %H:%M") }}</span></p>
@@ -47,7 +48,7 @@
       {% if can_back_out %}
       <form method="post" action="/ui/bulk-uploads/{{ record.id }}/back-out" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="secondary" onclick="return confirm('Back out this upload? Everything it created that can still safely be reversed will be voided, deactivated, or reversed.')">Back out this upload</button>
+        <button type="submit" class="secondary" onclick="return confirm('Back out this upload? Everything it created that can still safely be reversed will be voided, deactivated, or reversed.')">{{ icon("undo") }}Back out this upload</button>
       </form>
       {% endif %}
     {% else %}

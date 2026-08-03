@@ -4,7 +4,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pospay.db.base import Base, new_uuid
@@ -33,6 +33,16 @@ class Customer(Base):
     # makes sense set False once this customer has at least one active SsoConnection
     # (enforced in services/sso_service.py).
     password_login_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # This customer's own ADDITIONAL password requirements, on top of the tenant's own
+    # policy (domain/tenant.py) — see auth/password_policy.py::effective_policy. None
+    # means "no additional minimum, just use the tenant's"; the 4 boolean flags default
+    # False for the same reason (False and "not set" are behaviorally identical once
+    # combined with the tenant's own flag via OR) so there's no need for nullable bools.
+    password_min_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    password_require_uppercase: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    password_require_lowercase: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    password_require_number: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    password_require_symbol: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Cross-reference to an identifier from an outside system (e.g. a core-banking CIF

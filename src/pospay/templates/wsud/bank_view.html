@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Unauthorized Debit Statements — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this page{% endblock %}
 {% block help_body %}
@@ -11,7 +12,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Unauthorized Debit Statements — {{ customer.name }}</h1>
-    <a href="/ui/customers/{{ customer.id }}" class="button secondary">Back to customer</a>
+    <a href="/ui/customers/{{ customer.id }}" class="button secondary">{{ icon("arrow_back") }}Back to customer</a>
   </div>
   {% if rows %}
   <table data-sortable>

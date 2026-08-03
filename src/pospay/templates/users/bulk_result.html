@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Bulk Upload Results — {{ ctx.tenant_name }}{% endblock %}
 {% block content %}
 {% set created = results | selectattr("outcome", "equalto", "created") | list %}
@@ -42,7 +43,7 @@
     {% for row in pending %}
     <label><input type="checkbox" name="confirm" value="{{ row.value }}" checked> {{ row.email }} — {{ row.group_name }}</label>
     {% endfor %}
-    <button type="submit">Grant access</button>
+    <button type="submit">{{ icon("person_add") }}Grant access</button>
   </form>
 </div>
 {% endif %}

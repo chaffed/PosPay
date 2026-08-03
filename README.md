@@ -126,12 +126,21 @@ screen to (re)write the PNGs under `docs/screenshots/`.
 
 ## Quickstart
 
-**One-click (SQLite, zero manual setup)**: double-click `run_pospay.command` (macOS —
-opens Terminal.app and runs it there). On first run it creates a virtual environment,
-installs everything, runs migrations, prompts you to create an organization + admin
-login, then starts the server and opens your browser to it. Every re-run after that just
-starts the server — safe to run any number of times. On Linux/Windows (no `.command`
-double-click support yet), run the same script directly:
+**One-click (SQLite, zero manual setup)**:
+
+- **macOS**: double-click `run_pospay.command` (opens Terminal.app and runs it there).
+- **Windows**: double-click `run_pospay.bat` (opens a Command Prompt window).
+- **Linux**: run `./run_pospay.sh` from a terminal — most file managers don't run a
+  double-clicked `.sh` file in a terminal by default (varies by distro/desktop
+  environment and usually needs "Allow executing file as program" enabled first in the
+  file's properties), so this one isn't meant to be double-clicked.
+
+On first run it creates a virtual environment, installs everything, runs migrations,
+prompts you to create an organization + admin login, then starts the server and opens
+your browser to it. Every re-run after that just starts the server — safe to run any
+number of times. All three wrappers just find a Python interpreter and hand off to the
+same OS-agnostic `scripts/launcher.py`; if you'd rather skip the wrapper, run that
+directly on any platform:
 
 ```bash
 python3 scripts/launcher.py
@@ -163,6 +172,40 @@ Web UI at `http://localhost:8000/ui/login`. JSON API docs at `http://localhost:8
 Tesseract (`brew install tesseract` / `apt install tesseract-ocr`) must be on `PATH` for
 check-image OCR to work — it's a system binary, not pip-installable; the launcher warns
 if it's missing but still runs.
+
+**PDF export of the documentation** (the "Download PDF" link on `/ui/docs/end-user` and
+`/ui/docs/admin`) needs the optional `pdf` extra plus system libraries WeasyPrint depends
+on — Pango, Cairo, and GLib. `run_pospay.command`/`scripts/launcher.py` installs the
+`pdf` extra automatically; for a manual setup, install it yourself:
+
+```bash
+pip install -e ".[pdf]"
+brew install pango          # macOS
+apt install libpango-1.0-0 libcairo2  # Debian/Ubuntu
+```
+
+On macOS, Homebrew's lib directory isn't on the dynamic linker's default search path, so
+even with Pango installed, `import weasyprint` would otherwise raise `OSError`
+(`services/doc_pdf_service.py` works around this automatically — no manual
+`DYLD_FALLBACK_LIBRARY_PATH` needed). Without the `pdf` extra installed at all, every
+other page still works — only the PDF download routes show a "not available" message
+instead of a file.
+
+The admin PDF's ER diagrams (`/ui/docs/admin/data-dictionary`) are pre-rendered PNGs, not
+generated at request time — WeasyPrint doesn't execute JavaScript, so the live
+Mermaid+pan/zoom the interactive page uses can't render there. See
+`scripts/render_schema_diagrams.py` if you change that page's diagram content:
+
+```bash
+pip install -e ".[dev]"
+playwright install chromium
+python scripts/render_schema_diagrams.py
+```
+
+This spins up the app against a throwaway SQLite database, drives a real headless
+browser to the Data Dictionary page with pan/zoom disabled so each diagram renders at
+full natural size, and (re)writes the PNGs under
+`src/pospay/static/generated/schema-diagrams/`.
 
 ## Running tests
 
@@ -656,7 +699,9 @@ cosmetic, the POST route's own permission check is what actually enforces it.
   inside the package so they ship with it wherever it's installed
 - `scripts/launcher.py` — the one-click local setup/run script (stdlib-only until it
   re-execs itself under a freshly-created venv's own interpreter); `run_pospay.command`
-  is the macOS double-click wrapper around it
+  (macOS), `run_pospay.bat` (Windows), and `run_pospay.sh` (Linux) are thin
+  platform-specific wrappers around it — all three just locate a Python interpreter and
+  hand off to the same script
 
 ## License
 

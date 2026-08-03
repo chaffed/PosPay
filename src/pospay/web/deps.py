@@ -73,6 +73,19 @@ def require_web_permission(permission: str):
     return _check
 
 
+def require_any_web_permission(*permissions: str):
+    """Like require_web_permission, but passes if ANY of the given permissions is held —
+    for a page shared by two otherwise-unrelated audiences (e.g. /ui/admin, reachable by
+    either admin:manage or tenant:manage holders, each seeing only their own section)."""
+
+    def _check(ctx: TenantContext = Depends(get_web_context)) -> TenantContext:
+        if not any(p in ctx.permissions for p in permissions):
+            raise WebForbidden()
+        return ctx
+
+    return _check
+
+
 def render_template(
     request: Request,
     name: str,

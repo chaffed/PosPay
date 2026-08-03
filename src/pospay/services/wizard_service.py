@@ -121,7 +121,7 @@ BANK_STEPS: list[WizardStep] = [
         title="Set up single sign-on (optional)",
         description="Let your staff sign in with Okta or Azure AD instead of, or alongside, a password.",
         link_text="Go to Single Sign-On",
-        link_url="/ui/settings/sso",
+        link_url="/ui/admin/sso",
         optional=True,
     ),
     WizardStep(

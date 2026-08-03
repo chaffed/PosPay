@@ -289,3 +289,48 @@ def test_unbranded_login_falls_back_to_generic(client):
 def test_plain_login_page_still_works(client):
     resp = client.get("/ui/login")
     assert resp.status_code == 200
+
+
+def test_settings_page_is_full_width_and_no_longer_links_sso(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-full-width")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get("/ui/settings")
+    assert resp.status_code == 200
+    assert 'class="settings-grid"' in resp.text
+    # The whole page's own content no longer sits in a narrow centered card -- only
+    # count occurrences inside the content block, not anything base.html itself might add.
+    assert "card-narrow" not in resp.text
+    assert "/ui/settings/sso" not in resp.text
+
+
+def test_update_password_policy_via_web(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-password-policy")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/password-policy",
+        data={
+            "csrf_token": csrf, "min_length": "12", "require_uppercase": "true", "require_number": "true",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    db_session.expire_all()
+    from pospay.domain.tenant import Tenant
+
+    updated = db_session.get(Tenant, tenant.id)
+    assert updated.password_min_length == 12
+    assert updated.password_require_uppercase is True
+    assert updated.password_require_number is True
+    assert updated.password_require_lowercase is False
+
+
+def test_update_password_policy_rejects_non_positive_min_length(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-password-policy-invalid")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post("/ui/settings/password-policy", data={"csrf_token": csrf, "min_length": "0"})
+    assert resp.status_code == 422
+    assert "at least 1" in resp.text

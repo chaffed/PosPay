@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros/pagination.html" as pg %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Security Groups — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About security groups{% endblock %}
 {% block help_body %}
@@ -15,7 +16,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Security Groups</h1>
-    <a href="/ui/security-groups/new" class="button">New security group</a>
+    <a href="/ui/security-groups/new" class="button">{{ icon("add") }}New security group</a>
   </div>
   {% if page_obj.total_count > 0 %}
   <table data-sortable>

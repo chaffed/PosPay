@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}New ACH Authorization — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this form{% endblock %}
 {% block help_body %}
@@ -31,7 +32,7 @@
     <label>Allowed SEC codes, comma-separated (optional, e.g. PPD,WEB) <input type="text" name="allowed_sec_codes" value="{{ prefill.allowed_sec_codes if prefill else '' }}"></label>
     <label>Effective date <input type="date" name="effective_date" value="{{ prefill.effective_date if prefill else '' }}" required></label>
     <label>Expiration date (optional) <input type="date" name="expiration_date"></label>
-    <button type="submit">Create</button>
+    <button type="submit">{{ icon("add") }}Create</button>
   </form>
 </div>
 {% endblock %}

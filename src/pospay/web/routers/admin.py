@@ -25,8 +25,9 @@ from pospay.services import (
     customer_ml_service,
     customer_service,
     demo_tenant_service,
+    sso_service,
 )
-from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.deps import WebNotFound, render_template, require_any_web_permission, require_web_permission
 from pospay.web.security import clear_auth_cookies, verify_csrf
 
 router = APIRouter(prefix="/ui/admin", tags=["web-admin"])
@@ -34,44 +35,55 @@ router = APIRouter(prefix="/ui/admin", tags=["web-admin"])
 
 @router.get("")
 def admin_home(
-    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("admin:manage"))
+    request: Request, db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_any_web_permission("admin:manage", "tenant:manage")),
 ) -> HTMLResponse:
-    # customer_id.is_(None) — the global, network-wide models only; each customer's own
-    # models have their own dedicated page (see the customer ML routes below), since
-    # mixing them in here would make this table meaningless for a tenant with many
-    # customers.
-    models = db.execute(
-        select(MlModel).where(MlModel.customer_id.is_(None)).order_by(MlModel.network_code, MlModel.created_at.desc())
-    ).scalars().all()
-
-    # A live "what would the next retrain actually use" count, per network — separate from
-    # trained_from_decision_count on each MlModel row above, which is frozen as of that
-    # model's own training run. See ml/train.py::_load_labeled_decisions for the exact
-    # eligibility filter this mirrors (features present, not retracted).
+    # Shared landing page for two otherwise-unrelated audiences (see
+    # require_any_web_permission) — each section below is independently gated in the
+    # template too, so a viewer only ever sees what their own permission covers.
+    models = []
     backfill_counts: dict[str, dict[str, int]] = {}
-    for network_code in registered_codes():
-        base_stmt = (
-            select(ExceptionItem.source, func.count(Decision.id))
-            .join(ExceptionItem, Decision.exception_item_id == ExceptionItem.id)
-            .where(
-                ExceptionItem.network_code == network_code,
-                Decision.features_json.is_not(None),
-                ExceptionItem.retracted_at.is_(None),
-            )
-            .group_by(ExceptionItem.source)
-        )
-        counts = dict(db.execute(base_stmt).all())
-        backfill_counts[network_code] = {
-            "live": counts.get(ExceptionItemSource.LIVE, 0),
-            "training_backfill": counts.get(ExceptionItemSource.TRAINING_BACKFILL, 0),
-        }
+    is_demo_tenant = False
+    if "admin:manage" in ctx.permissions:
+        # customer_id.is_(None) — the global, network-wide models only; each customer's
+        # own models have their own dedicated page (see the customer ML routes below),
+        # since mixing them in here would make this table meaningless for a tenant with
+        # many customers.
+        models = db.execute(
+            select(MlModel).where(MlModel.customer_id.is_(None)).order_by(MlModel.network_code, MlModel.created_at.desc())
+        ).scalars().all()
 
-    demo_tenant = demo_tenant_service.get_demo_tenant(db)
-    is_demo_tenant = demo_tenant is not None and demo_tenant.id == ctx.tenant_id
+        # A live "what would the next retrain actually use" count, per network — separate
+        # from trained_from_decision_count on each MlModel row above, which is frozen as
+        # of that model's own training run. See ml/train.py::_load_labeled_decisions for
+        # the exact eligibility filter this mirrors (features present, not retracted).
+        for network_code in registered_codes():
+            base_stmt = (
+                select(ExceptionItem.source, func.count(Decision.id))
+                .join(ExceptionItem, Decision.exception_item_id == ExceptionItem.id)
+                .where(
+                    ExceptionItem.network_code == network_code,
+                    Decision.features_json.is_not(None),
+                    ExceptionItem.retracted_at.is_(None),
+                )
+                .group_by(ExceptionItem.source)
+            )
+            counts = dict(db.execute(base_stmt).all())
+            backfill_counts[network_code] = {
+                "live": counts.get(ExceptionItemSource.LIVE, 0),
+                "training_backfill": counts.get(ExceptionItemSource.TRAINING_BACKFILL, 0),
+            }
+
+        demo_tenant = demo_tenant_service.get_demo_tenant(db)
+        is_demo_tenant = demo_tenant is not None and demo_tenant.id == ctx.tenant_id
+
+    sso_connection_count = None
+    if "tenant:manage" in ctx.permissions:
+        sso_connection_count = len(sso_service.list_connections(db, ctx.tenant_id, customer_id=None))
 
     return render_template(
         request, "admin/ml_models.html", ctx=ctx, models=models, networks=registered_codes(),
-        backfill_counts=backfill_counts, is_demo_tenant=is_demo_tenant,
+        backfill_counts=backfill_counts, is_demo_tenant=is_demo_tenant, sso_connection_count=sso_connection_count,
     )
 
 

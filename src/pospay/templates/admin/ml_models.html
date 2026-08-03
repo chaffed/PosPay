@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Admin — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ML models{% endblock %}
 {% block help_body %}
@@ -10,6 +11,7 @@
   worse.</p>
 {% endblock %}
 {% block content %}
+{% if can(ctx, "admin:manage") %}
 {% if is_demo_tenant %}
 <div class="card card-narrow">
   <h1>Demo data</h1>
@@ -18,7 +20,7 @@
     immediately below.</p>
   <form method="post" action="/ui/admin/demo/reset" data-confirm="Reset all demo data now? You will be signed out and need to log back in.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit" class="danger">Reset demo data now</button>
+    <button type="submit" class="danger">{{ icon("restart_alt") }}Reset demo data now</button>
   </form>
 </div>
 {% endif %}
@@ -43,7 +45,7 @@
         {% for n in networks %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
       </select>
     </label>
-    <button type="submit">Retrain</button>
+    <button type="submit">{{ icon("refresh") }}Retrain</button>
   </form>
 
   {% if models %}
@@ -61,7 +63,7 @@
           {% if m.status.value not in ["active", "failed"] %}
           <form method="post" action="/ui/admin/ml/models/{{ m.id }}/activate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="secondary">Activate</button>
+            <button type="submit" class="secondary">{{ icon("check_circle") }}Activate</button>
           </form>
           {% endif %}
         </td>
@@ -73,4 +75,18 @@
   <p>No models trained yet — matching/exceptions still work fully, ML scoring is just not available until enough decisions accumulate.</p>
   {% endif %}
 </div>
+{% endif %}
+{% if can(ctx, "tenant:manage") %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Single Sign-On</h1>
+    <a href="/ui/admin/sso" class="button secondary">{{ icon("tune") }}Manage</a>
+  </div>
+  {% if sso_connection_count %}
+  <p>{{ sso_connection_count }} SSO connection{{ "s" if sso_connection_count != 1 else "" }} configured for bank staff.</p>
+  {% else %}
+  <p>No SSO connections configured — bank staff sign in with a password.</p>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}{{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this page{% endblock %}
 {% block help_body %}
@@ -15,7 +16,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>{{ customer.name }}</h1>
-    <a href="/ui/customers/{{ customer.id }}/edit" class="button secondary">Edit</a>
+    <a href="/ui/customers/{{ customer.id }}/edit" class="button secondary">{{ icon("edit") }}Edit</a>
   </div>
   <table>
     <tbody>
@@ -41,7 +42,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Setup checklist</h1>
-    <a href="/ui/customers/{{ customer.id }}/wizard" class="button secondary">Open checklist</a>
+    <a href="/ui/customers/{{ customer.id }}/wizard" class="button secondary">{{ icon("checklist") }}Open checklist</a>
   </div>
   <p>A guided checklist for setting up this customer's accounts, users, and (optionally)
     their own single sign-on.</p>
@@ -71,7 +72,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Single sign-on</h1>
-    <a href="/ui/customers/{{ customer.id }}/sso" class="button secondary">Manage</a>
+    <a href="/ui/customers/{{ customer.id }}/sso" class="button secondary">{{ icon("tune") }}Manage</a>
   </div>
   {% if sso_connection_count %}
   <p>{{ sso_connection_count }} SSO connection{{ "s" if sso_connection_count != 1 else "" }} configured for this customer.</p>
@@ -80,11 +81,20 @@
   {% endif %}
 </div>
 
+<div class="card">
+  <div class="toolbar">
+    <h1>Password Policy</h1>
+    <a href="/ui/customers/{{ customer.id }}/password-policy" class="button secondary">{{ icon("tune") }}Manage</a>
+  </div>
+  <p>This customer can require a stricter password policy than the tenant's own baseline
+    — never a weaker one.</p>
+</div>
+
 {% if can(ctx, "data_export:run") %}
 <div class="card">
   <div class="toolbar">
     <h1>Data export</h1>
-    <a href="/ui/customers/{{ customer.id }}/data-export" class="button secondary">Manage</a>
+    <a href="/ui/customers/{{ customer.id }}/data-export" class="button secondary">{{ icon("tune") }}Manage</a>
   </div>
   <p>Generate a downloadable archive of everything scoped to this customer, for
     migrating away from PosPay.</p>
@@ -95,7 +105,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Unauthorized Debit Statements</h1>
-    <a href="/ui/customers/{{ customer.id }}/wsud" class="button secondary">View</a>
+    <a href="/ui/customers/{{ customer.id }}/wsud" class="button secondary">{{ icon("visibility") }}View</a>
   </div>
   <p>Written Statements of Unauthorized Debit this customer has signed, self-service,
     covering their own returned ACH transactions.</p>
@@ -106,7 +116,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>ML scoring</h1>
-    <a href="/ui/admin/customers/{{ customer.id }}/ml" class="button secondary">Manage</a>
+    <a href="/ui/admin/customers/{{ customer.id }}/ml" class="button secondary">{{ icon("tune") }}Manage</a>
   </div>
   <table>
     <thead><tr><th>Network</th><th>Mode</th><th>This customer's model</th></tr></thead>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Notification Preferences — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About notifications{% endblock %}
 {% block help_body %}
@@ -14,14 +15,14 @@
   <form method="post" action="/ui/security/notifications/phone">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Phone number <input type="tel" name="phone" value="{{ phone or '' }}" placeholder="+15551234567"></label>
-    <button type="submit">Save</button>
+    <button type="submit">{{ icon("save") }}Save</button>
   </form>
 </div>
 
 <div class="card">
   <div class="toolbar">
     <h1>Notification preferences</h1>
-    <a href="/ui/security" class="button secondary">Security keys</a>
+    <a href="/ui/security" class="button secondary">{{ icon("vpn_key") }}Security keys</a>
   </div>
   <form method="post" action="/ui/security/notifications">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -38,7 +39,7 @@
       </tbody>
     </table>
     {% if not phone %}<p class="flash">Set a phone number above to enable SMS.</p>{% endif %}
-    <button type="submit">Save preferences</button>
+    <button type="submit">{{ icon("save") }}Save preferences</button>
   </form>
 </div>
 {% endblock %}

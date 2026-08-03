@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}{{ "Edit" if reason else "New" }} ACH Return Reason — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this form{% endblock %}
 {% block help_body %}
@@ -18,7 +19,7 @@
     <label>Transaction code (optional — your core system's posting code)
       <input type="text" name="transaction_code" value="{{ transaction_code if transaction_code is defined else (reason.transaction_code or '' if reason else '') }}">
     </label>
-    <button type="submit">{{ "Save" if reason else "Create" }}</button>
+    <button type="submit">{{ icon("save" if reason else "add") }}{{ "Save" if reason else "Create" }}</button>
   </form>
 </div>
 {% endblock %}

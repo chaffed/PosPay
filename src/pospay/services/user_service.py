@@ -9,6 +9,7 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pospay.auth.password_policy import effective_policy, validate_password
 from pospay.auth.security import hash_password
 from pospay.bulk_import.fields import RowFieldError, optional_str, require_str
 from pospay.bulk_import.results import UserBulkRowResult
@@ -117,6 +118,10 @@ def create_user_with_membership(
     customer_id: uuid.UUID | None = None,
     require_webauthn: bool = False,
 ) -> User:
+    tenant = session.get(Tenant, tenant_id)
+    customer = customer_service.get_customer(session, tenant_id, customer_id) if customer_id else None
+    validate_password(password, effective_policy(tenant, customer))
+
     user = User(email=email, hashed_password=hash_password(password))
     UserRepository(session).add(user)
     session.flush()
@@ -189,15 +194,18 @@ def add_user(
     if existing is None:
         if not password:
             return AddUserResult(outcome="failed", error="A password is required for a new user.")
-        new_user = create_user_with_membership(
-            session,
-            tenant_id,
-            email=email,
-            password=password,
-            security_group_id=security_group_id,
-            customer_id=customer_id,
-            require_webauthn=require_webauthn,
-        )
+        try:
+            new_user = create_user_with_membership(
+                session,
+                tenant_id,
+                email=email,
+                password=password,
+                security_group_id=security_group_id,
+                customer_id=customer_id,
+                require_webauthn=require_webauthn,
+            )
+        except ValueError as exc:
+            return AddUserResult(outcome="failed", error=str(exc))
         new_membership = TenantMembershipRepository(session, tenant_id).list(user_id=new_user.id, customer_id=customer_id)[0]
         return AddUserResult(outcome="created", membership_id=new_membership.id)
 

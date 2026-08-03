@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
-from pospay.services import customer_service
+import pytest
+
+from pospay.services import customer_service, tenant_service
 
 
 def test_create_customer(db_session, tenant_factory):
@@ -186,5 +188,74 @@ def test_update_customer_returns_none_for_unknown_or_other_tenant(db_session, te
 
     result = customer_service.update_customer(
         db_session, tenant_b.id, customer.id, customer_service.CustomerInput(customer_number="C-1", name="Hacked Name")
+    )
+    assert result is None
+
+
+def test_set_password_policy_allows_stricter_than_tenant(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="cust-svc-password-policy-stricter")
+    tenant_service.set_password_policy(
+        db_session, tenant.id, min_length=8, require_uppercase=False, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme")
+    )
+    db_session.commit()
+
+    updated = customer_service.set_password_policy(
+        db_session, tenant.id, customer.id, min_length=16, require_uppercase=True, require_lowercase=False,
+        require_number=False, require_symbol=True,
+    )
+    db_session.commit()
+
+    assert updated.password_min_length == 16
+    assert updated.password_require_uppercase is True
+    assert updated.password_require_symbol is True
+
+
+def test_set_password_policy_rejects_min_length_below_tenant(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="cust-svc-password-policy-weaker")
+    tenant_service.set_password_policy(
+        db_session, tenant.id, min_length=12, require_uppercase=False, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme")
+    )
+    db_session.commit()
+
+    with pytest.raises(ValueError, match="can't be less than the tenant's own minimum"):
+        customer_service.set_password_policy(
+            db_session, tenant.id, customer.id, min_length=6, require_uppercase=False, require_lowercase=False,
+            require_number=False, require_symbol=False,
+        )
+
+
+def test_set_password_policy_blank_min_length_just_inherits_tenant(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="cust-svc-password-policy-inherit")
+    customer = customer_service.create_customer(
+        db_session, tenant.id, customer_service.CustomerInput(customer_number="C-1", name="Acme")
+    )
+    db_session.commit()
+
+    updated = customer_service.set_password_policy(
+        db_session, tenant.id, customer.id, min_length=None, require_uppercase=True, require_lowercase=False,
+        require_number=False, require_symbol=False,
+    )
+    db_session.commit()
+
+    assert updated.password_min_length is None
+    assert updated.password_require_uppercase is True
+
+
+def test_set_password_policy_unknown_customer_returns_none(db_session, tenant_factory):
+    import uuid
+
+    tenant, _account, _users = tenant_factory.make(slug="cust-svc-password-policy-unknown")
+
+    result = customer_service.set_password_policy(
+        db_session, tenant.id, uuid.uuid4(), min_length=None, require_uppercase=False, require_lowercase=False,
+        require_number=False, require_symbol=False,
     )
     assert result is None

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Single Sign-On — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About SSO{% endblock %}
 {% block help_body %}
@@ -16,7 +17,7 @@
 <div class="card">
   <div class="toolbar">
     <h1>Single Sign-On</h1>
-    <a href="/ui/settings/sso/new" class="button">Add connection</a>
+    <a href="/ui/admin/sso/new" class="button">{{ icon("add_link") }}Add connection</a>
   </div>
   {% if connections %}
   <table data-sortable>
@@ -28,14 +29,14 @@
         <td>{{ "Okta" if c.provider.value == "okta" else "Azure AD" }}</td>
         <td><span class="badge {{ 'badge-ok' if c.is_active else 'badge-danger' }}">{{ 'active' if c.is_active else 'deactivated' }}</span></td>
         <td>
-          <a href="/ui/settings/sso/{{ c.id }}/edit">Edit</a>
+          <a href="/ui/admin/sso/{{ c.id }}/edit">Edit</a>
           {% if c.is_active %}
-          <form method="post" action="/ui/settings/sso/{{ c.id }}/deactivate" class="inline-form">
+          <form method="post" action="/ui/admin/sso/{{ c.id }}/deactivate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="link-button">Deactivate</button>
           </form>
           {% else %}
-          <form method="post" action="/ui/settings/sso/{{ c.id }}/reactivate" class="inline-form">
+          <form method="post" action="/ui/admin/sso/{{ c.id }}/reactivate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="link-button">Reactivate</button>
           </form>
@@ -52,13 +53,13 @@
 
 <div class="card card-narrow">
   <h1>Enforcement</h1>
-  <form method="post" action="/ui/settings/sso/password-login">
+  <form method="post" action="/ui/admin/sso/password-login">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>
       <input type="checkbox" name="require_sso" value="true" {{ "checked" if not password_login_enabled else "" }}>
       Require SSO (disable password login for bank staff)
     </label>
-    <button type="submit">Save</button>
+    <button type="submit">{{ icon("save") }}Save</button>
   </form>
 </div>
 {% endblock %}

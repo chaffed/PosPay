@@ -43,9 +43,15 @@ def list_accounts(
     # never be offered other customers (or "unassigned") to file a new account under.
     customers = customer_service.list_customers(db, ctx.tenant_id) if ctx.customer_id is None else []
     customer_names = {c.id: c.name for c in customers}
-    return render_template(
-        request, "accounts/list.html", ctx=ctx, page_obj=page_obj, customers=customers, customer_names=customer_names
-    )
+    return render_template(request, "accounts/list.html", ctx=ctx, page_obj=page_obj, customer_names=customer_names)
+
+
+@router.get("/new")
+def new_account_form(
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("account:write"))
+) -> HTMLResponse:
+    customers = customer_service.list_customers(db, ctx.tenant_id) if ctx.customer_id is None else []
+    return render_template(request, "accounts/form.html", ctx=ctx, customers=customers)
 
 
 @router.post("")

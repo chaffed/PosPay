@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Switch Organization — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About switching organizations{% endblock %}
 {% block help_body %}
@@ -20,7 +21,7 @@
   <form method="post" action="/ui/switch-tenant" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="membership_id" value="{{ m.membership.id }}">
-    <button type="submit">{{ m.tenant.name }}{{ " — " ~ m.customer_name if m.customer_name else " (bank-wide)" }}{{ " (security key required)" if m.membership.require_webauthn else "" }}</button>
+    <button type="submit">{{ icon("swap_horiz") }}{{ m.tenant.name }}{{ " — " ~ m.customer_name if m.customer_name else " (bank-wide)" }}{{ " (security key required)" if m.membership.require_webauthn else "" }}</button>
   </form>
   {% endfor %}
   {% else %}

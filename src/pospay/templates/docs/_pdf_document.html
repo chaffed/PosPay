@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ title }}</title>
+<style>{{ pdf_css|safe }}</style>
+</head>
+<body>
+  <section class="pdf-cover">
+    <h1>{{ title }}</h1>
+    <p>{{ subtitle }}</p>
+    <p class="pdf-cover-meta">Generated {{ generated_at }} for {{ tenant_name }}</p>
+  </section>
+  {{ body_html|safe }}
+  {% if summary_html %}{{ summary_html|safe }}{% endif %}
+</body>
+</html>

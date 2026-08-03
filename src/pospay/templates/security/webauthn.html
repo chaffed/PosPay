@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Security — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About security keys{% endblock %}
 {% block help_body %}
@@ -13,8 +14,8 @@
   <div class="toolbar">
     <h1>Security keys</h1>
     <div class="actions">
-      <a href="/ui/security/notifications" class="button secondary">Notification preferences</a>
-      <button type="button" id="register-btn">Register a new key</button>
+      <a href="/ui/security/notifications" class="button secondary">{{ icon("notifications") }}Notification preferences</a>
+      <button type="button" id="register-btn">{{ icon("vpn_key") }}Register a new key</button>
     </div>
   </div>
   <p id="register-error" class="flash flash-error" style="display:none;"></p>
@@ -33,7 +34,7 @@
         <td>
           <form method="post" action="/ui/security/webauthn/{{ cred.id }}/delete" class="inline-form" data-confirm="Remove this security key?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="danger">Remove</button>
+            <button type="submit" class="danger">{{ icon("delete") }}Remove</button>
           </form>
         </td>
       </tr>

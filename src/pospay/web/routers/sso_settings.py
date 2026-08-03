@@ -41,31 +41,33 @@ def _tenant_password_login_enabled(db: Session, tenant_id: uuid.UUID) -> bool:
     return bool(tenant and tenant.password_login_enabled)
 
 
-# --- Bank-wide: /ui/settings/sso/* (tenant:manage) ---
+# --- Bank-wide: /ui/admin/sso/* (tenant:manage -- lives under /ui/admin so it's
+# reachable via the Admin nav link, but stays gated on tenant:manage, not admin:manage;
+# see web/routers/admin.py's require_any_web_permission gate on GET /ui/admin) ---
 
 
-@router.get("/ui/settings/sso")
+@router.get("/ui/admin/sso")
 def list_bank_connections(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("tenant:manage"))
 ) -> HTMLResponse:
     connections = sso_service.list_connections(db, ctx.tenant_id, customer_id=None)
     return render_template(
-        request, "settings/sso.html", ctx=ctx, connections=connections,
+        request, "admin/sso.html", ctx=ctx, connections=connections,
         password_login_enabled=_tenant_password_login_enabled(db, ctx.tenant_id),
     )
 
 
-@router.get("/ui/settings/sso/new")
+@router.get("/ui/admin/sso/new")
 def new_bank_connection_form(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("tenant:manage"))
 ) -> HTMLResponse:
     return render_template(
-        request, "sso/form.html", ctx=ctx, back_path="/ui/settings/sso", connection=None, mappings=[],
+        request, "sso/form.html", ctx=ctx, back_path="/ui/admin/sso", connection=None, mappings=[],
         groups=security_group_service.list_security_groups(db, ctx.tenant_id), providers=list(SsoProvider), error=None,
     )
 
 
-@router.post("/ui/settings/sso")
+@router.post("/ui/admin/sso")
 def create_bank_connection(
     request: Request,
     provider: SsoProvider = Form(...),
@@ -85,7 +87,7 @@ def create_bank_connection(
     except ValueError as exc:
         db.rollback()
         return render_template(
-            request, "sso/form.html", ctx=ctx, back_path="/ui/settings/sso", connection=None, mappings=[],
+            request, "sso/form.html", ctx=ctx, back_path="/ui/admin/sso", connection=None, mappings=[],
             groups=security_group_service.list_security_groups(db, ctx.tenant_id), providers=list(SsoProvider),
             error=str(exc), status_code=422,
         )
@@ -94,10 +96,10 @@ def create_bank_connection(
         summary=f"Added SSO connection {connection.display_name!r}", resource_type="sso_connection", resource_id=connection.id,
     )
     db.commit()
-    return RedirectResponse(f"/ui/settings/sso/{connection.id}/edit?flash=Connection+created.+Add+a+group+mapping+below.", status_code=303)
+    return RedirectResponse(f"/ui/admin/sso/{connection.id}/edit?flash=Connection+created.+Add+a+group+mapping+below.", status_code=303)
 
 
-@router.post("/ui/settings/sso/password-login")
+@router.post("/ui/admin/sso/password-login")
 def set_bank_password_login(
     require_sso: bool = Form(False),
     db: Session = Depends(get_db),
@@ -108,12 +110,12 @@ def set_bank_password_login(
         sso_service.set_tenant_password_login_enabled(db, ctx.tenant_id, enabled=not require_sso)
     except ValueError as exc:
         db.rollback()
-        return RedirectResponse(f"/ui/settings/sso?error={quote(str(exc))}", status_code=303)
+        return RedirectResponse(f"/ui/admin/sso?error={quote(str(exc))}", status_code=303)
     db.commit()
-    return RedirectResponse("/ui/settings/sso?flash=Updated.", status_code=303)
+    return RedirectResponse("/ui/admin/sso?flash=Updated.", status_code=303)
 
 
-@router.get("/ui/settings/sso/{connection_id}/edit")
+@router.get("/ui/admin/sso/{connection_id}/edit")
 def edit_bank_connection_form(
     request: Request, connection_id: uuid.UUID, db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
@@ -123,12 +125,12 @@ def edit_bank_connection_form(
         raise WebNotFound()
     mappings = sso_service.list_group_mappings(db, ctx.tenant_id, connection_id)
     return render_template(
-        request, "sso/form.html", ctx=ctx, back_path="/ui/settings/sso", connection=connection, mappings=mappings,
+        request, "sso/form.html", ctx=ctx, back_path="/ui/admin/sso", connection=connection, mappings=mappings,
         groups=security_group_service.list_security_groups(db, ctx.tenant_id), providers=list(SsoProvider), error=None,
     )
 
 
-@router.post("/ui/settings/sso/{connection_id}")
+@router.post("/ui/admin/sso/{connection_id}")
 def update_bank_connection(
     request: Request,
     connection_id: uuid.UUID,
@@ -156,10 +158,10 @@ def update_bank_connection(
         summary="Updated SSO connection", resource_type="sso_connection", resource_id=connection_id,
     )
     db.commit()
-    return RedirectResponse(f"/ui/settings/sso/{connection_id}/edit?flash=Saved.", status_code=303)
+    return RedirectResponse(f"/ui/admin/sso/{connection_id}/edit?flash=Saved.", status_code=303)
 
 
-@router.post("/ui/settings/sso/{connection_id}/deactivate")
+@router.post("/ui/admin/sso/{connection_id}/deactivate")
 def deactivate_bank_connection(
     connection_id: uuid.UUID, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
     _csrf: None = Depends(verify_csrf),
@@ -167,10 +169,10 @@ def deactivate_bank_connection(
     if sso_service.deactivate_connection(db, ctx.tenant_id, connection_id) is None:
         raise WebNotFound()
     db.commit()
-    return RedirectResponse("/ui/settings/sso?flash=Connection+deactivated.", status_code=303)
+    return RedirectResponse("/ui/admin/sso?flash=Connection+deactivated.", status_code=303)
 
 
-@router.post("/ui/settings/sso/{connection_id}/reactivate")
+@router.post("/ui/admin/sso/{connection_id}/reactivate")
 def reactivate_bank_connection(
     connection_id: uuid.UUID, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
     _csrf: None = Depends(verify_csrf),
@@ -178,10 +180,10 @@ def reactivate_bank_connection(
     if sso_service.reactivate_connection(db, ctx.tenant_id, connection_id) is None:
         raise WebNotFound()
     db.commit()
-    return RedirectResponse("/ui/settings/sso?flash=Connection+reactivated.", status_code=303)
+    return RedirectResponse("/ui/admin/sso?flash=Connection+reactivated.", status_code=303)
 
 
-@router.post("/ui/settings/sso/{connection_id}/mappings")
+@router.post("/ui/admin/sso/{connection_id}/mappings")
 def add_bank_group_mapping(
     connection_id: uuid.UUID,
     external_group: str = Form(...),
@@ -197,19 +199,19 @@ def add_bank_group_mapping(
         )
     except ValueError as exc:
         db.rollback()
-        return RedirectResponse(f"/ui/settings/sso/{connection_id}/edit?error={quote(str(exc))}", status_code=303)
+        return RedirectResponse(f"/ui/admin/sso/{connection_id}/edit?error={quote(str(exc))}", status_code=303)
     db.commit()
-    return RedirectResponse(f"/ui/settings/sso/{connection_id}/edit?flash=Mapping+added.", status_code=303)
+    return RedirectResponse(f"/ui/admin/sso/{connection_id}/edit?flash=Mapping+added.", status_code=303)
 
 
-@router.post("/ui/settings/sso/{connection_id}/mappings/{mapping_id}/delete")
+@router.post("/ui/admin/sso/{connection_id}/mappings/{mapping_id}/delete")
 def remove_bank_group_mapping(
     connection_id: uuid.UUID, mapping_id: uuid.UUID, db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("tenant:manage")), _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
     sso_service.remove_group_mapping(db, ctx.tenant_id, mapping_id)
     db.commit()
-    return RedirectResponse(f"/ui/settings/sso/{connection_id}/edit?flash=Mapping+removed.", status_code=303)
+    return RedirectResponse(f"/ui/admin/sso/{connection_id}/edit?flash=Mapping+removed.", status_code=303)
 
 
 # --- Per-customer: /ui/customers/{customer_id}/sso/* (customer:manage) ---

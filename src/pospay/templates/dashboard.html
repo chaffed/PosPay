@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Dashboard — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this dashboard{% endblock %}
 {% block help_body %}
@@ -13,7 +14,7 @@
 <div class="card">
   <div class="toolbar">
     <p>Finish setting up your organization to get the most out of PosPay.</p>
-    <a href="/ui/wizard/bank" class="button">Getting Started checklist</a>
+    <a href="/ui/wizard/bank" class="button">{{ icon("checklist") }}Getting Started checklist</a>
   </div>
 </div>
 {% endif %}

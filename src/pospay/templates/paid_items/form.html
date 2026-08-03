@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
 {% block title %}Submit Paid Item — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About this form{% endblock %}
 {% block help_body %}
@@ -21,7 +22,7 @@
     <label>Check number <input type="text" name="check_number" required></label>
     <label>Presented amount <input type="text" name="presented_amount" placeholder="0.00" required></label>
     <label>Presented date <input type="date" name="presented_date" required></label>
-    <button type="submit">Submit</button>
+    <button type="submit">{{ icon("send") }}Submit</button>
   </form>
 </div>
 {% endblock %}

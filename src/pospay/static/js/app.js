@@ -9,7 +9,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initSortableTables();
   initHelpDialog();
+  initNavToggle();
 });
+
+// Mobile-only hamburger toggle (see base.html's .sidenav-header / #sidenav-panel and
+// app.css's @media (max-width: 720px) rules) -- the button and panel only exist so this
+// is a no-op at desktop widths where CSS keeps the panel always visible regardless of
+// the "open" class. No "close on navigate" handling needed: this is a server-rendered
+// multi-page app, so every link click is a full page load that resets the toggle state.
+function initNavToggle() {
+  const toggle = document.getElementById("nav-toggle");
+  const panel = document.getElementById("sidenav-panel");
+  if (!toggle || !panel) return;
+
+  toggle.addEventListener("click", () => {
+    const isOpen = panel.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  });
+}
 
 // Opt-in per page via base.html's help_title/help_body blocks — the button and
 // <dialog> only render at all when a page defines help_body (see base.html), so this
