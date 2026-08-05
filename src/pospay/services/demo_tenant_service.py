@@ -16,12 +16,19 @@ Safety notes baked into the design, not incidental:
   shared across every tenant in the database. Training it from synthetic demo data on every
   reset would silently corrupt real production scoring. A per-customer model demonstrates
   the exact same feature with zero cross-tenant risk.
+- `_wipe_tenant_children` purges on-disk files (check images, bulk uploads, branding
+  assets, ML artifacts) as well as DB rows — see `_purge_tenant_files`. Without this, a
+  public demo tenant's uploaded check images (and any real PII an OCR run extracted from
+  one) would outlive their own already-deleted DB row indefinitely, bounded only by disk
+  space rather than the idle-reset window.
 """
 
 import logging
+import shutil
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
@@ -301,6 +308,35 @@ def ensure_demo_tenant(session: Session) -> Tenant:
     return tenant
 
 
+def _purge_tenant_files(session: Session, tenant_id: uuid.UUID) -> None:
+    """Deletes every on-disk file this tenant's data ever wrote -- the DB-only wipe below
+    used to leave these behind forever (check images, bulk uploads, and any branding
+    assets survived every reset indefinitely, and real OCR-extracted PII in a check image
+    would outlive its own already-deleted DB row). Must run before the MlModel delete
+    below, since an ML artifact's path can only be read off the row that's about to
+    disappear.
+
+    Two different on-disk layouts need two different strategies. check_image_storage_dir,
+    bulk_upload_storage_dir, and tenant_asset_storage_dir (ocr/storage.py,
+    bulk_import/file_storage.py, web/branding_storage.py) all live under
+    {base_dir}/{tenant_id}/... and rmtree cleanly. ml_artifact_dir
+    (ml/registry.py::ArtifactStore) is flat -- {network_code}_{customer_id}_{version}.
+    joblib, no tenant_id anywhere in the path or as a column on MlModel itself
+    (domain/ml_model.py) -- so each artifact has to be found via its owning Customer and
+    unlinked individually."""
+    settings = get_settings()
+    for base_dir in (settings.check_image_storage_dir, settings.bulk_upload_storage_dir, settings.tenant_asset_storage_dir):
+        shutil.rmtree(Path(base_dir) / str(tenant_id), ignore_errors=True)
+
+    artifact_paths = session.execute(
+        select(MlModel.artifact_path).where(
+            MlModel.customer_id.in_(select(Customer.id).where(Customer.tenant_id == tenant_id))
+        )
+    ).scalars().all()
+    for artifact_path in artifact_paths:
+        Path(artifact_path).unlink(missing_ok=True)
+
+
 def _wipe_tenant_children(session: Session, tenant_id: uuid.UUID) -> None:
     """Deletes every row belonging to tenant_id, across every tenant-scoped table --
     driven off Base.metadata (topologically sorted by every declared FK, reversed for a
@@ -317,6 +353,8 @@ def _wipe_tenant_children(session: Session, tenant_id: uuid.UUID) -> None:
     otherwise have RLS silently filter every delete down to zero rows."""
     if session.get_bind().dialect.name == "postgresql":
         session.execute(text("SET LOCAL app.current_tenant_id = :tid"), {"tid": str(tenant_id)})
+
+    _purge_tenant_files(session, tenant_id)
 
     # MlModel is the one exception to "every tenant-scoped table has a tenant_id column"
     # (confirmed by reading domain/ml_model.py -- it's keyed by network_code/customer_id

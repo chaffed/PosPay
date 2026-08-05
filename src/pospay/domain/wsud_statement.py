@@ -30,9 +30,10 @@ class WsudStatement(Base):
     text is edited later, past signatures still mean exactly what they meant when
     signed, same "snapshot as observed" philosophy as Decision.features_json.
 
-    NOTE: the disclosure/attestation text this signs over (services/wsud_service.py's
-    _CONSENT_DISCLOSURE_TEXT/_ATTESTATION_TEXT) is placeholder legal language, not
-    reviewed by counsel — see that module's docstring."""
+    NOTE: the disclosure/attestation text this signs over
+    (config.py's wsud_consent_disclosure_text/wsud_attestation_text settings) defaults to
+    placeholder legal language, not reviewed by counsel — see that module's docstring and
+    services/wsud_service.py's."""
 
     __tablename__ = "wsud_statement"
 

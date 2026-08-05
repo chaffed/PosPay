@@ -1,0 +1,12 @@
+{% if ctx and (ctx.banner_message or ctx.customer_banner_message) %}
+<div class="banner-carousel" data-banner-carousel>
+  {% if ctx.banner_message %}<div class="banner-slide">{{ ctx.banner_message | render_markdown }}</div>{% endif %}
+  {% if ctx.customer_banner_message %}<div class="banner-slide">{{ ctx.customer_banner_message | render_markdown }}</div>{% endif %}
+  {% if ctx.banner_message and ctx.customer_banner_message %}
+  <div class="banner-dots">
+    <button type="button" class="banner-dot" aria-label="Show organization message"></button>
+    <button type="button" class="banner-dot" aria-label="Show customer message"></button>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

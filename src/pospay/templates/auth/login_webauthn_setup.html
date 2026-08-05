@@ -13,7 +13,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/webauthn.js"></script>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   const nextPath = {{ next_path | tojson }};
   const errorEl = document.getElementById("webauthn-error");
 

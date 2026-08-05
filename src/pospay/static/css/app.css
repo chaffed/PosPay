@@ -187,6 +187,59 @@ button.danger, .button.danger { background: var(--danger); }
 .flash-ok { background: var(--badge-ok-bg); color: var(--badge-ok-fg); }
 .flash-error { background: var(--badge-danger-bg); color: var(--badge-danger-fg); }
 
+/* templates/partials/_banner.html -- tenant/customer Markdown login+banner messages
+(services/tenant_service.py::TenantBranding, db/tenancy.py::TenantContext). Deliberately
+plainer than .card (no border, muted background) so it reads as an announcement strip,
+not another content block. */
+.banner-carousel { margin-bottom: 1rem; }
+.banner-slide {
+  padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 0.4rem;
+  background: var(--bg-muted); border: 1px solid var(--border); font-size: 0.9rem;
+}
+.banner-slide > *:first-child { margin-top: 0; }
+.banner-slide > *:last-child { margin-bottom: 0; }
+.banner-dots { display: flex; gap: 0.4rem; justify-content: center; }
+.banner-dot {
+  width: 8px; height: 8px; padding: 0; border-radius: 999px; border: none;
+  background: var(--border); cursor: pointer;
+}
+.banner-dot.active { background: var(--accent); }
+
+/* Login page's pre-auth message (templates/auth/login.html) -- same visual language as
+the post-login banner above, just scoped to .card-narrow's own width. */
+.card-narrow .banner { padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1rem; background: var(--bg-muted); border: 1px solid var(--border); font-size: 0.9rem; }
+.card-narrow .banner > *:first-child { margin-top: 0; }
+.card-narrow .banner > *:last-child { margin-bottom: 0; }
+
+.text-muted { color: var(--text-muted); }
+
+/* templates/_macros/markdown_editor.html -- a toolbar + textarea + live preview, used
+by settings/form.html's Messages card and customers/banner.html. */
+.md-editor { margin-bottom: 0.9rem; }
+.md-editor-toolbar { display: flex; gap: 0.3rem; margin-top: 0.3rem; margin-bottom: 0.3rem; }
+.md-editor-btn {
+  background: var(--bg-muted); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.35rem; width: 2rem; height: 2rem;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.md-editor-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* The generic `input, select, textarea { display: block; ... }` rule above has higher
+specificity than the browser's own default `[hidden] { display: none }` UA rule, so
+without this the file input's `hidden` attribute is silently overridden and it renders
+as a visible native "Choose File" control right in the toolbar -- confirmed by actually
+looking at a screenshot, not assumed. */
+.md-editor-file-input { display: none; }
+.md-editor-textarea { margin-top: 0; }
+.md-editor-hint { font-size: 0.8rem; color: var(--text-faint); margin: 0.3rem 0 0.9rem; }
+.md-editor-preview-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+.md-editor-preview {
+  padding: 0.6rem 1rem; border-radius: 6px; background: var(--bg-muted); border: 1px solid var(--border);
+  font-size: 0.9rem; min-height: 1.5rem;
+}
+.md-editor-preview > *:first-child { margin-top: 0; }
+.md-editor-preview > *:last-child { margin-bottom: 0; }
+.md-editor-preview img { max-width: 100%; height: auto; border-radius: 4px; }
+
 table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
 th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
 th { color: var(--text-faint); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }

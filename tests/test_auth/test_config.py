@@ -15,6 +15,8 @@ _OVERRIDDEN = {
     "wsud_signing_private_key_path": "keys/wsud_signing_private.pem",
     "wsud_signing_public_key_path": "keys/wsud_signing_public.pem",
     "sso_encryption_key": "a-real-random-secret-not-the-checked-in-default",
+    "wsud_consent_disclosure_text": "Real, counsel-reviewed consent disclosure text.",
+    "wsud_attestation_text": "Real, counsel-reviewed attestation text.",
 }
 
 
@@ -40,3 +42,17 @@ def test_production_environment_raises_if_any_single_field_still_default(field_l
     settings = Settings(environment="production", **overrides)
     with pytest.raises(RuntimeError, match=field_left_default):
         assert_production_safe(settings)
+
+
+@pytest.mark.parametrize("provider_name", ["textract", "azure_document_intelligence"])
+def test_production_environment_raises_with_unimplemented_ocr_provider(provider_name):
+    # A stub provider's .extract() only ever raises the moment someone uploads a check
+    # image -- this must be caught at startup instead, not left to surface at first use.
+    settings = Settings(environment="production", ocr_provider=provider_name, **_OVERRIDDEN)
+    with pytest.raises(RuntimeError, match="has no working implementation"):
+        assert_production_safe(settings)
+
+
+def test_production_environment_passes_with_tesseract_ocr_provider():
+    settings = Settings(environment="production", ocr_provider="tesseract", **_OVERRIDDEN)
+    assert_production_safe(settings)  # must not raise

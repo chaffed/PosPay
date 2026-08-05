@@ -4,7 +4,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pospay.db.base import Base, new_uuid
@@ -63,3 +63,15 @@ class Customer(Base):
     postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+
+    # Markdown source (validated/normalized at save time by services/message_content.py,
+    # rendered+sanitized at display time by web/templates.py::render_markdown and
+    # domain/tenant.py's identical banner_message column), shown in the same persistent
+    # top-of-page banner as the tenant's own banner_message, but only to this customer's
+    # own scoped users. Genuinely self-service: unlike this table's password_* columns
+    # above (configured by bank staff holding customer:manage, which is masked out of
+    # every customer-scoped session), this is gated by customer_banner:manage, which is
+    # deliberately NOT masked — see auth/permissions.py — so the customer's own login can
+    # set this directly. Text, not a capped String -- see Tenant.banner_message's own
+    # comment for why.
+    banner_message: Mapped[str | None] = mapped_column(Text, nullable=True)

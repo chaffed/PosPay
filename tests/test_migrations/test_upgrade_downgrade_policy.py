@@ -62,6 +62,26 @@ def test_full_upgrade_from_base_succeeds(scratch_db):
     command.upgrade(_alembic_config(), "head")
 
 
+def test_upgrade_does_not_disable_other_loggers(scratch_db):
+    """Regression test: migrations/env.py's fileConfig(alembic.ini) call defaults to
+    disable_existing_loggers=True, which silently sets .disabled = True on every Python
+    logger that already exists at that point and isn't explicitly named in alembic.ini's
+    [loggers] section -- e.g. any pospay.* module logger created by an import that ran
+    before this migration did. That's a standard fileConfig() gotcha (confirmed directly
+    by reproducing it before the fix), not something alembic.ini's [loggers] section is
+    meant to enumerate every application logger to avoid. Once disabled, a logger stays
+    disabled for the rest of the process -- caught here because a real caller
+    (ocr/factory.py's stub-provider warning) depends on its own logger actually firing."""
+    import logging
+
+    logger = logging.getLogger("pospay.some_arbitrary_module_not_in_alembic_ini")
+    assert logger.disabled is False
+
+    command.upgrade(_alembic_config(), "head")
+
+    assert logger.disabled is False
+
+
 class TestMinorVersionsBack:
     HISTORY = {
         "1.0.0": "revA",

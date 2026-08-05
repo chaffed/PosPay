@@ -29,7 +29,7 @@
   </div>
   <form method="get" action="/ui/issued-items">
     <label style="max-width:220px;">Status
-      <select name="status" onchange="this.form.submit()">
+      <select name="status" data-auto-submit>
         <option value="">All</option>
         {% for s in ["outstanding", "paid", "voided", "stopped", "stale"] %}
         <option value="{{ s }}" {{ "selected" if status_filter and status_filter.value == s else "" }}>{{ s }}</option>

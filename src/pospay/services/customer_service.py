@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from pospay.domain.customer import Customer
 from pospay.domain.tenant import Tenant
 from pospay.repositories.customer_repo import CustomerRepository
+from pospay.services import message_content
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,5 +124,24 @@ def set_password_policy(
     customer.password_require_lowercase = require_lowercase
     customer.password_require_number = require_number
     customer.password_require_symbol = require_symbol
+    session.flush()
+    return customer
+
+
+def set_banner_message(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID, *, banner_message: str | None) -> Customer | None:
+    """Markdown source for this customer's own slice of the persistent post-login banner
+    (see Customer.banner_message's own column comment and web/templates.py::
+    render_markdown, which does the actual HTML conversion at display time, not here).
+    Genuinely self-service — see web/routers/customer_banner.py, gated by
+    customer_banner:manage, the one permission in the catalog deliberately not masked out
+    of a customer-scoped session. Blank input normalizes to None (nothing renders).
+    Raises ValueError (via services/message_content.py's validation, which also
+    validates/re-encodes any embedded image) if too long or the image is invalid/oversized."""
+    banner_message = message_content.validate_and_normalize_message(banner_message)
+
+    customer = CustomerRepository(session, tenant_id).get(customer_id)
+    if customer is None:
+        return None
+    customer.banner_message = banner_message
     session.flush()
     return customer

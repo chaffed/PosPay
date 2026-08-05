@@ -8,6 +8,7 @@ from pospay.services.tenant_service import (
     get_tenant_branding_by_id,
     get_tenant_branding_by_slug,
     set_data_export_timeout,
+    set_messages,
     set_password_policy,
     set_session_timeouts,
     update_tenant_branding,
@@ -260,6 +261,55 @@ def test_set_password_policy_rejects_non_positive_min_length(db_session, tenant_
             db_session, tenant.id, min_length=0, require_uppercase=False, require_lowercase=False,
             require_number=False, require_symbol=False,
         )
+
+
+def test_set_messages_updates_tenant(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-messages")
+
+    updated = set_messages(db_session, tenant.id, login_message="**Maintenance** Saturday", banner_message="Tenant notice")
+    db_session.commit()
+
+    assert updated.login_message == "**Maintenance** Saturday"
+    assert updated.banner_message == "Tenant notice"
+
+
+def test_set_messages_blank_input_normalizes_to_none(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-messages-blank")
+    set_messages(db_session, tenant.id, login_message="something", banner_message="something else")
+    db_session.commit()
+
+    updated = set_messages(db_session, tenant.id, login_message="   ", banner_message="")
+    db_session.commit()
+
+    assert updated.login_message is None
+    assert updated.banner_message is None
+
+
+def test_set_messages_rejects_overlong_input(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-messages-overlong")
+
+    with pytest.raises(InvalidTenantSettingsInput):
+        set_messages(db_session, tenant.id, login_message="x" * 500_001, banner_message=None)
+
+
+def test_set_messages_unknown_tenant_returns_none(db_session):
+    import uuid
+
+    assert set_messages(db_session, uuid.uuid4(), login_message="x", banner_message="y") is None
+
+
+def test_tenant_branding_carries_messages(db_session, tenant_factory):
+    tenant, _account, _users = tenant_factory.make(slug="tenant-branding-messages")
+    set_messages(db_session, tenant.id, login_message="Login notice", banner_message="Banner notice")
+    db_session.commit()
+
+    by_id = get_tenant_branding_by_id(db_session, tenant.id)
+    by_slug = get_tenant_branding_by_slug(db_session, tenant.slug)
+
+    assert by_id.login_message == "Login notice"
+    assert by_id.banner_message == "Banner notice"
+    assert by_slug.login_message == "Login notice"
+    assert by_slug.banner_message == "Banner notice"
 
 
 def test_set_password_policy_unknown_tenant_returns_none(db_session):

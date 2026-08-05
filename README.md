@@ -1,5 +1,7 @@
 # PosPay
 
+[![Tests](https://github.com/chaffed/PosPay/actions/workflows/tests.yml/badge.svg)](https://github.com/chaffed/PosPay/actions/workflows/tests.yml)
+
 Multi-tenant positive pay platform (checks + ACH today, extensible to other payment
 networks — see `networks/`) with pluggable OCR and an ML-assisted exception review
 feedback loop.
@@ -27,6 +29,7 @@ prerequisites and step-by-step setup, also available as an in-app guided checkli
 - [Immutable action log](#immutable-action-log)
 - [Authentication](#authentication)
 - [Signing keys](#signing-keys)
+- [Reverse proxy / WAF deployment](#reverse-proxy--waf-deployment)
 - [Postgres](#postgres)
 - [MSSQL](#mssql)
 - [Upgrade and downgrade support](#upgrade-and-downgrade-support)
@@ -212,6 +215,10 @@ full natural size, and (re)writes the PNGs under
 ```bash
 pytest
 ```
+
+`.github/workflows/tests.yml` runs the same suite automatically on every push/PR to
+`main` (Python 3.11 and 3.13, with `tesseract-ocr`/Pango/Cairo installed so the
+OCR- and PDF-export-dependent tests actually run rather than skip).
 
 ## Bulk file uploads
 
@@ -587,6 +594,46 @@ key logs out every active session; rotating the file-signing or audit-log key me
 anything signed under the old key stops re-verifying (fine for a pre-launch system with
 no real history yet — a live system's key-rotation strategy is a separate, deliberately
 out-of-scope design question from this initial hardening pass).
+
+`assert_production_safe` also refuses to start in production for two other
+still-at-their-checked-in-default conditions, unrelated to signing keys:
+
+- **`POSPAY_OCR_PROVIDER` set to a stub.** Only `tesseract` (the default) is a working
+  OCR provider — `textract` and `azure_document_intelligence` both exist as real,
+  installable extras (`pip install pospay[textract]`/`pospay[azure-di]`) but their
+  `.extract()` is a bare `NotImplementedError` (see `ocr/textract_provider.py` /
+  `ocr/azure_di_provider.py`'s own docstrings for what wiring up a real cloud call would
+  need). Without this check, choosing either in production would only fail the moment
+  someone actually uploaded a check image, not at startup.
+- **WSUD e-signature text still at its placeholder default.** `POSPAY_WSUD_CONSENT_
+  DISCLOSURE_TEXT`/`POSPAY_WSUD_ATTESTATION_TEXT` default to placeholder legal language
+  implementing only the *structural* elements the federal E-SIGN Act requires — **not
+  reviewed by a lawyer.** Have your own counsel review and supply real text via those two
+  env vars before relying on this for a real Written Statement of Unauthorized Debit
+  attestation. Changing this text doesn't affect any already-signed statement — each one
+  snapshots exactly what was shown and signed at the time.
+
+## Reverse proxy / WAF deployment
+
+Every request gets a per-IP rate limit (`config.py::rate_limit_per_minute`, 120/minute by
+default; `POST /ui/markdown-preview` has a stricter one of its own on top,
+`markdown_preview_rate_limit_per_minute`, 30/minute by default) — in-memory and
+per-process (`web/rate_limit.py`), matching `scripts/launcher.py`'s single uvicorn
+process with no `workers=N`. A future multi-worker production launch would give each
+worker its own counters, multiplying the effective limit by worker count — worth knowing
+before assuming a configured limit is the actual limit under that kind of deployment.
+
+That per-IP limiting (and the signer IP recorded on a Written Statement of Unauthorized
+Debit attestation, `web/routers/wsud.py`) both resolve "the caller's IP" via
+`web/client_ip.py::get_client_ip`, which by default trusts nothing but the direct TCP
+connection. Deployed behind a reverse proxy or WAF, every request's direct connection is
+actually the proxy's own address — set `POSPAY_TRUSTED_PROXY_COUNT` to the number of
+proxy hops in front of the app (usually `1`) so it instead trusts exactly that many
+entries from the *right* end of the `X-Forwarded-For` header — the hop your own proxy
+chain appended, never a client-supplied value further left in the chain, which is
+trivially spoofable. Leaving this at its default of `0` is the safe choice for a direct,
+non-proxied deployment; setting it too high behind a thinner proxy chain than configured
+would start trusting a header value the client itself controls.
 
 ## Postgres
 

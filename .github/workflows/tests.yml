@@ -1,0 +1,43 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Lower bound of pyproject.toml's requires-python, plus the version this repo is
+        # actually developed against — not a full matrix of everything in between.
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          # tesseract-ocr: the default (and only fully working) OCR provider.
+          # libpango-1.0-0/libcairo2: WeasyPrint's native deps for the documentation PDF
+          # export -- without these, tests/test_web/test_docs_pdf.py just skips itself
+          # (see weasyprint_usable()), so installing them here means CI actually exercises
+          # that code path instead of perpetually skipping it.
+          sudo apt-get install -y tesseract-ocr libpango-1.0-0 libcairo2
+
+      - name: Install PosPay (dev + pdf extras)
+        run: pip install -e ".[dev,pdf]"
+
+      - name: Run tests
+        run: pytest

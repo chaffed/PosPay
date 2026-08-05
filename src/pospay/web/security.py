@@ -24,11 +24,19 @@ MFA_COOKIE_PATH = "/ui/login/webauthn"
 SSO_STATE_COOKIE_PATH = "/ui/login/sso"
 
 
-def _secure_cookies() -> bool:
-    # `Secure` requires HTTPS. Local dev serves over plain http://127.0.0.1, so this is
-    # tied to the configured origin's scheme rather than hardcoded — correct in both cases
-    # without a separate "are we in prod" flag.
+def is_https_deployment() -> bool:
+    # Whether this deployment is actually served over HTTPS — local dev serves over plain
+    # http://127.0.0.1, so this is tied to the configured origin's scheme rather than
+    # hardcoded, correct in both cases without a separate "are we in prod" flag. Also used
+    # by web/security_headers.py to decide whether to send Strict-Transport-Security
+    # (sending it for a plain-HTTP-only deployment would be actively wrong, not just inert
+    # — it tells the browser to *refuse* future plain-HTTP connections to this host).
     return get_settings().webauthn_origin.startswith("https://")
+
+
+def _secure_cookies() -> bool:
+    # `Secure` requires HTTPS.
+    return is_https_deployment()
 
 
 def set_access_cookie(response: Response, token: str) -> None:

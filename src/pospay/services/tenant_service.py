@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pospay.domain.tenant import Tenant
+from pospay.services import message_content
 from pospay.web.branding_storage import save_tenant_asset
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -56,6 +57,11 @@ class TenantBranding:
     city: str | None
     state: str | None
     postal_code: str | None
+    # Markdown source, rendered via web/templates.py::render_markdown at display time —
+    # see Tenant's own column comments. Carried here (not just TenantContext) so
+    # login_message renders pre-login, the same reason contact info above is.
+    login_message: str | None
+    banner_message: str | None
 
 
 def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
@@ -77,6 +83,8 @@ def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
         city=tenant.city,
         state=tenant.state,
         postal_code=tenant.postal_code,
+        login_message=tenant.login_message,
+        banner_message=tenant.banner_message,
     )
 
 
@@ -256,6 +264,31 @@ def set_password_policy(
     tenant.password_require_lowercase = require_lowercase
     tenant.password_require_number = require_number
     tenant.password_require_symbol = require_symbol
+    session.flush()
+    return tenant
+
+
+def set_messages(
+    session: Session, tenant_id: uuid.UUID, *, login_message: str | None, banner_message: str | None
+) -> Tenant | None:
+    """Markdown source for the pre-login notice (login_message) and the persistent
+    post-login banner (banner_message) — see Tenant's own column comments and
+    web/templates.py::render_markdown, which does the actual HTML conversion/sanitization
+    at display time, not here. Blank input normalizes to None (nothing renders) rather
+    than storing an empty string. Raises InvalidTenantSettingsInput (via
+    services/message_content.py's validation, which also validates/re-encodes any
+    embedded image) if either is too long or contains an invalid/oversized image."""
+    try:
+        login_message = message_content.validate_and_normalize_message(login_message)
+        banner_message = message_content.validate_and_normalize_message(banner_message)
+    except message_content.InvalidMessageContent as exc:
+        raise InvalidTenantSettingsInput(str(exc)) from exc
+
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        return None
+    tenant.login_message = login_message
+    tenant.banner_message = banner_message
     session.flush()
     return tenant
 

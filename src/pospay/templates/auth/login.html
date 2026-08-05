@@ -14,6 +14,7 @@
     {% else %}PosPay{% endif %}
   </h1>
   {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  {% if branding and branding.login_message %}<div class="banner">{{ branding.login_message | render_markdown }}</div>{% endif %}
 
   {% if sso_connections %}
   <div class="sso-buttons">

@@ -16,7 +16,15 @@ import pospay.domain  # noqa: F401
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False: fileConfig()'s own default (True) silently sets
+    # .disabled = True on every Python logger that already exists at this point and
+    # isn't explicitly named in alembic.ini's [loggers] section -- e.g. any
+    # pospay.* module logger created by an import that happened to run before this
+    # migration did (confirmed directly: pospay.ocr.factory's logger goes from
+    # enabled to permanently disabled for the rest of the process). That's a
+    # standard, well-documented fileConfig() gotcha, not something alembic.ini's own
+    # [loggers] section is meant to enumerate every application logger to avoid.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 

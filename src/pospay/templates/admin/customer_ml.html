@@ -34,7 +34,7 @@
           <form method="post" action="/ui/admin/customers/{{ customer.id }}/ml/mode" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="network_code" value="{{ row.network_code }}">
-            <select name="mode" onchange="this.form.requestSubmit()">
+            <select name="mode" data-auto-submit="request">
               {% for m in modes %}
               <option value="{{ m.value }}" {{ "selected" if m == row.mode else "" }}>{{ m.value | capitalize }}</option>
               {% endfor %}

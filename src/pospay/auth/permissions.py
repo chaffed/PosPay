@@ -44,6 +44,12 @@ PERMISSION_CATALOG: dict[str, str] = {
     "ml_training_example:write": "Submit or retract known-fraud training examples for the ML model",
     "end_user_documentation:read": "View the End User documentation",
     "admin_documentation:read": "View the Bank Administrator documentation",
+    # Deliberately NOT in CUSTOMER_SCOPE_MASKED_PERMISSIONS below -- unlike customer:manage
+    # (which a customer-scoped session can never hold, regardless of what its security
+    # group nominally contains), this one is meant to be held and exercised by a
+    # customer's own scoped users. This is the first genuinely customer-self-service
+    # permission in the catalog -- see web/routers/customer_banner.py.
+    "customer_banner:manage": "Manage this customer's own banner message",
 }
 
 # Masked out of TenantContext.permissions whenever the active membership is

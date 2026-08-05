@@ -3,6 +3,7 @@
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -110,6 +111,54 @@ def test_reset_demo_tenant_never_touches_a_different_tenant(db_session, monkeypa
     assert before == after == 1
     # And the real tenant's own admin user must still exist untouched too.
     assert db_session.get(User, real_users["admin"].id) is not None
+
+
+def test_reset_demo_tenant_purges_on_disk_files(db_session, monkeypatch):
+    _configure_demo_password(monkeypatch)
+    tenant = demo_tenant_service.ensure_demo_tenant(db_session)
+    settings = get_settings()
+
+    check_image_dir = Path(settings.check_image_storage_dir) / str(tenant.id)
+    check_image_dir.mkdir(parents=True, exist_ok=True)
+    check_image_path = check_image_dir / "some_check_front.png"
+    check_image_path.write_bytes(b"fake-check-image-bytes")
+
+    bulk_upload_dir = Path(settings.bulk_upload_storage_dir) / str(tenant.id)
+    bulk_upload_dir.mkdir(parents=True, exist_ok=True)
+    bulk_upload_path = bulk_upload_dir / "some_upload.csv"
+    bulk_upload_path.write_text("check_number,amount\n")
+
+    tenant_asset_dir = Path(settings.tenant_asset_storage_dir) / str(tenant.id)
+    tenant_asset_dir.mkdir(parents=True, exist_ok=True)
+    tenant_asset_path = tenant_asset_dir / "logo.png"
+    tenant_asset_path.write_bytes(b"fake-logo-bytes")
+
+    # seed_demo_content trains a real per-customer model -- its artifact is a genuine file
+    # on disk (ml/registry.py::ArtifactStore), not tenant-subdirectory-scoped like the
+    # three above, so it needs its own, separately-verified cleanup path.
+    old_model = db_session.query(MlModel).filter(MlModel.network_code == "check", MlModel.customer_id.is_not(None)).one()
+    old_artifact_path = Path(old_model.artifact_path)
+    assert old_artifact_path.exists()
+
+    demo_tenant_service.reset_demo_tenant(db_session)
+
+    assert not check_image_path.exists()
+    assert not check_image_dir.exists()
+    assert not bulk_upload_path.exists()
+    assert not bulk_upload_dir.exists()
+    assert not tenant_asset_path.exists()
+    assert not tenant_asset_dir.exists()
+    assert not old_artifact_path.exists()
+
+
+def test_reset_demo_tenant_file_purge_is_safe_when_nothing_was_ever_uploaded(db_session, monkeypatch):
+    # No check images/bulk uploads/branding assets exist for a first-ever reset (they're
+    # only ever created by real usage, never seeded) -- the purge must not raise just
+    # because a directory it looks for was never created.
+    _configure_demo_password(monkeypatch)
+    demo_tenant_service.ensure_demo_tenant(db_session)
+
+    demo_tenant_service.reset_demo_tenant(db_session)  # must not raise
 
 
 def test_maybe_reset_if_demo_idle_by_slug_noop_for_non_demo_tenant(db_session, tenant_factory):

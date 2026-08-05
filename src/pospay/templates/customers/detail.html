@@ -90,6 +90,17 @@
     — never a weaker one.</p>
 </div>
 
+{% if can(ctx, "customer_banner:manage") %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Banner Message</h1>
+    <a href="/ui/customers/{{ customer.id }}/banner" class="button secondary">{{ icon("tune") }}Manage</a>
+  </div>
+  <p>Shown in a persistent banner at the top of every page to this customer's own logged-in
+    users — self-service, this customer's own staff can also set it directly.</p>
+</div>
+{% endif %}
+
 {% if can(ctx, "data_export:run") %}
 <div class="card">
   <div class="toolbar">

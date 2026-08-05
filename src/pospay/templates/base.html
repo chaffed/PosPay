@@ -19,6 +19,7 @@
     {% endmacro %}
     {% set show_ach_return_reasons = can(ctx, "ach_return_reason:manage") %}
     {% set show_wsud = ctx.customer_id is not none and can(ctx, "wsud:sign") %}
+    {% set show_customer_banner = ctx.customer_id is not none and can(ctx, "customer_banner:manage") %}
     {% set show_org_section = can(ctx, "customer:manage") or can(ctx, "admin:manage") or can(ctx, "user:manage")
         or can(ctx, "security_group:manage") or can(ctx, "tenant:manage") or can(ctx, "audit_log:read") %}
     {% set show_end_user_docs = can(ctx, "end_user_documentation:read") %}
@@ -50,6 +51,7 @@
         <p class="nav-section">Review</p>
         {{ nav_link("/ui/exceptions", "Exceptions", "flag") }}
         {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement", "gavel") }}{% endif %}
+        {% if show_customer_banner %}{{ nav_link("/ui/customers/" ~ ctx.customer_id ~ "/banner", "Banner Message", "campaign") }}{% endif %}
         {% if can(ctx, "ml_training_example:write") %}{{ nav_link("/ui/ml-training/fraud-examples", "Fraud Training Data", "model_training") }}{% endif %}
 
         {% if show_org_section %}
@@ -79,12 +81,13 @@
 
     <div class="page" id="main-content">
       {% include "partials/_flash.html" %}
+      {% include "partials/_banner.html" %}
       {% set has_help = self.help_body()|trim %}
       <div class="page-controls">
         <form method="post" action="/ui/theme" class="inline-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <input type="hidden" name="next" value="{{ request.url.path }}{{ ('?' + request.url.query) if request.url.query else '' }}">
-          <select name="theme" class="theme-select" onchange="this.form.submit()" aria-label="Color theme">
+          <select name="theme" class="theme-select" data-auto-submit aria-label="Color theme">
             <option value="system" {{ "selected" if not theme else "" }}>System</option>
             <option value="light" {{ "selected" if theme == "light" else "" }}>Light</option>
             <option value="dark" {{ "selected" if theme == "dark" else "" }}>Dark</option>

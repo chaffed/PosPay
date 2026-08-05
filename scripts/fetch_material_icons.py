@@ -83,6 +83,11 @@ ICONS: dict[str, str] = {
     "notifications": "button: Notification preferences link",
     "zoom_in": "docs: mermaid diagram zoom-in control",
     "zoom_out": "docs: mermaid diagram zoom-out control",
+    "campaign": "nav: Banner Message (customer-scoped self-service)",
+    "format_bold": "markdown editor: Bold toolbar button",
+    "format_italic": "markdown editor: Italic toolbar button",
+    "link": "markdown editor: Insert link toolbar button",
+    "format_list_bulleted": "markdown editor: Bulleted list toolbar button",
 }
 
 

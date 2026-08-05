@@ -15,6 +15,7 @@ from pospay.services import audit_log_service
 from pospay.services.tenant_service import (
     InvalidTenantSettingsInput,
     set_data_export_timeout,
+    set_messages,
     set_password_policy,
     set_require_dual_control,
     set_session_timeouts,
@@ -70,6 +71,8 @@ def settings_form(
         city=tenant.city,
         state=tenant.state,
         postal_code=tenant.postal_code,
+        login_message=tenant.login_message or "",
+        banner_message=tenant.banner_message or "",
         **_password_policy_kwargs(tenant),
     )
 
@@ -347,6 +350,56 @@ def update_password_policy(
             channel="web",
             action="tenant.update_password_policy",
             summary=f"Updated password policy (min length: {tenant.password_min_length})",
+            resource_type="tenant",
+            resource_id=ctx.tenant_id,
+        )
+    db.commit()
+    return RedirectResponse("/ui/settings?flash=Settings+updated.", status_code=303)
+
+
+@router.post("/messages")
+def update_messages(
+    request: Request,
+    login_message: str = Form(""),
+    banner_message: str = Form(""),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("tenant:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> HTMLResponse:
+    try:
+        tenant = set_messages(db, ctx.tenant_id, login_message=login_message, banner_message=banner_message)
+    except InvalidTenantSettingsInput as exc:
+        db.rollback()
+        current = db.get(Tenant, ctx.tenant_id)
+        settings = get_settings()
+        return render_template(
+            request,
+            "settings/form.html",
+            ctx=ctx,
+            tenant_display_name=ctx.tenant_name,
+            accent_color=ctx.accent_color or "",
+            require_dual_control=current.require_dual_control,
+            access_token_expire_minutes=current.access_token_expire_minutes,
+            refresh_token_expire_minutes=current.refresh_token_expire_minutes,
+            default_access_token_expire_minutes=settings.jwt_access_token_expire_minutes,
+            default_refresh_token_expire_minutes=settings.jwt_refresh_token_expire_minutes,
+            data_export_timeout_seconds=current.data_export_timeout_seconds,
+            default_data_export_timeout_seconds=settings.data_export_timeout_seconds,
+            error=str(exc),
+            status_code=422,
+            login_message=login_message,
+            banner_message=banner_message,
+            **_password_policy_kwargs(current),
+        )
+
+    if tenant is not None:
+        audit_log_service.record_action(
+            db,
+            ctx.tenant_id,
+            actor_user_id=ctx.user_id,
+            channel="web",
+            action="tenant.update_messages",
+            summary="Updated login/banner messages",
             resource_type="tenant",
             resource_id=ctx.tenant_id,
         )

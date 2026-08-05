@@ -5,14 +5,17 @@
 self-service attestation that one or more of the customer's own consumer-SEC-code ACH
 debits, already returned, were unauthorized. See domain/wsud_statement.py.
 
-IMPORTANT — NOT LEGAL ADVICE: CONSENT_DISCLOSURE_TEXT and ATTESTATION_TEXT below are
-placeholder legal language implementing the *structural* elements the federal E-SIGN
-Act (15 U.S.C. § 7001) requires for consumer e-signatures — a disclosure the consumer
-must affirmatively consent to before signing (right to a paper copy, how to withdraw
-consent, hardware/software needed), a distinct signing act, and tamper-evident
-retention of exactly what was shown and signed. This has not been reviewed by a
-lawyer. A bank deploying this should have its own counsel review and, if needed,
-replace this text before relying on it."""
+IMPORTANT — NOT LEGAL ADVICE: get_consent_disclosure_text()/get_attestation_text()
+below read config.py's wsud_consent_disclosure_text/wsud_attestation_text settings,
+whose checked-in defaults are placeholder legal language implementing the *structural*
+elements the federal E-SIGN Act (15 U.S.C. § 7001) requires for consumer e-signatures —
+a disclosure the consumer must affirmatively consent to before signing (right to a
+paper copy, how to withdraw consent, hardware/software needed), a distinct signing
+act, and tamper-evident retention of exactly what was shown and signed. This has not
+been reviewed by a lawyer. A bank deploying this should have its own counsel review
+and supply real text via those two settings before relying on it —
+config.py::assert_production_safe refuses to start at all with the defaults still in
+place when environment="production"."""
 
 import uuid
 from dataclasses import dataclass
@@ -35,28 +38,20 @@ from pospay.domain.wsud_statement_transaction import WsudStatementTransaction
 # Corporate codes (CCD, CTX, ...) are deliberately excluded: a WSUD is a consumer remedy.
 CONSUMER_SEC_CODES: frozenset[str] = frozenset({"PPD", "WEB", "TEL", "ARC", "BOC", "POP", "RCC"})
 
+# Bumped whenever the *structure* of the disclosure changes in a way worth labeling
+# distinctly (not on every wording tweak to the settings-backed text above — the
+# cryptographic signature is over the actual statement_text_snapshot either way, so an
+# out-of-sync version label is a labeling nicety, not an integrity issue).
 CONSENT_DISCLOSURE_VERSION = "2026-07-30"
 
-CONSENT_DISCLOSURE_TEXT = (
-    "Before you sign electronically, please review: (1) You have the right to request a "
-    "paper copy of this statement instead of signing electronically — contact your "
-    "financial institution to request one. (2) You may withdraw your consent to sign "
-    "electronically at any time before signing, with no effect on your ability to dispute "
-    "the transaction(s) below through other means. (3) Signing electronically requires a "
-    "device capable of displaying this page and retaining or printing a copy for your "
-    "records; by proceeding, you confirm you can access this statement in this format. "
-    "(4) This consent applies only to this specific statement, not to other documents. "
-    "By checking the box below, you affirmatively consent to sign this statement "
-    "electronically instead of on paper."
-)
 
-ATTESTATION_TEXT = (
-    "I certify that the ACH debit transaction(s) listed and selected below were not "
-    "authorized by me, and I did not authorize the originator to debit my account for "
-    "these transactions. I understand this statement may be relied upon by my financial "
-    "institution to process a return of these transactions, and that I am making this "
-    "statement under penalty of perjury."
-)
+def get_consent_disclosure_text() -> str:
+    return get_settings().wsud_consent_disclosure_text
+
+
+def get_attestation_text() -> str:
+    return get_settings().wsud_attestation_text
+
 
 _FIELD_SEPARATOR = "\x1f"
 
@@ -171,6 +166,7 @@ def sign_wsud_statement(
         if txn_id not in eligible_ids:
             raise ValueError("One or more selected transactions are no longer eligible for a WSUD statement.")
 
+    attestation_text = get_attestation_text()
     signed_at = datetime.now(timezone.utc)
     fields_bytes = _canonical_fields(
         tenant_id=tenant_id,
@@ -179,7 +175,7 @@ def sign_wsud_statement(
         signer_typed_name=signer_typed_name,
         ach_transaction_ids=ach_transaction_ids,
         consent_disclosure_version=CONSENT_DISCLOSURE_VERSION,
-        statement_text=ATTESTATION_TEXT,
+        statement_text=attestation_text,
         signed_at=signed_at,
     )
 
@@ -191,7 +187,7 @@ def sign_wsud_statement(
         signer_ip_address=signer_ip_address,
         signer_user_agent=signer_user_agent,
         consent_disclosure_version=CONSENT_DISCLOSURE_VERSION,
-        statement_text_snapshot=ATTESTATION_TEXT,
+        statement_text_snapshot=attestation_text,
         signed_at=signed_at,
         signature_hex=_sign(fields_bytes),
     )

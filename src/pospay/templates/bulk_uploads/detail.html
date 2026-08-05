@@ -46,9 +46,9 @@
        or (record.kind.value == "check_images" and can(ctx, "check_image:write") and can(ctx, "paid_item:write")) %}
     {% if tracked_records %}
       {% if can_back_out %}
-      <form method="post" action="/ui/bulk-uploads/{{ record.id }}/back-out" class="inline-form">
+      <form method="post" action="/ui/bulk-uploads/{{ record.id }}/back-out" class="inline-form" data-confirm="Back out this upload? Everything it created that can still safely be reversed will be voided, deactivated, or reversed.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="secondary" onclick="return confirm('Back out this upload? Everything it created that can still safely be reversed will be voided, deactivated, or reversed.')">{{ icon("undo") }}Back out this upload</button>
+        <button type="submit" class="secondary">{{ icon("undo") }}Back out this upload</button>
       </form>
       {% endif %}
     {% else %}

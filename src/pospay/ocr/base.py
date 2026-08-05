@@ -22,3 +22,12 @@ class OCRProvider(Protocol):
     name: str
 
     def extract(self, image_bytes: bytes, *, image_format: str = "png") -> OCRResult: ...
+
+
+# Provider names (config.py's `ocr_provider` setting) whose .extract() is a bare
+# `raise NotImplementedError` -- see textract_provider.py / azure_di_provider.py's own
+# docstrings for what a real implementation would need. Kept here rather than in
+# factory.py so config.py::assert_production_safe can check it without importing
+# factory.py (which imports config.py itself -- that'd be a cycle) or constructing a
+# provider (which would require its optional extra just to answer "is this a stub").
+UNIMPLEMENTED_PROVIDERS: frozenset[str] = frozenset({"textract", "azure_document_intelligence"})

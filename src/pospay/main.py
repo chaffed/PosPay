@@ -12,8 +12,11 @@ from fastapi.staticfiles import StaticFiles
 
 from pospay.api.v1.router import api_router
 from pospay.config import assert_production_safe, get_settings
+from pospay.web.client_ip import get_client_ip
 from pospay.web.deps import WebAuthRequired, WebForbidden, WebNotFound, render_template
+from pospay.web.rate_limit import limiter
 from pospay.web.router import web_router
+from pospay.web.security_headers import apply_security_headers, new_csp_nonce
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _DOCS_SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "docs" / "screenshots"
@@ -83,6 +86,34 @@ def create_app() -> FastAPI:
             if declared_size is not None and declared_size > get_settings().max_request_body_bytes:
                 return PlainTextResponse("Request body too large", status_code=status.HTTP_413_CONTENT_TOO_LARGE)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def _rate_limit_global(request: Request, call_next):
+        # A blanket per-IP safety net across every route -- see web/rate_limit.py for the
+        # in-memory sliding-window design and web/client_ip.py for how the IP itself is
+        # resolved (direct connection by default; trusts X-Forwarded-For only if
+        # POSPAY_TRUSTED_PROXY_COUNT says a reverse proxy/WAF is actually in front of
+        # this). Individual routes (e.g. /ui/markdown-preview) can layer a stricter limit
+        # of their own on top via web.rate_limit.rate_limit(), tracked as a separate
+        # bucket under the same client key.
+        client_ip = get_client_ip(request) or "unknown"
+        if not limiter.allow(client_ip, "global", limit=get_settings().rate_limit_per_minute, window_seconds=60.0):
+            return PlainTextResponse("Too many requests -- please slow down.", status_code=status.HTTP_429_TOO_MANY_REQUESTS)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        # Registered last, deliberately: Starlette's middleware stack wraps in reverse
+        # registration order, so the last one registered here is outermost -- it sets
+        # request.state.csp_nonce before either middleware above (or the route handler)
+        # ever runs, so a template rendered deep inside can always find it, and it gets
+        # to add headers to whatever response comes back out -- a normal page, a 429 from
+        # the rate limiter above, a 413 from the body-size guard, or an exception-handler
+        # response -- not just the happy path.
+        request.state.csp_nonce = new_csp_nonce()
+        response = await call_next(request)
+        apply_security_headers(request, response)
+        return response
 
     app.include_router(api_router)
     app.include_router(web_router)

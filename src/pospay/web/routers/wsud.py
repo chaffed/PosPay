@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.services import audit_log_service, customer_service, wsud_service
+from pospay.web.client_ip import get_client_ip
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
@@ -42,8 +43,8 @@ def wsud_sign_page(
         ctx=ctx,
         eligible=eligible,
         statements=statements,
-        consent_disclosure_text=wsud_service.CONSENT_DISCLOSURE_TEXT,
-        attestation_text=wsud_service.ATTESTATION_TEXT,
+        consent_disclosure_text=wsud_service.get_consent_disclosure_text(),
+        attestation_text=wsud_service.get_attestation_text(),
     )
 
 
@@ -69,8 +70,8 @@ def wsud_sign_submit(
             ctx=ctx,
             eligible=eligible,
             statements=statements,
-            consent_disclosure_text=wsud_service.CONSENT_DISCLOSURE_TEXT,
-            attestation_text=wsud_service.ATTESTATION_TEXT,
+            consent_disclosure_text=wsud_service.get_consent_disclosure_text(),
+            attestation_text=wsud_service.get_attestation_text(),
             error=error,
             status_code=422,
         )
@@ -88,7 +89,7 @@ def wsud_sign_submit(
             signed_by_user_id=ctx.user_id,
             signer_typed_name=signer_typed_name,
             ach_transaction_ids=[uuid.UUID(i) for i in ach_transaction_ids],
-            signer_ip_address=request.client.host if request.client else None,
+            signer_ip_address=get_client_ip(request),
             signer_user_agent=request.headers.get("user-agent"),
         )
     except ValueError as exc:

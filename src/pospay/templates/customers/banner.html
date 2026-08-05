@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros/icon.html" import icon %}
+{% from "_macros/markdown_editor.html" import markdown_editor %}
+{% block title %}Banner Message — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About the banner message{% endblock %}
+{% block help_body %}
+<p>Shown in a persistent banner at the top of every page to this customer's own
+  logged-in users. If this organization's own bank-wide message is also set, the two
+  rotate in a carousel — the organization's shows first.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="toolbar">
+    <h1>Banner Message — {{ customer.name }}</h1>
+    {% if can(ctx, "customer:manage") %}
+    <a href="/ui/customers/{{ customer.id }}" class="button secondary">{{ icon("arrow_back") }}Back to customer</a>
+    {% endif %}
+  </div>
+  {% if error %}<p class="flash flash-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/ui/customers/{{ customer.id }}/banner">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {{ markdown_editor("banner_message", banner_message, label="Banner message") }}
+    <button type="submit">{{ icon("save") }}Save</button>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/markdown-editor.js"></script>
+{% endblock %}

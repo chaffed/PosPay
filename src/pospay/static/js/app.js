@@ -7,10 +7,68 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // A <select>/<input> with data-auto-submit submits its enclosing form on change --
+  // used instead of an inline onchange="..." attribute so the app can run a strict,
+  // nonce-based script-src Content-Security-Policy (see web/security_headers.py) with no
+  // 'unsafe-inline'. data-auto-submit="request" uses requestSubmit() instead of submit()
+  // where a route relies on the submit button/native validation running (submit() skips
+  // both); plain data-auto-submit uses the plain, no-validation submit().
+  document.querySelectorAll("[data-auto-submit]").forEach((el) => {
+    el.addEventListener("change", () => {
+      if (el.dataset.autoSubmit === "request") {
+        el.form.requestSubmit();
+      } else {
+        el.form.submit();
+      }
+    });
+  });
+
   initSortableTables();
   initHelpDialog();
   initNavToggle();
+  initBannerCarousel();
 });
+
+// templates/partials/_banner.html renders one .banner-slide per message that's actually
+// set (tenant's own, and/or the logged-in user's own customer's) -- 0 or 1 slides need no
+// rotation at all (a no-op here; CSS shows the lone slide, if any, on its own). With 2,
+// auto-advance between them (tenant's shows first, per _banner.html's own slide order),
+// looping indefinitely; the dots are clickable and reset the timer on manual pick rather
+// than fighting it. Uses inline style.display (not a CSS "hide unless .active" rule) so a
+// single-slide carousel still renders correctly with zero JS/CSS coordination needed.
+function initBannerCarousel() {
+  document.querySelectorAll("[data-banner-carousel]").forEach((carousel) => {
+    const slides = Array.from(carousel.querySelectorAll(".banner-slide"));
+    const dots = Array.from(carousel.querySelectorAll(".banner-dot"));
+    if (slides.length < 2) return;
+
+    let current = 0;
+    let timer = null;
+
+    const show = (index) => {
+      current = index;
+      slides.forEach((slide, i) => {
+        slide.style.display = i === index ? "" : "none";
+      });
+      dots.forEach((dot, i) => dot.classList.toggle("active", i === index));
+    };
+
+    const startAutoAdvance = () => {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => show((current + 1) % slides.length), 8000);
+    };
+
+    dots.forEach((dot, i) => {
+      dot.addEventListener("click", () => {
+        show(i);
+        startAutoAdvance();
+      });
+    });
+
+    show(0);
+    startAutoAdvance();
+  });
+}
 
 // Mobile-only hamburger toggle (see base.html's .sidenav-header / #sidenav-panel and
 // app.css's @media (max-width: 720px) rules) -- the button and panel only exist so this

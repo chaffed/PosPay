@@ -48,7 +48,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/webauthn.js"></script>
-<script>
+<script nonce="{{ request.state.csp_nonce }}">
   const errorEl = document.getElementById("register-error");
   document.getElementById("register-btn").addEventListener("click", () => {
     errorEl.style.display = "none";

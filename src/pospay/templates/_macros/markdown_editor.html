@@ -1,0 +1,23 @@
+{% from "_macros/icon.html" import icon %}
+{% macro markdown_editor(name, value, label=None, rows=4) %}
+{# static/js/markdown-editor.js finds every [data-markdown-editor] on the page and wires
+up its toolbar/image-insert/live-preview -- no id needed for that (scoped by
+querySelector within this one wrapper). The textarea itself does get an id, so its
+<label> (a real, separate element -- not wrapping the toolbar buttons, which would make
+every button click-through to the textarea too) can reference it properly. #}
+<div class="md-editor" data-markdown-editor>
+  {% if label %}<label for="{{ name }}-field">{{ label }}</label>{% endif %}
+  <div class="md-editor-toolbar" role="toolbar" aria-label="Formatting">
+    <button type="button" class="md-editor-btn" data-md-action="bold" aria-label="Bold">{{ icon("format_bold") }}</button>
+    <button type="button" class="md-editor-btn" data-md-action="italic" aria-label="Italic">{{ icon("format_italic") }}</button>
+    <button type="button" class="md-editor-btn" data-md-action="link" aria-label="Insert link">{{ icon("link") }}</button>
+    <button type="button" class="md-editor-btn" data-md-action="list" aria-label="Bulleted list">{{ icon("format_list_bulleted") }}</button>
+    <button type="button" class="md-editor-btn" data-md-action="image" aria-label="Insert image">{{ icon("image") }}</button>
+    <input type="file" class="md-editor-file-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+  </div>
+  <textarea id="{{ name }}-field" name="{{ name }}" class="md-editor-textarea" maxlength="500000" rows="{{ rows }}">{{ value or "" }}</textarea>
+  <p class="md-editor-hint">Markdown supported. Images: PNG/JPEG/GIF/WEBP, 150 KB or smaller.</p>
+  <div class="md-editor-preview-label">Preview</div>
+  <div class="md-editor-preview" aria-live="polite"></div>
+</div>
+{% endmacro %}

@@ -49,6 +49,20 @@ def isolated_filesystem_settings(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """web/rate_limit.py's limiter is one process-wide singleton, shared by every test in
+    this run -- and Starlette's TestClient reports the same synthetic client address for
+    every request, so without resetting between tests, the global per-IP limit
+    (main.py's middleware, applied to every request) would silently exhaust itself partway
+    through the suite and every web test after that would start failing with 429s."""
+    from pospay.web.rate_limit import limiter
+
+    limiter._hits.clear()
+    yield
+    limiter._hits.clear()
+
+
 @pytest.fixture
 def engine():
     engine = create_engine(

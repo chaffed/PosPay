@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros/icon.html" import icon %}
+{% from "_macros/markdown_editor.html" import markdown_editor %}
 {% block title %}Settings — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About organization settings{% endblock %}
 {% block help_body %}
@@ -108,6 +109,20 @@
   </div>
 
   <div class="card">
+    <h2>Messages</h2>
+    <p>Login message shows on this organization's own login page, before signing in.
+      Banner message shows in a persistent banner at the top of every page once logged
+      in, to everyone in this organization — if a customer-scoped user also has their own
+      customer's banner message set, the two rotate in a carousel, this one first.</p>
+    <form method="post" action="/ui/settings/messages">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {{ markdown_editor("login_message", login_message, label="Login message") }}
+      {{ markdown_editor("banner_message", banner_message, label="Banner message") }}
+      <button type="submit">{{ icon("save") }}Save</button>
+    </form>
+  </div>
+
+  <div class="card">
     <h2>Contact info</h2>
     <form method="post" action="/ui/settings/contact">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -161,4 +176,7 @@
   <p>No files auto-imported yet.</p>
   {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/markdown-editor.js"></script>
 {% endblock %}

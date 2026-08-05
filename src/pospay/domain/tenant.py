@@ -4,7 +4,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pospay.db.base import Base, new_uuid
@@ -77,3 +77,16 @@ class Tenant(Base):
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     state: Mapped[str | None] = mapped_column(String(50), nullable=True)
     postal_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Markdown source (validated/normalized at save time by services/message_content.py,
+    # rendered+sanitized at display time by web/templates.py::render_markdown), never raw
+    # HTML. login_message shows on this tenant's own login page (templates/auth/login.html,
+    # resolved pre-auth via TenantBranding) — e.g. scheduled-maintenance notices.
+    # banner_message shows in the persistent banner at the top of every page once logged
+    # in (templates/partials/_banner.html), to every one of this tenant's users, bank-wide
+    # and customer-scoped alike. Both nullable: unset means nothing renders. Text, not a
+    # capped String -- a message may embed a small base64-encoded image
+    # (services/message_content.py); the real size limits (150KB/image, 500KB/message)
+    # are enforced in Python, not the column type.
+    login_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    banner_message: Mapped[str | None] = mapped_column(Text, nullable=True)

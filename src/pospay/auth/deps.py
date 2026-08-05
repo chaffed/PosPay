@@ -90,6 +90,7 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
 
     permissions = frozenset(group.permissions)
     customer_name: str | None = None
+    customer_banner_message: str | None = None
     if customer_id is not None:
         # Masked regardless of what the security group nominally contains — see
         # auth/permissions.py::CUSTOMER_SCOPE_MASKED_PERMISSIONS.
@@ -98,6 +99,7 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         if customer is None or not customer.is_active:
             raise AccessRevoked("Customer no longer exists")
         customer_name = customer.name
+        customer_banner_message = customer.banner_message
 
     ctx = TenantContext(
         tenant_id=tenant_id,
@@ -121,6 +123,8 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         city=branding.city,
         state=branding.state,
         postal_code=branding.postal_code,
+        banner_message=branding.banner_message,
+        customer_banner_message=customer_banner_message,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting

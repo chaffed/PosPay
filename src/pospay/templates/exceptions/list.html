@@ -19,14 +19,14 @@
   <h1>Exceptions Queue</h1>
   <form method="get" action="/ui/exceptions" class="toolbar">
     <label style="max-width:180px;">Network
-      <select name="network_code" onchange="this.form.submit()">
+      <select name="network_code" data-auto-submit>
         <option value="">All</option>
         <option value="check" {{ "selected" if network_filter == "check" else "" }}>Check</option>
         <option value="ach" {{ "selected" if network_filter == "ach" else "" }}>ACH</option>
       </select>
     </label>
     <label style="max-width:220px;">Status
-      <select name="status" onchange="this.form.submit()">
+      <select name="status" data-auto-submit>
         <option value="">All</option>
         {% for s in ["open", "pending_approval", "pay", "return", "escalated", "withdrawn"] %}
         <option value="{{ s }}" {{ "selected" if status_filter and status_filter.value == s else "" }}>{{ s }}</option>

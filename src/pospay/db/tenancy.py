@@ -61,3 +61,14 @@ class TenantContext:
     city: str | None = None
     state: str | None = None
     postal_code: str | None = None
+
+    # Markdown source for templates/partials/_banner.html's persistent top-of-page
+    # banner, rendered via web/templates.py::render_markdown. banner_message is the
+    # tenant's own (every one of this tenant's users, bank-wide and customer-scoped
+    # alike); customer_banner_message is only ever set for a customer-scoped session
+    # (see auth/deps.py::decode_and_build_context) and is that customer's own — set by
+    # the customer's own scoped users (customer_banner:manage, deliberately not masked
+    # out of a customer-scoped session — see auth/permissions.py). If both are set, the
+    # banner carousels: tenant message first, then the customer's.
+    banner_message: str | None = None
+    customer_banner_message: str | None = None

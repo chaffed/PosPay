@@ -280,6 +280,20 @@ def test_branded_login_page_shows_name_and_logo(client, db_session, tenant_facto
     assert f'value="{tenant.slug}"' in resp.text
 
 
+def test_branded_login_page_shows_login_message(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-login-message")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    client.post(
+        "/ui/settings/messages",
+        data={"csrf_token": csrf, "login_message": "**Maintenance** Saturday", "banner_message": ""},
+    )
+    client.post("/ui/logout", data={"csrf_token": csrf})
+
+    resp = client.get(f"/ui/login/{tenant.slug}")
+    assert resp.status_code == 200
+    assert "<strong>Maintenance</strong>" in resp.text
+
+
 def test_unbranded_login_falls_back_to_generic(client):
     resp = client.get("/ui/login/does-not-exist-at-all")
     assert resp.status_code == 200
@@ -334,3 +348,64 @@ def test_update_password_policy_rejects_non_positive_min_length(client, tenant_f
     resp = client.post("/ui/settings/password-policy", data={"csrf_token": csrf, "min_length": "0"})
     assert resp.status_code == 422
     assert "at least 1" in resp.text
+
+
+def test_update_messages_via_web(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-messages")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/messages",
+        data={"csrf_token": csrf, "login_message": "Login notice", "banner_message": "Banner notice"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    db_session.expire_all()
+    from pospay.domain.tenant import Tenant
+
+    updated = db_session.get(Tenant, tenant.id)
+    assert updated.login_message == "Login notice"
+    assert updated.banner_message == "Banner notice"
+
+
+def test_update_messages_rejects_overlong_input(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-messages-invalid")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings/messages", data={"csrf_token": csrf, "login_message": "x" * 500_001, "banner_message": ""}
+    )
+    assert resp.status_code == 422
+    assert "KB or smaller" in resp.text
+
+
+def test_update_messages_requires_permission(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-messages-forbidden")
+    csrf = _login(client, tenant.slug, users["preparer"].email)
+
+    resp = client.post(
+        "/ui/settings/messages", data={"csrf_token": csrf, "login_message": "x", "banner_message": "y"}, follow_redirects=False,
+    )
+    assert resp.status_code == 403
+
+
+def test_banner_message_shows_on_every_page_once_logged_in(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-banner-display")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    client.post("/ui/settings/messages", data={"csrf_token": csrf, "login_message": "", "banner_message": "Tenant _notice_"})
+
+    resp = client.get("/ui/")
+    assert resp.status_code == 200
+    assert "<em>notice</em>" in resp.text
+    assert 'data-banner-carousel' in resp.text
+    # Only one message set -- no carousel dots needed.
+    assert "banner-dot" not in resp.text
+
+
+def test_no_banner_markup_when_no_messages_set(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-banner-none")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get("/ui/")
+    assert "banner-carousel" not in resp.text

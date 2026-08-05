@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import re
 from pathlib import Path
 from urllib.parse import urlencode
 
+import markdown
+import nh3
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from pospay.db.tenancy import TenantContext
 
@@ -77,6 +81,61 @@ def _currency(value):
 
 
 templates.env.filters["currency"] = _currency
+
+# Tags a tenant/customer-authored banner or login message may use. `img` is allowed --
+# but only ever a data: URI holding a small, pre-validated raster image
+# (services/message_content.py validates/re-encodes it at save time; the
+# _attribute_filter/_SAFE_IMAGE_DATA_URI_RE below is the render-time half of that same
+# defense-in-depth, not a replacement for it) -- no raw `style`/`class`/`id` (no styling
+# escape hatch out of the banner's own look).
+_MARKDOWN_ALLOWED_TAGS = {
+    "p", "br", "strong", "em", "a", "ul", "ol", "li",
+    "h1", "h2", "h3", "h4", "h5", "h6", "code", "pre", "blockquote", "hr", "img",
+}
+_MARKDOWN_ALLOWED_ATTRIBUTES = {"a": {"href", "title"}, "img": {"src", "alt"}}
+# nh3's own `url_schemes` is a single allowlist shared by every URL-bearing attribute --
+# confirmed directly that restricting it to just {"data"} to allow images also strips the
+# href off an ordinary https:// link. The per-tag split (images: data: only; links:
+# http(s)/mailto only) is enforced by _attribute_filter below instead.
+_MARKDOWN_ALLOWED_URL_SCHEMES = {"http", "https", "mailto", "data"}
+# Deliberately narrower than services/message_content.py's own allowed MIME set would
+# need to be for a NEW upload (this only needs to match what that module could have
+# possibly produced) -- but written independently, not by importing that module's
+# constant, so this stays correct even if a future save-path bug ever wrote something
+# non-conforming: render-time is the last line of defense, not assumed to be redundant.
+_SAFE_IMAGE_DATA_URI_RE = re.compile(r"^data:image/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/]+=*$")
+
+
+def _markdown_attribute_filter(tag: str, attr: str, value: str) -> str | None:
+    if tag == "img" and attr == "src":
+        return value if _SAFE_IMAGE_DATA_URI_RE.match(value) else None
+    if tag == "a" and attr == "href":
+        return value if value.startswith(("http://", "https://", "mailto:")) else None
+    return value
+
+
+def _render_markdown(text: str | None) -> Markup:
+    """Exposed to templates as `{{ text|render_markdown }}` — converts tenant/customer-
+    authored Markdown (login/banner messages, see db/tenancy.py::TenantContext and
+    services/tenant_service.py::TenantBranding) to HTML, then strips it down to a small
+    safe tag/attribute allowlist via nh3 (a maintained Rust-backed sanitizer) before
+    returning it wrapped in `Markup` — the idiomatic Jinja way to hand back deliberately
+    pre-sanitized HTML that autoescaping should NOT re-escape, clearer and harder to
+    misuse later than sprinkling a bare `|safe` on raw, unsanitized text. This is the
+    only place in the app that renders admin-authored rich text as HTML; every other use
+    of admin-supplied text elsewhere still gets Jinja's normal autoescaping."""
+    if not text:
+        return Markup("")
+    html = markdown.markdown(text)
+    clean_html = nh3.clean(
+        html, tags=_MARKDOWN_ALLOWED_TAGS, attributes=_MARKDOWN_ALLOWED_ATTRIBUTES,
+        url_schemes=_MARKDOWN_ALLOWED_URL_SCHEMES, attribute_filter=_markdown_attribute_filter,
+        link_rel="noopener noreferrer nofollow",
+    )
+    return Markup(clean_html)
+
+
+templates.env.filters["render_markdown"] = _render_markdown
 
 
 def _pager_href(request, page: int) -> str:
