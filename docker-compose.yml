@@ -1,3 +1,9 @@
+# Local convenience for testing against Postgres instead of the SQLite default -- NOT a
+# production deployment descriptor (see README.md's "Docker" section for that; the two
+# Dockerfiles there are what actually get deployed). Runs with POSPAY_ENVIRONMENT=
+# development, same as the local one-click launcher, so it uses the checked-in dev_keys/
+# rather than requiring real generated signing keys just to try Postgres out --
+# config.py::assert_production_safe is a no-op outside of production, by design.
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,15 +22,21 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        EXTRAS: ".[postgres]"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      POSPAY_ENVIRONMENT: development
       POSPAY_DATABASE_URL: postgresql+psycopg://pospay:pospay@postgres:5432/pospay
-      POSPAY_JWT_SECRET_KEY: change-me-in-production-to-a-random-32-byte-value
+    volumes:
+      - pospay_data:/data
     ports:
       - "8000:8000"
 
 volumes:
   pospay_postgres_data:
+  pospay_data:

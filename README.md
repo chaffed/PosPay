@@ -30,6 +30,7 @@ prerequisites and step-by-step setup, also available as an in-app guided checkli
 - [Authentication](#authentication)
 - [Signing keys](#signing-keys)
 - [Reverse proxy / WAF deployment](#reverse-proxy--waf-deployment)
+- [Docker](#docker)
 - [Postgres](#postgres)
 - [MSSQL](#mssql)
 - [Upgrade and downgrade support](#upgrade-and-downgrade-support)
@@ -634,6 +635,91 @@ chain appended, never a client-supplied value further left in the chain, which i
 trivially spoofable. Leaving this at its default of `0` is the safe choice for a direct,
 non-proxied deployment; setting it too high behind a thinner proxy chain than configured
 would start trusting a header value the client itself controls.
+
+## Docker
+
+Two images, `Dockerfile` (production) and `Dockerfile.demo` (public demo) — the demo one
+layers on top of the production one rather than duplicating its build, so there's exactly
+one place that installs dependencies:
+
+```bash
+docker build -t pospay:latest .
+docker build -t pospay-demo:latest -f Dockerfile.demo .   # only if you want the demo image too
+```
+
+Both run with `POSPAY_ENVIRONMENT=production` baked in — including the demo image, since
+the demo tenant serves real public traffic and runs the exact same OCR/ML/storage code
+path a real tenant would (see "Reverse proxy / WAF deployment" above and
+`services/demo_tenant_service.py`'s own module docstring). That means both need everything
+[Signing keys](#signing-keys) above describes, supplied at deploy time, never baked into
+the image:
+
+- The four signing key pairs (`python scripts/generate_keys.py --output-dir keys`,
+  mount `keys/` into the container, e.g. at `/secrets/keys`, and set all eight
+  `POSPAY_*_KEY_PATH` env vars to point there)
+- A random `POSPAY_SSO_ENCRYPTION_KEY`
+- Real, counsel-reviewed `POSPAY_WSUD_CONSENT_DISCLOSURE_TEXT` /
+  `POSPAY_WSUD_ATTESTATION_TEXT`
+- `POSPAY_WEBAUTHN_RP_ID` / `POSPAY_WEBAUTHN_ORIGIN` set to your real domain
+- For the demo image only: `POSPAY_DEMO_TENANT_ENABLED=true` (already set by
+  `Dockerfile.demo`) and `POSPAY_DEMO_TENANT_PASSWORD` (a real secret — set it yourself,
+  it has no default)
+
+A container that's missing any of the first four refuses to start at all
+(`assert_production_safe`) rather than silently serving with this repo's own public
+`dev_keys/`.
+
+The image declares one volume, `/data` — everything the app writes to disk (the SQLite
+database by default, check images, bulk uploads, ML model artifacts, tenant branding
+assets, data exports) lives under it, so mount a real volume there or every reset/restart
+loses everything:
+
+```bash
+docker run -d \
+  -p 8000:8000 \
+  -v pospay_data:/data \
+  -v /path/to/your/keys:/secrets/keys:ro \
+  -e POSPAY_JWT_PRIVATE_KEY_PATH=/secrets/keys/jwt_private.pem \
+  # ...the other seven POSPAY_*_KEY_PATH vars, same pattern...
+  -e POSPAY_SSO_ENCRYPTION_KEY=... \
+  -e POSPAY_WSUD_CONSENT_DISCLOSURE_TEXT=... \
+  -e POSPAY_WSUD_ATTESTATION_TEXT=... \
+  -e POSPAY_WEBAUTHN_RP_ID=your-domain.example.com \
+  -e POSPAY_WEBAUTHN_ORIGIN=https://your-domain.example.com \
+  pospay:latest
+```
+
+Point `POSPAY_DATABASE_URL` at Postgres instead of the SQLite default the same way any
+other deployment would (see "Postgres" below) — rebuild with
+`--build-arg EXTRAS=.[postgres,pdf]` first so the driver's actually installed.
+
+**Creating the first tenant** isn't a route this app exposes over HTTP on purpose (see
+"Users, security groups, and cross-tenant access" above) — for the production image, it's
+a one-time manual step after the container is up:
+
+```bash
+docker exec -it <container> python -c "
+from pospay.db.session import get_session_factory
+from pospay.services.provisioning_service import create_tenant_with_admin
+session = get_session_factory()()
+create_tenant_with_admin(session, tenant_name='Your Bank', tenant_slug='your-bank', admin_email='admin@example.com', admin_password='...')
+session.commit()
+"
+```
+
+The demo image needs no such step — `main.py`'s startup seeds the demo tenant
+automatically (`services/demo_tenant_service.py::ensure_demo_tenant`) whenever
+`demo_tenant_enabled=true`.
+
+**Must stay a single instance/replica**, same reasoning as "Reverse proxy / WAF
+deployment" above: the rate limiter and the demo tenant's idle-reset tracking are both
+in-process state, not shared across containers. Don't put this behind a load balancer
+fronting more than one running container of the same image.
+
+`docker-compose.yml` at the repo root is a separate, narrower thing — a local convenience
+for testing against Postgres instead of SQLite (runs in development mode with the
+checked-in `dev_keys/`, zero setup), not a production deployment descriptor. Don't use it
+as a template for a real deployment; use the `docker run` example above instead.
 
 ## Postgres
 

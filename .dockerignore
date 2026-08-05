@@ -1,0 +1,12 @@
+# Both Dockerfiles COPY only specific, named paths (never `COPY . .`), so nothing here
+# is a correctness requirement -- this just keeps the build context small and the upload
+# to the Docker daemon fast, especially for .git/.venv/.pospay-run on a repo this old.
+.git/
+.venv/
+.pospay-run/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+*.egg-info/

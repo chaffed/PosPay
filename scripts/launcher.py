@@ -34,9 +34,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUN_DIR = PROJECT_ROOT / ".pospay-run"  # delete this one folder to fully reset — see module docstring
 VENV_DIR = RUN_DIR / "venv"
-# Written only after a fully successful install — an interrupted first run (Ctrl+C
-# mid-`pip install`) leaves a venv directory behind but no marker, so the next run
-# recreates it from scratch rather than trusting a half-installed environment.
+# Written only after a fully successful install, holding a hash of pyproject.toml at
+# install time (see _pyproject_fingerprint/_create_venv_and_install) — an interrupted
+# first run (Ctrl+C mid-`pip install`) leaves a venv directory behind but no marker, so
+# the next run recreates it from scratch rather than trusting a half-installed
+# environment; a marker whose hash no longer matches the current pyproject.toml (e.g.
+# after `git pull` brings in a commit that added a dependency) triggers a dependency
+# refresh instead, without wiping the existing venv.
 VENV_MARKER = VENV_DIR / ".pospay-setup-complete"
 
 HOST = "127.0.0.1"  # never a LAN IP: WebAuthn requires a secure context, and this is a
@@ -58,27 +62,42 @@ def _is_running_under_venv() -> bool:
     return Path(sys.prefix).resolve() == VENV_DIR.resolve()
 
 
+def _pyproject_fingerprint() -> str:
+    import hashlib
+
+    return hashlib.sha256((PROJECT_ROOT / "pyproject.toml").read_bytes()).hexdigest()
+
+
 def _create_venv_and_install() -> None:
-    if VENV_MARKER.exists():
-        return
-
-    print("Setting up PosPay for the first time — this can take a minute...\n")
-    if VENV_DIR.exists():
-        print(f"  Removing incomplete virtual environment at {VENV_DIR}")
-        shutil.rmtree(VENV_DIR)
-
-    print(f"  Creating virtual environment at {VENV_DIR}")
-    RUN_DIR.mkdir(parents=True, exist_ok=True)
-    venv.create(str(VENV_DIR), with_pip=True)
+    fingerprint = _pyproject_fingerprint()
+    if VENV_MARKER.exists() and VENV_MARKER.read_text().strip() == fingerprint:
+        return  # already installed, and pyproject.toml hasn't changed since
 
     venv_python = str(_venv_python())
-    print("  Upgrading pip...")
-    subprocess.run([venv_python, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], check=True)
+    if VENV_MARKER.exists():
+        # A complete, previously-installed venv — pyproject.toml just changed since (a
+        # `git pull` bringing in a commit that added a dependency, most commonly), so
+        # this only needs its dependencies refreshed, not a full recreate.
+        print("PosPay's dependencies have changed since your last run — updating...\n")
+    else:
+        print("Setting up PosPay for the first time — this can take a minute...\n")
+        if VENV_DIR.exists():
+            # No marker but a venv dir exists — a previous run was interrupted mid-install
+            # (e.g. Ctrl+C during `pip install`), so it can't be trusted; start clean.
+            print(f"  Removing incomplete virtual environment at {VENV_DIR}")
+            shutil.rmtree(VENV_DIR)
+
+        print(f"  Creating virtual environment at {VENV_DIR}")
+        RUN_DIR.mkdir(parents=True, exist_ok=True)
+        venv.create(str(VENV_DIR), with_pip=True)
+
+        print("  Upgrading pip...")
+        subprocess.run([venv_python, "-m", "pip", "install", "--quiet", "--upgrade", "pip"], check=True)
 
     print("  Installing PosPay and its dependencies (this is the slow part)...")
     subprocess.run([venv_python, "-m", "pip", "install", "--quiet", "-e", str(PROJECT_ROOT)], check=True)
 
-    VENV_MARKER.write_text("ok")
+    VENV_MARKER.write_text(fingerprint)
     print("  Setup complete.\n")
 
 
