@@ -31,6 +31,7 @@ prerequisites and step-by-step setup, also available as an in-app guided checkli
 - [Signing keys](#signing-keys)
 - [Reverse proxy / WAF deployment](#reverse-proxy--waf-deployment)
 - [Docker](#docker)
+- [Demo tenant](#demo-tenant)
 - [Postgres](#postgres)
 - [MSSQL](#mssql)
 - [Upgrade and downgrade support](#upgrade-and-downgrade-support)
@@ -720,6 +721,51 @@ fronting more than one running container of the same image.
 for testing against Postgres instead of SQLite (runs in development mode with the
 checked-in `dev_keys/`, zero setup), not a production deployment descriptor. Don't use it
 as a template for a real deployment; use the `docker run` example above instead.
+
+## Demo tenant
+
+A persistent, fully-functioning sales-demo organization (`services/demo_tenant_service.py`)
+— real accounts, issued/paid items, exceptions, ACH activity, users, and its own trained
+per-customer ML model, safe to hand a prospect or put on the open web, since it resets
+itself. This isn't Docker-specific — the settings below work with the plain one-click
+launcher too, just set them as env vars before running it:
+
+- `POSPAY_DEMO_TENANT_ENABLED=true` — makes app startup seed the demo tenant if one
+  doesn't already exist yet (`main.py`'s lifespan, idempotent on every later restart).
+- `POSPAY_DEMO_TENANT_PASSWORD=...` — required for the above; there's no default, since
+  there's no safe hardcoded password for something this public. Deliberately meant to be
+  shared, not kept secret — this is a demo tenant's whole point.
+- `POSPAY_DEMO_TENANT_SESSION_MINUTES` (default `60`) — how long the demo can sit idle
+  before it resets.
+
+**Resets** happen two ways: automatically, the moment anyone next tries to log into the
+demo tenant after it's sat idle past the session window (before credentials are even
+checked, so a prospect never lands mid-reset); or manually, via a "Reset now" button an
+`admin:manage` user sees on `/ui/admin` — useful right before a scheduled demo rather than
+waiting out the idle window. Either way, a reset wipes every DB row belonging to the demo
+tenant *and* purges everything it wrote to disk (check images, bulk uploads, ML model
+artifacts, branding assets) before reseeding from scratch — real content (including
+whatever an OCR run extracted from an uploaded check image) never outlives one idle
+window. Scoped tightly to whichever tenant is actually flagged `is_demo` in the database —
+looked up fresh on every reset, never caller-supplied, so this can't be pointed at a real
+tenant. More on this from the demo tenant's own perspective in the in-app Admin
+Documentation once you have one running (`/ui/docs/admin`).
+
+**Sharing a link**: `/ui/login/{tenant_slug}` is a tenant-branded login page (any tenant,
+not demo-specific) — pre-fills the slug and shows that tenant's own name/accent color, so
+`https://your-demo-host/ui/login/your-demo-slug` is a cleaner link to hand someone than the
+generic `/ui/login` form.
+
+**Deploying one publicly**: see [Docker](#docker) above for `Dockerfile.demo` — it's the
+production image with `POSPAY_DEMO_TENANT_ENABLED=true` layered on, needing everything a
+real deployment needs (real signing keys, `POSPAY_SSO_ENCRYPTION_KEY`, WSUD text — the
+demo tenant serves real public traffic and runs the exact same code path a real tenant
+would, so it gets no shortcuts). `fly.toml` at the repo root is a working, minimal-cost
+example for [Fly.io](https://fly.io) specifically — one machine on the smallest VM size
+this app runs reliably on, a persistent volume for `/data`, and
+`POSPAY_TRUSTED_PROXY_COUNT=1` already set for Fly's own edge proxy (see "Reverse proxy /
+WAF deployment" above). Whatever host you use, the same "must stay a single
+instance/replica" constraint from the Docker section applies here too.
 
 ## Postgres
 
