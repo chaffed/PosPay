@@ -145,6 +145,7 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_403_FORBIDDEN,
             status_code_display=403,
             message="You don't have permission to do that.",
+            show_back_link=True,
         )
 
     @app.exception_handler(WebNotFound)
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
             status_code=status.HTTP_404_NOT_FOUND,
             status_code_display=404,
             message="That item couldn't be found.",
+            show_back_link=True,
         )
 
     @app.exception_handler(IntegrityError)
