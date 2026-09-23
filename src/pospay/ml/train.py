@@ -167,13 +167,23 @@ def _promotion_decision(
 
 
 def train_model(
-    session: Session, network_code: str, *, customer_id: uuid.UUID | None = None, tenant_id: uuid.UUID | None = None
+    session: Session,
+    network_code: str,
+    *,
+    customer_id: uuid.UUID | None = None,
+    tenant_id: uuid.UUID | None = None,
+    force_activate_reason: str | None = None,
 ) -> TrainResult:
     """Trains one model slot (ml/registry.py): the shared model (neither id), a bank-only
     model (`tenant_id`), or a customer's model (`customer_id`; its bank is looked up if
     not given). The new model is activated only if it wins the champion/challenger
     comparison (_promotion_decision); otherwise it's kept, not active, with the reason in
-    metrics_json["evaluation"], and an admin can still activate it by hand."""
+    metrics_json["evaluation"], and an admin can still activate it by hand.
+
+    `force_activate_reason` skips the comparison and activates the new model regardless,
+    recording that reason: used when the active model must be replaced for a reason other
+    than accuracy (a bank left the shared model, so the active model still contains data
+    the bank withdrew)."""
     if customer_id is not None and tenant_id is None:
         customer = session.get(Customer, customer_id)
         tenant_id = customer.tenant_id if customer is not None else None
@@ -213,14 +223,17 @@ def train_model(
     metrics = _evaluate(model, X_holdout, y_holdout)
 
     champion = get_active_model_row(session, network_code, customer_id, tenant_id=slot_tenant_id)
-    promote, evaluation = _promotion_decision(
-        champion=champion,
-        challenger_metrics=metrics,
-        X_holdout=X_holdout,
-        y_holdout=y_holdout,
-        decision_count=len(decisions),
-        is_bank_model=customer_id is None and slot_tenant_id is not None,
-    )
+    if force_activate_reason is not None:
+        promote, evaluation = True, {"holdout_size": len(y_holdout), "reason": force_activate_reason}
+    else:
+        promote, evaluation = _promotion_decision(
+            champion=champion,
+            challenger_metrics=metrics,
+            X_holdout=X_holdout,
+            y_holdout=y_holdout,
+            decision_count=len(decisions),
+            is_bank_model=customer_id is None and slot_tenant_id is not None,
+        )
 
     existing_count = len(session.execute(slot_models).all())
     version = f"v{existing_count + 1}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"

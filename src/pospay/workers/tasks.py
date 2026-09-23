@@ -15,12 +15,12 @@ from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
 from pospay.domain.ml_model import MlModelStatus
 from pospay.domain.notification import Notification, NotificationChannel, NotificationStatus
 from pospay.domain.tenant import MlModelSource, Tenant
-from pospay.ml.registry import create_model_row, list_slot_models
+from pospay.ml.registry import create_model_row, get_active_model_row, list_slot_models
 from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, _load_labeled_decisions, train_model
 from pospay.networks.registry import registered_codes
 from pospay.notifications.email.factory import get_email_provider
 from pospay.notifications.sms.factory import get_sms_provider
-from pospay.services import auto_disposition_service, demo_tenant_service
+from pospay.services import auto_disposition_service, demo_tenant_service, tenant_ml_service
 from pospay.services.dropbox_import_service import scan_and_import_all_tenants
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,16 @@ def _customers_with_labeled_decisions(session: Session, network_code: str) -> di
     return dict(session.execute(stmt).all())
 
 
+def _bank_left_since_shared_trained(session: Session, network_code: str) -> bool:
+    active = get_active_model_row(session, network_code)
+    # activated_at (set in Python, microsecond precision), not created_at (a database
+    # default, whole seconds on SQLite), so a switch moments before a retrain isn't
+    # mistaken for one after it.
+    return active is not None and tenant_ml_service.banks_left_shared_since(
+        session, active.activated_at or active.created_at
+    )
+
+
 def _train_and_log(
     session: Session,
     network_code: str,
@@ -68,6 +78,7 @@ def _train_and_log(
     customer_id: uuid.UUID | None = None,
     tenant_id: uuid.UUID | None = None,
     label: str = "shared",
+    force_activate_reason: str | None = None,
 ) -> None:
     """Runs train_model for one (network_code, customer_id) pair as part of the
     unattended scheduled job, and never lets a single network/customer's failure abort
@@ -78,7 +89,9 @@ def _train_and_log(
     is recorded as a FAILED MlModel row so it's visible on the admin models page, not
     just a server log line nobody looks at."""
     try:
-        result = train_model(session, network_code, customer_id=customer_id, tenant_id=tenant_id)
+        result = train_model(
+            session, network_code, customer_id=customer_id, tenant_id=tenant_id, force_activate_reason=force_activate_reason
+        )
         logger.info("Retrained %s (%s): promoted=%s metrics=%s", network_code, label, result.promoted, result.metrics)
     except InsufficientTrainingData as exc:
         logger.info("Skipping retrain for %s (%s): %s", network_code, label, exc)
@@ -124,6 +137,17 @@ def retrain_job() -> None:
                 label = "shared" if bank_id is None else f"bank tenant_id={bank_id}"
                 total = _count_labeled_decisions(session, network_code, tenant_id=bank_id)
                 new_decisions = total - _most_recently_trained_count(session, network_code, tenant_id=bank_id)
+                if bank_id is None and _bank_left_since_shared_trained(session, network_code):
+                    # A bank switched to bank-only since the shared model was trained: its
+                    # data is still inside that model until it's retrained without it.
+                    _train_and_log(
+                        session, network_code, label="shared (a bank left)",
+                        force_activate_reason=(
+                            "Activated without the usual comparison: a bank switched to a bank-only model, "
+                            "and the previous shared model still contained its data."
+                        ),
+                    )
+                    continue
                 if new_decisions < settings.ml_min_new_decisions_for_retrain:
                     logger.info(
                         "Skipping %s retrain for %s: %d new decisions, need %d",

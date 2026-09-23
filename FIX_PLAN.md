@@ -285,6 +285,15 @@ Files: new `web/demo_guard.py` dependency, routers listed below
   shared model, then each bank-only bank, then customers. The customer ML page is relabeled
   ("Bank's model", plus a new "Scoring with now" column). 11 new tests; an older test now
   approves its fraud example before training the shared model.
+- 5.3 DONE (switching): `services/tenant_ml_service.py` handles the 90-day lock (with a
+  message giving the date), switching to bank-only (copies each network's active shared model,
+  including the artifact file, into the bank's slot and activates it), switching back to shared
+  (requires consent, records who/when), `record_shared_consent`, `clear_switch_lock`, and a
+  counts-only `shared_model_summaries`. **Found and handled:** after a bank leaves, the shared
+  model still contains its data, and the scheduled job wouldn't retrain because the decision
+  count *drops*. `retrain_job` now retrains the shared model whenever a bank has left since it
+  was activated, and activates the result regardless of the accuracy comparison
+  (`force_activate_reason`), since removing the departed bank's data comes first. 12 new tests.
 
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps
