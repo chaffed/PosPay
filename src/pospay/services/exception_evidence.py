@@ -95,9 +95,13 @@ def _check_evidence(session: Session, item: ExceptionItem, paid, scope: uuid.UUI
 
     issued = IssuedItemRepository(session, item.tenant_id, scope).get(item.related_reference_id) if item.related_reference_id else None
     if issued is None:
+        # "Couldn't be found" only when the exception points at an issued check that's no
+        # longer visible; otherwise there simply isn't one on file (e.g. a stop payment
+        # placed on a check that was never in an issued file).
         evidence.notes.append(
+            "The matching issued check couldn't be found."
+            if item.related_reference_id else
             "No issued check with this number is on file for this account, so there's nothing to compare it with."
-            if "not_in_file" in types else "The matching issued check couldn't be found."
         )
     evidence.rows = [
         EvidenceRow("Check number", issued.check_number if issued else None, paid.check_number),
@@ -120,14 +124,14 @@ def _check_evidence(session: Session, item: ExceptionItem, paid, scope: uuid.UUI
         for stop in stops:
             evidence.notes.append(
                 f"A stop payment is in effect from {stop.effective_date:%Y-%m-%d}"
-                + (f" ({stop.reason})" if stop.reason else "") + "."
+                + (f" ({stop.reason.rstrip('. ')})" if stop.reason else "") + "."
             )
     if "duplicate_paid" in types:
         earlier = [p for p in PaidItemRepository(session, item.tenant_id, scope).list(
             account_id=paid.account_id, check_number=paid.check_number) if p.id != paid.id]
         for other in earlier:
             evidence.notes.append(
-                f"This check number was already presented on {other.presented_date:%Y-%m-%d} for {other.presented_amount:,.2f}."
+                f"This check number was already presented on {other.presented_date:%Y-%m-%d} for ${other.presented_amount:,.2f}."
             )
     return evidence
 
