@@ -108,39 +108,65 @@ Files: `services/user_service.py`, `web/routers/security_settings.py` (self-serv
 
 ## Phase 3 — Sessions: refresh, revocation, expiry UX (1 PR, about 2–3 days) — F1, U1, S2, S4
 
+Done 2026-09-22 on branch `phase-3-sessions` (`918bc0f`, `213f288`, docs commit). Not pushed.
+Full suite on the Phase 3 code: 986 passed, 1 skipped, plus 26 new session tests passing
+(1,012 total). Three deliberate-breakage checks confirmed the new tests catch regressions in
+the idle timeout, revocation, and maximum-length rules. Checked live in a browser: the
+idle dialog appears on schedule and "Stay signed in" renews the session.
+
+Decisions made along the way:
+- **Logout ends only that session** (a new `revoked_session` table keyed by a per-login
+  `sid`), not every device. "Sign out everywhere" is the separate `token_version` bump.
+- **The idle timeout is enforced by the server**: the web UI can only renew a session
+  whose access token hasn't expired (2-minute grace). Otherwise a refresh token could revive
+  a session idle for hours. The API keeps standard refresh-after-expiry behavior.
+- **Renewal never extends the maximum session length.** Near it, the dialog says to save
+  work instead of offering "Stay signed in".
+- **Organization switch** ends the old session (only once the switch completes, so
+  abandoning a WebAuthn step doesn't sign the user out).
+- Added a self-service **"Sign out other devices"** on Security, alongside the admin
+  "Sign out everywhere" on Users. The admin version works even for users in other
+  organizations (it grants nothing, and they can sign straight back in).
+- **Found and fixed:** the CSRF cookie expired with the access token, so any form left
+  open past 30 minutes failed on submit. It's now a browser-session cookie.
+- **Found and fixed:** the API WebAuthn sign-in dropped `customer_id`, so customer-scoped
+  users got the wrong membership (or none).
+- **Found and fixed (docs):** "Data export timeout" was described as a retention period;
+  it's a run-time limit.
+
 Files: `web/security.py`, `web/deps.py`, new `web/routers/session.py`, `auth/security.py`,
 `auth/deps.py`, `domain/user.py` + migration, `static/js/app.js`, `main.py`
-- [ ] **S2 — revocation:** add `User.token_version` (int, default 0; migration). Put a `tv`
+- [x] **S2 — revocation:** add `User.token_version` (int, default 0; migration). Put a `tv`
       claim in every token; `decode_and_build_context` and API refresh reject a mismatch.
       Bump it on logout, password change/reset, user deactivation, and admin "sign out
       everywhere" (new button on the Users page). Old tokens with no `tv` count as 0, so no
       forced logout on deploy.
-- [ ] **F1 — web refresh:** add `POST /ui/auth/refresh` (path matches the existing
+- [x] **F1 — web refresh:** add `POST /ui/auth/refresh` (path matches the existing
       `REFRESH_COOKIE_PATH`, CSRF by header). It validates the refresh cookie, re-resolves
       the membership (the same logic as `api/v1/auth.py::refresh`; extract a shared
       helper), and issues new access and refresh cookies.
-- [ ] `app.js` keep-alive: while the user is active (input or clicks since the last
+- [x] `app.js` keep-alive: while the user is active (input or clicks since the last
       refresh), refresh silently **5 minutes** before access expiry. Expose the expiry to JS
       through a `<meta>` tag in `base.html`.
-- [ ] **U1:** a warning dialog **5 minutes** (decided 2026-09-22) before an *idle* session
+- [x] **U1:** a warning dialog **5 minutes** (decided 2026-09-22) before an *idle* session
       expires: "You'll be signed out in 5:00 — Stay signed in / Sign out now", with a live
       countdown. "Stay signed in" calls refresh.
-- [ ] Fallback for GET requests: when `get_web_context` sees an expired (not invalid) access
+- [x] Fallback for GET requests: when `get_web_context` sees an expired (not invalid) access
       token on a GET, redirect to `GET /ui/auth/resume?next=<path>`. The refresh cookie is
       path-scoped to `/ui/auth`, so only that route can see it. It refreshes and redirects
       back, or sends the user to login if the refresh fails. This is safe as a GET because it
       only re-issues the caller's own session and changes no data. Validate `next` with
       `safe_next_path`.
-- [ ] Fallback for POST requests: `WebAuthRequired` on a POST should use the `Referer`
+- [x] Fallback for POST requests: `WebAuthRequired` on a POST should use the `Referer`
       path, never the POST URL, as `next`.
-- [ ] Cookie `max_age` should use the tenant's override
+- [x] Cookie `max_age` should use the tenant's override
       (`ctx.access_token_expire_minutes`), not the global setting.
-- [ ] Rename the settings labels (U7): "Idle sign-out after (minutes)" / "Maximum
+- [x] Rename the settings labels (U7): "Idle sign-out after (minutes)" / "Maximum
       session length (minutes)". Validate that the maximum is greater than or equal to the
       idle timeout.
-- [ ] **S4:** middleware adds `Cache-Control: no-store` to `/ui/*` (except `/static`,
+- [x] **S4:** middleware adds `Cache-Control: no-store` to `/ui/*` (except `/static`,
       `/ui/branding/*`) and `/api/*` responses.
-- [ ] Tests: refresh rotates cookies; refresh with a bumped `token_version` → 401; logout
+- [x] Tests: refresh rotates cookies; refresh with a bumped `token_version` → 401; logout
       invalidates the copied access token; POST after expiry redirects to the referring
       page; `Cache-Control` header present.
 

@@ -22,6 +22,28 @@ regardless of their own notification preferences, since it's a security event th
 know about — the follow-up unlock notification, once an administrator resolves it, does
 respect the user's own notification preferences.</p>
 
+<h2>Sessions and signing out</h2>
+<p>Signing in starts a session. While someone is using PosPay, the session renews
+automatically. If they're inactive for the <strong>idle sign-out</strong> time set on
+<a href="/ui/settings">Settings</a>, they're signed out, after a 5-minute warning with a
+<em>Stay signed in</em> button. However active they are, a session ends at the
+<strong>maximum session length</strong>, and they're warned to save their work before
+it does.</p>
+<p>Logging out ends that session on the server, not just in the browser, so a copy of its
+cookies stops working too. Logging out on one device doesn't sign the person out
+anywhere else.</p>
+<p>To end every session someone has, on every device:</p>
+<ul>
+  <li>An administrator can use <strong>Sign out everywhere</strong> on
+    <a href="/ui/users">Users</a>, for example after a lost laptop. This also signs the
+    person out of any other organizations they belong to, since the sessions belong to the
+    person. They can sign straight back in.</li>
+  <li>Users can do the same from <a href="/ui/security">Security</a> →
+    <em>Sign out other devices</em>, which keeps their current session.</li>
+  <li>Changing a password does it automatically, and so does an administrator password
+    reset.</li>
+</ul>
+
 <h2>Changing and resetting passwords</h2>
 <p>Users change their own password from <a href="/ui/security">Security</a> → Change
 password. They must enter their current password, and a wrong one counts toward the same

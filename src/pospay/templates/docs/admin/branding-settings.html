@@ -17,10 +17,14 @@
   decision be different from whoever recommended it. See
   <a href="/ui/docs/end-user/exceptions">Exceptions &amp; Decisioning</a> for how this
   plays out for reviewers.</li>
-  <li><strong>Session timeout</strong> — how long a signed-in session stays valid before
-  re-authentication is required.</li>
-  <li><strong>Data export timeout</strong> — how long an export job is retained before it
-  expires. See <a href="/ui/docs/admin/data-export">Data Export</a>.</li>
+  <li><strong>Idle sign-out after</strong> — how long someone can be inactive before
+  they're signed out. They're warned 5 minutes beforehand and can choose to stay signed in.
+  While they're active, their session renews automatically.</li>
+  <li><strong>Maximum session length</strong> — the longest a session can last, however
+  active the user is. After it, they must sign in again. It can't be shorter than the idle
+  sign-out time. See <a href="/ui/docs/admin/authentication">Authentication</a>.</li>
+  <li><strong>Data export timeout</strong> — the longest a data export is allowed to run
+  before it's stopped and marked failed. See <a href="/ui/docs/admin/data-export">Data Export</a>.</li>
 </ul>
 
 <h2>Dark mode</h2>

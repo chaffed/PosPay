@@ -70,7 +70,7 @@ routes (`web/routers/auth.py` ~L207, ~L278) also mint fresh tokens from the
 `membership.security_group_id` (or reject when it differs from the claim).
 Repro: Admin logged in → `update_membership` to Viewer → `/ui/users` still 200.
 
-**S2 — Medium — Logout does not invalidate tokens server-side.**
+**S2 — FIXED 2026-09-22 (Phase 3).** Medium — Logout does not invalidate tokens server-side.
 `/ui/logout` only clears cookies. A copied access/refresh token stays valid until
 expiry (refresh: 7 days via the API `/api/v1/auth/refresh`). No `jti`/token-version
 revocation exists. For a banking app, add a per-user `token_version` (bumped on logout,
@@ -82,7 +82,7 @@ password change, deactivation, group change) checked in `decode_and_build_contex
 CSRF (id_token nonce must match), so this is defense-in-depth, but the OIDC spec
 expects state binding. Store it in the `sso_state` JWT and compare on callback.
 
-**S4 — Low — No `Cache-Control: no-store` on authenticated pages.**
+**S4 — FIXED 2026-09-22 (Phase 3).** Low — No `Cache-Control: no-store` on authenticated pages.
 `web/security_headers.py` sets CSP/HSTS/etc. but not cache headers, so pages with
 account numbers/amounts may be served from browser cache (back button after logout,
 shared workstations). Add `Cache-Control: no-store` for `/ui/*` and `/api/*` responses.
@@ -158,7 +158,7 @@ lockout that also rejects the correct password while locked.
 
 ### Incomplete features
 
-**F1 — Web session refresh is half-built.** Login sets a `refresh_token` cookie scoped
+**F1 — FIXED 2026-09-22 (Phase 3).** Web session refresh is half-built. Login sets a `refresh_token` cookie scoped
 to `/ui/auth` (`web/security.py::REFRESH_COOKIE_PATH`), but no `/ui/auth/*` route exists,
 so the cookie is never used. Consequences: every web session hard-expires at the access
 token lifetime (30 min default) even while the user is active; and the access cookie's
@@ -225,7 +225,7 @@ the detail page. Minor notes:
 
 ### UI / UX
 
-**U1 — Session expiry mid-form loses work.** Because of F1, a reviewer who spends >30
+**U1 — FIXED 2026-09-22 (Phase 3).** Session expiry mid-form loses work. Because of F1, a reviewer who spends >30
 min on an exception and then submits gets redirected to login; `WebAuthRequired` records
 the POST path as `next`, so after re-login the browser GETs a POST-only URL (likely a
 405) and the typed decision/notes are gone. Add refresh (F1), a pre-expiry warning, and

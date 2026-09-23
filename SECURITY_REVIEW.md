@@ -258,5 +258,13 @@ refused). Resets are refused for users who belong to other organizations, for th
 own account, and in the demo organization. Every change is audit-logged, and the user
 always gets an email about it.
 
-Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5), no server-side
-token revocation (Phase 3), OIDC issuer SSRF (Phase 4), SVG logos (Phase 4).
+**FIXED — tokens couldn't be revoked, and web sessions couldn't renew.** Logout now revokes
+that login session server-side (`revoked_session`, keyed by a per-login `sid` claim);
+password changes/resets and an admin "Sign out everywhere" bump `User.token_version`,
+killing every token the user holds. The web UI renews sessions while the user is active,
+with the idle timeout enforced server-side and renewals capped at the maximum session
+length. Signed-in responses are now `Cache-Control: no-store`. Also fixed: the API
+WebAuthn sign-in dropped `customer_id` from its tokens.
+
+Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5), OIDC issuer SSRF
+(Phase 4), SVG logos (Phase 4).
