@@ -172,6 +172,10 @@ Files: `web/security.py`, `web/deps.py`, new `web/routers/session.py`, `auth/sec
 
 ## Phase 4 — Outbound requests, uploads, public demo (1–2 PRs, about 2 days) — S9, S8, S10, S3, S11
 
+**Status: IN PROGRESS (started 2026-09-23, branch `phase-4-hardening`).** Progress log. The
+newest entry is last. Each entry is committed, so resume from the last one:
+- 4d started first (smallest). Then 4a → 4b → 4c.
+
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
 - [ ] On save: require `https://` issuers. Reject IP-literal/`localhost` hosts.
