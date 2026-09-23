@@ -13,7 +13,7 @@ from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.data_export_job import DataExportJob, DataExportJobStatus
 from pospay.services import audit_log_service, customer_service, data_export_service, data_export_storage
-from pospay.web.deps import WebNotFound, render_template, require_web_permission
+from pospay.web.deps import WebForbidden, WebNotFound, render_template, require_web_permission
 from pospay.web.security import verify_csrf
 
 router = APIRouter(tags=["web-data-export"])
@@ -76,12 +76,23 @@ def _download_response(db: Session, ctx: TenantContext, job: DataExportJob) -> R
 
 
 # --- Bank-wide: /ui/settings/data-export/* ---
+#
+# data_export:run is deliberately NOT in CUSTOMER_SCOPE_MASKED_PERMISSIONS — a customer's
+# own users may export their own customer's data (per-customer routes below). So these
+# routes can't rely on the permission alone: a customer-scoped session must never reach
+# the tenant-wide export, and must only ever reach its own customer's per-customer one.
+
+
+def _require_bank_wide_session(ctx: TenantContext) -> None:
+    if ctx.customer_id is not None:
+        raise WebForbidden()
 
 
 @router.get("/ui/settings/data-export")
 def list_bank_exports(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("data_export:run"))
 ) -> HTMLResponse:
+    _require_bank_wide_session(ctx)
     jobs = _list_jobs(db, ctx.tenant_id, None)
     return render_template(request, "settings/data_export.html", ctx=ctx, jobs=jobs)
 
@@ -94,6 +105,7 @@ def start_bank_export(
     ctx: TenantContext = Depends(require_web_permission("data_export:run")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
+    _require_bank_wide_session(ctx)
     if not confirm:
         return RedirectResponse(
             "/ui/settings/data-export?error=" + quote("Please check the confirmation box to start an export."),
@@ -107,6 +119,7 @@ def start_bank_export(
 def download_bank_export(
     job_id: uuid.UUID, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("data_export:run"))
 ) -> Response:
+    _require_bank_wide_session(ctx)
     job = _get_job(db, ctx.tenant_id, None, job_id)
     if job is None or job.status != DataExportJobStatus.COMPLETED or not job.archive_path:
         raise WebNotFound()
@@ -116,8 +129,12 @@ def download_bank_export(
 # --- Per-customer: /ui/customers/{customer_id}/data-export/* ---
 
 
-def _get_customer_or_404(db: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID):
-    customer = customer_service.get_customer(db, tenant_id, customer_id)
+def _get_customer_or_404(db: Session, ctx: TenantContext, customer_id: uuid.UUID):
+    # A customer-scoped session may only reach its own customer — 404 rather than 403
+    # for any other, so this never reveals whether that other customer exists.
+    if ctx.customer_id is not None and ctx.customer_id != customer_id:
+        raise WebNotFound()
+    customer = customer_service.get_customer(db, ctx.tenant_id, customer_id)
     if customer is None:
         raise WebNotFound()
     return customer
@@ -128,7 +145,7 @@ def list_customer_exports(
     request: Request, customer_id: uuid.UUID, db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("data_export:run")),
 ) -> HTMLResponse:
-    customer = _get_customer_or_404(db, ctx.tenant_id, customer_id)
+    customer = _get_customer_or_404(db, ctx, customer_id)
     jobs = _list_jobs(db, ctx.tenant_id, customer_id)
     return render_template(request, "customers/data_export.html", ctx=ctx, customer=customer, jobs=jobs)
 
@@ -142,7 +159,7 @@ def start_customer_export(
     ctx: TenantContext = Depends(require_web_permission("data_export:run")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    _get_customer_or_404(db, ctx.tenant_id, customer_id)
+    _get_customer_or_404(db, ctx, customer_id)
     if not confirm:
         return RedirectResponse(
             f"/ui/customers/{customer_id}/data-export?error=" + quote("Please check the confirmation box to start an export."),
@@ -157,7 +174,7 @@ def download_customer_export(
     customer_id: uuid.UUID, job_id: uuid.UUID, db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("data_export:run")),
 ) -> Response:
-    _get_customer_or_404(db, ctx.tenant_id, customer_id)
+    _get_customer_or_404(db, ctx, customer_id)
     job = _get_job(db, ctx.tenant_id, customer_id, job_id)
     if job is None or job.status != DataExportJobStatus.COMPLETED or not job.archive_path:
         raise WebNotFound()
