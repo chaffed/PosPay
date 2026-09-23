@@ -35,6 +35,9 @@
       </div>
       <div class="sidenav-panel" id="sidenav-panel">
       {% if ctx.customer_id %}<p class="customer-scope-badge">Scoped to <strong>{{ ctx.customer_name }}</strong></p>{% endif %}
+      {# While an admin-issued temporary password must be replaced, every other page just
+         redirects back to the change form (web/deps.py), so don't offer links to them. #}
+      {% if not ctx.must_change_password %}
       <div class="nav-links">
         <p class="nav-section">Positive Pay</p>
         {{ nav_link("/ui/accounts", "Accounts", "account_balance") }}
@@ -71,6 +74,9 @@
         {% if show_admin_docs %}{{ nav_link("/ui/docs/admin", "Admin Documentation", "library_books") }}{% endif %}
         {{ nav_link("/ui/switch-tenant", "Switch organization", "swap_horiz") }}
         {{ nav_link("/ui/security", "Security", "vpn_key") }}
+      {% else %}
+      <div class="nav-bottom">
+      {% endif %}
         <form method="post" action="/ui/logout" class="inline-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button type="submit" class="link-button">Log out</button>

@@ -208,6 +208,8 @@ def test_admin_reset_issues_temporary_password_and_forces_change(client, db_sess
     form = user_client.get("/ui/security/password")
     assert form.status_code == 200
     assert "An administrator reset your password" in form.text
+    assert 'href="/ui/exceptions"' not in form.text  # nav links hidden: they'd only bounce back here
+    assert 'action="/ui/logout"' in form.text
 
     done = _change(user_client, temporary, NEW_PASSWORD)
     assert done.status_code == 303
