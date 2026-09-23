@@ -49,6 +49,9 @@ class TenantBranding:
     has_logo: bool
     has_favicon: bool
     password_login_enabled: bool
+    # The shared public demo organization (services/demo_tenant_service.py) — see
+    # web/demo_guard.py for what's locked there.
+    is_demo: bool
     access_token_expire_minutes: int | None
     refresh_token_expire_minutes: int | None
     # Contact info for templates/base.html's footer — see Tenant's own columns for the
@@ -78,6 +81,7 @@ def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
         has_logo=bool(tenant.logo_path) and tenant.logo_content_type in SERVABLE_IMAGE_CONTENT_TYPES,
         has_favicon=bool(tenant.favicon_path) and tenant.favicon_content_type in SERVABLE_IMAGE_CONTENT_TYPES,
         password_login_enabled=tenant.password_login_enabled,
+        is_demo=tenant.is_demo,
         access_token_expire_minutes=tenant.access_token_expire_minutes,
         refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
         support_email=tenant.support_email,

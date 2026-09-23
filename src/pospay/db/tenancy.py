@@ -80,6 +80,11 @@ class TenantContext:
     # use outright.
     must_change_password: bool = False
 
+    # This is the shared public demo organization: web/demo_guard.py locks the handful of
+    # actions that would let one visitor lock out or disrupt the others, and base.html
+    # shows a demo notice.
+    is_demo: bool = False
+
     # The login session this request belongs to (auth/security.py::create_session_tokens):
     # `session_id` is what logout revokes; the two expiry times drive base.html's
     # keep-alive / idle-warning script and are what an organization switch or password

@@ -190,6 +190,8 @@ newest entry is last. Each entry is committed, so resume from the last one:
   Legacy SVG logos stop being served. Bulk-upload downloads are always
   application/octet-stream. Old tests used fake image bytes and now use real tiny images
   (`tests/image_helpers.py`). 76 related tests pass.
+- 4c IN PROGRESS: central lock list in `web/demo_guard.py`, checked in web and API auth
+  (committed). Still to do: the hourly reset job, the demo notice, tests.
 
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`

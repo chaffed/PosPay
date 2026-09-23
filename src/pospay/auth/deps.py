@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.services import session_service
 from pospay.services.tenant_service import get_tenant_branding_by_id
+from pospay.web.demo_guard import DEMO_LOCKED_MESSAGE, is_locked_in_demo
 
 _bearer_scheme = HTTPBearer(auto_error=True)
 
@@ -137,6 +138,7 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         state=branding.state,
         postal_code=branding.postal_code,
         banner_message=branding.banner_message,
+        is_demo=branding.is_demo,
         customer_banner_message=customer_banner_message,
         must_change_password=user.must_change_password,
         session_id=uuid.UUID(payload["sid"]) if payload.get("sid") else None,
@@ -166,10 +168,13 @@ def _header_context(credentials: HTTPAuthorizationCredentials, db: Session, *, e
 
 
 def get_current_context(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ) -> TenantContext:
     ctx = _header_context(credentials, db, expected_type="access")
+    if ctx.is_demo and is_locked_in_demo(request.method, request.url.path):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, DEMO_LOCKED_MESSAGE)
     if ctx.must_change_password:
         # The API has no change-password endpoint, so a user holding an admin-issued
         # temporary password must finish the change on the web first — until then the

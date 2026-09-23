@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from pospay.auth.deps import AccessRevoked, WrongTokenType, decode_and_build_context
 from pospay.db.session import get_db
+from pospay.web.demo_guard import DEMO_LOCKED_MESSAGE, is_locked_in_demo
 from pospay.db.tenancy import TenantContext
 from pospay.web.security import (
     ACCESS_COOKIE_NAME,
@@ -41,7 +42,12 @@ class WebAuthRequired(Exception):
 
 class WebForbidden(Exception):
     """Raised when a role lacks a permission for a /ui/* route — rendered as an HTML
-    error page (not a JSON 403) by an exception handler in main.py."""
+    error page (not a JSON 403) by an exception handler in main.py. `message`, when
+    given, replaces the generic "You don't have permission" text (e.g. the demo lock)."""
+
+    def __init__(self, message: str | None = None):
+        super().__init__(message)
+        self.message = message
 
 
 class WebPasswordChangeRequired(Exception):
@@ -83,6 +89,8 @@ def get_web_context(request: Request, db: Session = Depends(get_db)) -> TenantCo
         raise WebAuthRequired(next_path=_return_path(request)) from None
     if ctx.must_change_password and request.url.path != PASSWORD_CHANGE_PATH:
         raise WebPasswordChangeRequired()
+    if ctx.is_demo and is_locked_in_demo(request.method, request.url.path):
+        raise WebForbidden(DEMO_LOCKED_MESSAGE)
     return ctx
 
 

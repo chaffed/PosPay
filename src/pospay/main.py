@@ -157,7 +157,7 @@ def create_app() -> FastAPI:
             "error.html",
             status_code=status.HTTP_403_FORBIDDEN,
             status_code_display=403,
-            message="You don't have permission to do that.",
+            message=exc.message or "You don't have permission to do that.",
             show_back_link=True,
         )
 
