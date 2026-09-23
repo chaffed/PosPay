@@ -266,5 +266,20 @@ with the idle timeout enforced server-side and renewals capped at the maximum se
 length. Signed-in responses are now `Cache-Control: no-store`. Also fixed: the API
 WebAuthn sign-in dropped `customer_id` from its tokens.
 
-Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5), OIDC issuer SSRF
-(Phase 4), SVG logos (Phase 4).
+**FIXED (2026-09-23) — SSRF through SSO issuer URLs.** Issuers must be public https URLs
+(checked on save), and every outbound OIDC request (discovery, JWKS, token exchange, and each
+endpoint the discovery document names) goes through `auth/outbound_http.py`. It re-resolves the
+host at connect time, refuses non-public addresses, and connects to the vetted IP, so DNS
+rebinding doesn't get around it. There's an opt-in for local test IdPs, refused in production.
+The OAuth `state` is now bound and verified.
+
+**FIXED (2026-09-23) — uploaded content served from the app origin.** Logos/favicons are typed
+from their bytes (PNG/JPEG/ICO only, no SVG) and served with a sandboxing CSP. Bulk-upload
+downloads are always `application/octet-stream`.
+
+**FIXED (2026-09-23) — the public demo had no guardrails.** A central lock list
+(`web/demo_guard.py`, web and API) refuses actions that would let one visitor lock out or
+disrupt the others. The demo resets hourly, and resets now also restore the organization's
+own settings.
+
+Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5).

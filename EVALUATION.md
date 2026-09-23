@@ -76,7 +76,7 @@ expiry (refresh: 7 days via the API `/api/v1/auth/refresh`). No `jti`/token-vers
 revocation exists. For a banking app, add a per-user `token_version` (bumped on logout,
 password change, deactivation, group change) checked in `decode_and_build_context`.
 
-**S3 — Low — OIDC `state` parameter is generated but never verified.**
+**S3 — FIXED 2026-09-23 (Phase 4) — Low — OIDC `state` parameter is generated but never verified.**
 `sso_start` passes `state=secrets.token_urlsafe(24)` to the IdP and discards it;
 `sso_callback` ignores the returned `state`. The signed nonce cookie still blocks login
 CSRF (id_token nonce must match), so this is defense-in-depth, but the OIDC spec
@@ -107,7 +107,7 @@ attach an account to another tenant's customer UUID (orphaned/inconsistent data,
 read leak since repos filter by tenant). A malformed value is an unhandled 500. Validate
 via `customer_service` like other routes do.
 
-**S8 — Medium — Tenant-uploaded SVG logos are served publicly from the app's origin with a
+**S8 — FIXED 2026-09-23 (Phase 4) — Medium — Tenant-uploaded SVG logos are served publicly from the app's origin with a
 client-supplied Content-Type.** `services/tenant_service.py` allows `image/svg+xml` and
 stores the upload's declared content type; `/ui/branding/{slug}/logo` (unauthenticated)
 serves it inline from the shared origin. CSP blocks inline script, but `script-src 'self'`
@@ -119,7 +119,7 @@ serve with `Content-Security-Policy: sandbox` + `Content-Disposition: attachment
 sniff types server-side as `check_images.py::_image_media_type` already does, and serve
 bulk-upload downloads as `application/octet-stream`.
 
-**S9 — Medium — SSRF via tenant-configured OIDC issuer.** `auth/oidc_service.py` fetches
+**S9 — FIXED 2026-09-23 (Phase 4) — Medium — SSRF via tenant-configured OIDC issuer.** `auth/oidc_service.py` fetches
 `{issuer}/.well-known/openid-configuration` and then whatever `jwks_uri`/`token_endpoint`
 that document names, with no scheme/host validation (`services/sso_service.py` only
 strips a trailing `/`). `/ui/login/sso/{id}/start` is unauthenticated, so once a
@@ -129,7 +129,7 @@ login page. A `tenant:manage`/`customer:manage` holder can point it at
 reject private/link-local/loopback addresses (and re-check on redirects), and show a
 generic error.
 
-**S10 — Medium (public demo only) — Demo tenant has no guardrails on destructive or
+**S10 — FIXED 2026-09-23 (Phase 4) — Medium (public demo only) — Demo tenant has no guardrails on destructive or
 outward-facing admin actions.** With the published demo password (Fly deployment),
 any visitor can: create SSO connections (S9 SSRF from the Fly host), change the demo
 admin's password or deactivate users (locking others out until an *idle* reset — which
@@ -139,7 +139,7 @@ Fix: block these actions when `tenant.is_demo` (SSO, password/credential changes
 deactivation, WebAuthn requirements, branding uploads), plus a periodic (not only idle)
 reset.
 
-**S11 — Info — `docker-compose.yml` publishes Postgres on `0.0.0.0:5432` with
+**S11 — FIXED 2026-09-23 (Phase 4) — Info — `docker-compose.yml` publishes Postgres on `0.0.0.0:5432` with
 `pospay/pospay`.** Documented as local-only; bind to `127.0.0.1:5432` to be safe on
 shared networks.
 

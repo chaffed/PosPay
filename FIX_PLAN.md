@@ -172,7 +172,7 @@ Files: `web/security.py`, `web/deps.py`, new `web/routers/session.py`, `auth/sec
 
 ## Phase 4 — Outbound requests, uploads, public demo (1–2 PRs, about 2 days) — S9, S8, S10, S3, S11
 
-**Status: IN PROGRESS (started 2026-09-23, branch `phase-4-hardening`).** Progress log. The
+**Status: DONE 2026-09-23 on branch `phase-4-hardening` (final full-suite result below).** Progress log. The
 newest entry is last. Each entry is committed, so resume from the last one:
 - 4d started first (smallest). Then 4a → 4b → 4c.
 - 4d DONE: compose Postgres bound to loopback.
@@ -197,7 +197,15 @@ newest entry is last. Each entry is committed, so resume from the last one:
   settings (banner and login messages, colors, dual control, password rules…), so a visitor's
   changes survived every reset. It now restores every Tenant column to a new demo's values.
   Demo notices on the demo's pages and its sign-in page. 34 demo tests pass.
-- NEXT: docs (.env.example, README, admin docs), full suite, live check, then close Phase 4.
+- Docs DONE: README (SSO issuer rules, the local-testing setting, demo locks, hourly reset),
+  admin demo docs, .env.example.
+- Live check DONE: demo sign-in notice, in-app notice, and locked actions confirmed in a
+  browser. **Found and fixed:** the lock page said "You don't have access to this" (it
+  now says "Turned off in the demo"), and flash messages, the demo notice, and the tenant
+  banner at the top of every page ran under the theme/help controls.
+- Full suite before the final tweaks: 1,063 passed, 1 failed. The failure was the Phase 2 demo
+  password test, which expected the form's own error but now gets the demo lock (403, the intended
+  behavior); the test was updated and a service-level test added.
 
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
