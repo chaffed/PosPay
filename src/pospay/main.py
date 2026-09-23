@@ -7,7 +7,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from sqlalchemy.exc import IntegrityError
 from fastapi.staticfiles import StaticFiles
 
 from pospay.api.v1.router import api_router
@@ -155,6 +156,49 @@ def create_app() -> FastAPI:
             status_code_display=404,
             message="That item couldn't be found.",
         )
+
+    @app.exception_handler(IntegrityError)
+    def _handle_integrity_error(request: Request, exc: IntegrityError):
+        # Backstop for a database uniqueness conflict no route pre-checked for (e.g. a
+        # duplicate customer number or security group name). Routes with a form should
+        # still catch this themselves and re-render the form with an inline error (see
+        # web/routers/accounts.py::create_account) — this just guarantees the worst case
+        # is a clear 409, not a 500. get_db's cleanup rolls the failed transaction back.
+        logger.info("Uniqueness conflict on %s %s: %s", request.method, request.url.path, exc.orig)
+        if request.url.path.startswith("/api/"):
+            return JSONResponse({"detail": "Conflicts with an existing record"}, status_code=status.HTTP_409_CONFLICT)
+        return render_template(
+            request,
+            "error.html",
+            status_code=status.HTTP_409_CONFLICT,
+            status_code_display=409,
+            message="That conflicts with a record that already exists (for example, a duplicate name or number). "
+            "Go back, change it, and try again.",
+            show_back_link=True,
+        )
+
+    @app.exception_handler(Exception)
+    def _handle_unexpected_error(request: Request, exc: Exception):
+        # Last resort for anything no other handler claims. Starlette runs this from its
+        # outermost ServerErrorMiddleware and re-raises the exception afterwards, so the
+        # server still logs the full traceback — this only controls what the browser
+        # sees: a branded page with a way back (or plain JSON under /api), never the
+        # exception text. Being outermost, the security-headers middleware never saw this
+        # response, so apply them here explicitly.
+        if request.url.path.startswith("/api/"):
+            response = JSONResponse({"detail": "Internal server error"}, status_code=500)
+        else:
+            response = render_template(
+                request,
+                "error.html",
+                status_code=500,
+                status_code_display=500,
+                message="Something went wrong on our end. Nothing you entered was saved — please try again, "
+                "and contact support if it keeps happening.",
+                show_back_link=True,
+            )
+        apply_security_headers(request, response)
+        return response
 
     @app.get("/health")
     def health() -> dict[str, str]:

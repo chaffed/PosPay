@@ -7,6 +7,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // A link with data-history-back returns to the previous page (e.g. error.html's "Go
+  // back", so a rejected form's typed values are still there) — wired up here rather
+  // than as a javascript: href, which the strict script-src CSP blocks. Its real href is
+  // the no-JS / no-history fallback.
+  document.querySelectorAll("[data-history-back]").forEach((el) => {
+    el.addEventListener("click", (event) => {
+      if (window.history.length > 1) {
+        event.preventDefault();
+        window.history.back();
+      }
+    });
+  });
+
   // A <select>/<input> with data-auto-submit submits its enclosing form on change --
   // used instead of an inline onchange="..." attribute so the app can run a strict,
   // nonce-based script-src Content-Security-Policy (see web/security_headers.py) with no

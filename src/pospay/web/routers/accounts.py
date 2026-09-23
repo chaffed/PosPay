@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from pospay.bulk_import.tabular import TabularParseError, parse_tabular_file
@@ -50,8 +51,17 @@ def list_accounts(
 def new_account_form(
     request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(require_web_permission("account:write"))
 ) -> HTMLResponse:
+    return _render_account_form(request, db, ctx)
+
+
+def _render_account_form(
+    request: Request, db: Session, ctx: TenantContext, *, error: str | None = None, form: dict | None = None
+) -> HTMLResponse:
     customers = customer_service.list_customers(db, ctx.tenant_id) if ctx.customer_id is None else []
-    return render_template(request, "accounts/form.html", ctx=ctx, customers=customers)
+    return render_template(
+        request, "accounts/form.html", ctx=ctx, customers=customers, error=error, form=form or {},
+        status_code=400 if error else 200,
+    )
 
 
 @router.post("")
@@ -65,13 +75,34 @@ def create_account(
     ctx: TenantContext = Depends(require_web_permission("account:write")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
-    resolved_customer_id = ctx.customer_id if ctx.customer_id is not None else (uuid.UUID(customer_id) if customer_id else None)
-    account = account_service.create_account(
-        db, ctx.tenant_id, account_service.AccountInput(
-            account_number=account_number, name=name, customer_id=resolved_customer_id,
-            external_account_id=external_account_id or None,
+    form = {"account_number": account_number, "name": name, "external_account_id": external_account_id, "customer_id": customer_id}
+    if ctx.customer_id is not None:
+        resolved_customer_id = ctx.customer_id
+    elif customer_id:
+        # Never trust a raw id from the form: it must parse, and must be one of THIS
+        # tenant's customers (repository-scoped lookup), not merely some customer row.
+        try:
+            parsed_customer_id = uuid.UUID(customer_id)
+        except ValueError:
+            parsed_customer_id = None
+        if parsed_customer_id is None or customer_service.get_customer(db, ctx.tenant_id, parsed_customer_id) is None:
+            return _render_account_form(request, db, ctx, error="Please choose a customer from the list.", form=form)
+        resolved_customer_id = parsed_customer_id
+    else:
+        resolved_customer_id = None
+    try:
+        account = account_service.create_account(
+            db, ctx.tenant_id, account_service.AccountInput(
+                account_number=account_number, name=name, customer_id=resolved_customer_id,
+                external_account_id=external_account_id or None,
+            )
         )
-    )
+    except IntegrityError:
+        db.rollback()
+        return _render_account_form(
+            request, db, ctx, form=form,
+            error="An account with that account number or external account ID already exists.",
+        )
     audit_log_service.record_action(
         db,
         ctx.tenant_id,
