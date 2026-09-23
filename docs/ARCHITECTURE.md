@@ -269,10 +269,12 @@ its history:
 
 Each bank chooses the shared or bank-only model (`tenant.ml_model_source`,
 `services/tenant_ml_service.py`). New banks start on the shared model, which solves the
-cold-start problem: a new bank gets useful scores on day one. A bank can't switch to a
-bank-only model for its first 90 days. When it does switch, the shared model is **copied**
-into its bank-only slot, so it keeps scoring while it builds up its own data. A bank-only
-bank's decisions stop feeding the shared model.
+cold-start problem: a new bank gets useful scores on day one. A new bank can't switch to a bank-only
+model for its first 90 days (`ml_new_bank_private_switch_lock_days`); the platform
+operator can lift that early. When a bank does switch, the shared model is **copied** into
+its bank-only slot, so it keeps scoring while it builds up its own data, and its decisions
+stop feeding the shared model. Switching back is never locked, but the bank must
+acknowledge the data-pooling disclosure first.
 
 Which model scores an exception (`ml/predict.py::_resolve_scoring_source`):
 

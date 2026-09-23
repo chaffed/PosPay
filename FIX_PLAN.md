@@ -530,7 +530,7 @@ last; each entry committed):
 
 ## Phase 8 — Docs and operational readiness (about 1 day) — F5, F6, F4, F3, S5
 
-**Status: IN PROGRESS (started 2026-09-23, branch `phase-8-docs-ops`).** Progress log (newest
+**Status: COMPLETE (2026-09-23, branch `phase-8-docs-ops`, merged to `main`). Full suite: 1,138 passed, 1 skipped.** Progress log (newest
 last; each entry committed):
 - Order: F4 (X9.37 bundle control, code) → F6 (scheduler leader lock, code) → S5 + F6 docs →
   F5 architecture doc → final review of EVALUATION/FIX_PLAN.
