@@ -1,11 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from collections.abc import Callable
+from functools import partial
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from pospay.config import get_settings
+from pospay.workers.leader_lock import run_exclusively
 from pospay.workers.tasks import (
     demo_reset_job,
     dropbox_import_job,
@@ -25,42 +29,23 @@ def start_scheduler() -> BackgroundScheduler:
     settings = get_settings()
     _scheduler = BackgroundScheduler()
     if settings.enable_ml_scheduler:
-        _scheduler.add_job(
-            retrain_job,
-            CronTrigger(hour=settings.ml_retrain_cron_hour, minute=0),
-            id="ml_retrain_job",
-            replace_existing=True,
-        )
+        _add_job(_scheduler, "ml_retrain_job", retrain_job, CronTrigger(hour=settings.ml_retrain_cron_hour, minute=0))
     if settings.auto_import_enabled:
-        _scheduler.add_job(
-            dropbox_import_job,
-            IntervalTrigger(seconds=settings.auto_import_interval_seconds),
-            id="dropbox_import_job",
-            replace_existing=True,
-        )
+        _add_job(_scheduler, "dropbox_import_job", dropbox_import_job, IntervalTrigger(seconds=settings.auto_import_interval_seconds))
     if settings.notifications_enabled:
-        _scheduler.add_job(
-            notification_dispatch_job,
-            IntervalTrigger(seconds=settings.notification_dispatch_interval_seconds),
-            id="notification_dispatch_job",
-            replace_existing=True,
-        )
+        _add_job(_scheduler, "notification_dispatch_job", notification_dispatch_job, IntervalTrigger(seconds=settings.notification_dispatch_interval_seconds))
     if settings.enable_disposition_scheduler:
-        _scheduler.add_job(
-            sweep_expired_dispositions_job,
-            IntervalTrigger(seconds=settings.disposition_sweep_interval_seconds),
-            id="sweep_expired_dispositions_job",
-            replace_existing=True,
-        )
+        _add_job(_scheduler, "sweep_expired_dispositions_job", sweep_expired_dispositions_job, IntervalTrigger(seconds=settings.disposition_sweep_interval_seconds))
     if demo_reset_enabled(settings):
-        _scheduler.add_job(
-            demo_reset_job,
-            IntervalTrigger(minutes=settings.demo_tenant_reset_interval_minutes),
-            id="demo_reset_job",
-            replace_existing=True,
-        )
+        _add_job(_scheduler, "demo_reset_job", demo_reset_job, IntervalTrigger(minutes=settings.demo_tenant_reset_interval_minutes))
     _scheduler.start()
     return _scheduler
+
+
+def _add_job(scheduler: BackgroundScheduler, job_id: str, job: Callable[[], None], trigger) -> None:
+    # run_exclusively: with several instances on one Postgres database, only one of them
+    # runs each tick of a job (see workers/leader_lock.py).
+    scheduler.add_job(partial(run_exclusively, job_id, job), trigger, id=job_id, replace_existing=True)
 
 
 def demo_reset_enabled(settings) -> bool:

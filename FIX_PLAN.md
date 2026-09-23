@@ -542,12 +542,21 @@ last; each entry committed):
   SECURITY_REVIEW and the X9.37 upload help text were stale (they said no control totals
   were checked) and are corrected. Still no real processor sample file in the repo: that
   part of F4 needs a file from a bank.
+- F6 + S5 done: new `workers/leader_lock.py`. Every scheduled job is wrapped in
+  `run_exclusively`: on Postgres it takes `pg_try_advisory_lock` on a stable per-job key and
+  skips that tick if another instance holds it. The lock is released in `finally`, and the
+  connection is discarded if the release fails. On SQLite/SQL Server the job just runs. The
+  tests use a fake Postgres engine because no Postgres is available here (Docker is down), so
+  the real advisory-lock SQL is still untested against a live server. README gains "Running
+  more than one instance", which covers per-process rate limits (S5) and the scheduler rule
+  (F6). It also corrects the old claim that demo idle-reset tracking was in-process: it uses
+  `last_login_at` in the database. RUNBOOK is a bank-onboarding guide, so it's unchanged.
 
 - [ ] **F5:** write `docs/ARCHITECTURE.md` (data model, network-adapter pattern, matching
       rules, ML pipeline, tenancy layers). Point the README and code comments at it.
-- [ ] **F6:** document "single process only" in the README/RUNBOOK, *or* add a leader lock
+- [x] **F6:** document "single process only" in the README/RUNBOOK, *or* add a leader lock
       (a Postgres advisory lock around each scheduled job; on SQLite, keep single-process).
-- [ ] **S5:** document that the rate limiter is per process. A shared store (for example
+- [x] **S5:** document that the rate limiter is per process. A shared store (for example
       Redis) is optional and only needed for multi-instance deployments.
 - [x] **F4:** validate X9.37 Bundle Control (type 70). Get a real processor sample file and
       add it as a fixture.

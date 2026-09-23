@@ -34,6 +34,7 @@ prerequisites and step-by-step setup, also available as an in-app guided checkli
 - [Demo tenant](#demo-tenant)
 - [Postgres](#postgres)
 - [MSSQL](#mssql)
+- [Running more than one instance](#running-more-than-one-instance)
 - [Upgrade and downgrade support](#upgrade-and-downgrade-support)
 - [Web UI](#web-ui)
 - [Architecture at a glance](#architecture-at-a-glance)
@@ -636,7 +637,8 @@ default; `POST /ui/markdown-preview` has a stricter one of its own on top,
 per-process (`web/rate_limit.py`), matching `scripts/launcher.py`'s single uvicorn
 process with no `workers=N`. A future multi-worker production launch would give each
 worker its own counters, multiplying the effective limit by worker count — worth knowing
-before assuming a configured limit is the actual limit under that kind of deployment.
+before assuming a configured limit is the actual limit under that kind of deployment (see
+"Running more than one instance" below).
 
 That per-IP limiting (and the signer IP recorded on a Written Statement of Unauthorized
 Debit attestation, `web/routers/wsud.py`) both resolve "the caller's IP" via
@@ -725,10 +727,9 @@ The demo image needs no such step — `main.py`'s startup seeds the demo tenant
 automatically (`services/demo_tenant_service.py::ensure_demo_tenant`) whenever
 `demo_tenant_enabled=true`.
 
-**Must stay a single instance/replica**, same reasoning as "Reverse proxy / WAF
-deployment" above: the rate limiter and the demo tenant's idle-reset tracking are both
-in-process state, not shared across containers. Don't put this behind a load balancer
-fronting more than one running container of the same image.
+**Run a single container** unless you're on Postgres and have read "Running more than one
+instance" below: the rate limiter is per process, and on SQLite (the image's default) every
+container would also run every scheduled job.
 
 `docker-compose.yml` at the repo root is a separate, narrower thing — a local convenience
 for testing against Postgres instead of SQLite (runs in development mode with the
@@ -790,8 +791,8 @@ would, so it gets no shortcuts). `fly.toml` at the repo root is a working, minim
 example for [Fly.io](https://fly.io) specifically — one machine on the smallest VM size
 this app runs reliably on, a persistent volume for `/data`, and
 `POSPAY_TRUSTED_PROXY_COUNT=1` already set for Fly's own edge proxy (see "Reverse proxy /
-WAF deployment" above). Whatever host you use, the same "must stay a single
-instance/replica" constraint from the Docker section applies here too.
+WAF deployment" above). The demo runs on SQLite, so whatever host you use, keep it to one
+instance (see "Running more than one instance").
 
 ## Postgres
 
@@ -839,6 +840,30 @@ Known friction points, not yet exercised against a live instance in this build:
   solely on the repository-layer filter for tenant isolation, same as SQLite.
 - Alembic's autogenerate has known rough edges on MSSQL around identity columns and
   server-side defaults; review generated migrations before applying against MSSQL.
+
+## Running more than one instance
+
+By default, run **one** app process. `scripts/launcher.py`, the Docker image and
+`fly.toml` all do. Running several processes or containers against one database
+(`uvicorn --workers N`, several replicas behind a load balancer) is only supported on
+**Postgres**, and two things change:
+
+- **Scheduled jobs** (ML retrain, dropbox import, notification sending, expired-disposition
+  sweep, demo reset) run on whichever instances enable their `POSPAY_*` flags. On Postgres,
+  each run first takes a per-job advisory lock (`workers/leader_lock.py`), so one instance
+  runs each tick and the rest skip it. If an instance dies mid-job, Postgres releases its
+  lock with the connection. On SQLite and SQL Server there is no such lock: every instance
+  runs every job, so those deployments must stay a single process. (You can also enable the
+  scheduler flags on just one instance and leave them off on the rest.)
+- **Rate limits are per process** (`web/rate_limit.py`, see "Reverse proxy / WAF
+  deployment" above). With N processes, a client can make up to N times the configured
+  limit. Divide `POSPAY_RATE_LIMIT_PER_MINUTE` by N, or enforce the real limit at your proxy
+  or WAF. A shared limiter (for example, Redis) isn't built in.
+
+Everything else a request depends on (sessions, CSRF, WebAuthn challenges, the demo tenant's
+idle-reset clock) lives in the database or in signed cookies, so a request can land on any
+instance. Only the OIDC discovery and signing-key caches are per process, and each instance
+simply fills its own.
 
 ## Upgrade and downgrade support
 
@@ -903,9 +928,10 @@ cosmetic, the POST route's own permission check is what actually enforces it.
   scores an exception, `services/tenant_ml_service.py` for switching, and the admin "ML
   Scoring" docs for the details a bank sees.
 - `api/v1/` — FastAPI routers; `exceptions.py`/`decisions.py` are network-agnostic
-- `workers/` — the ML retrain job, runnable via an opt-in in-process APScheduler
-  (`POSPAY_ENABLE_ML_SCHEDULER=true`) or an external cron/k8s CronJob calling
-  `workers.tasks.retrain_job()`
+- `workers/` — the scheduled jobs (ML retrain, dropbox import, notifications, disposition
+  sweep, demo reset), run by an opt-in in-process APScheduler (`POSPAY_ENABLE_ML_SCHEDULER`
+  and friends) or an external cron/k8s CronJob calling the functions in `workers/tasks.py`.
+  `workers/leader_lock.py` keeps each job to one instance at a time on Postgres
 - `web/` — the server-rendered UI (see "Web UI" above); `templates/` and `static/` live
   inside the package so they ship with it wherever it's installed
 - `scripts/launcher.py` — the one-click local setup/run script (stdlib-only until it
