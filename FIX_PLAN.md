@@ -250,6 +250,24 @@ Files: new `web/demo_guard.py` dependency, routers listed below
 
 ## Phase 5 — ML model choice per bank (2 PRs, about 4–5 days) — S6
 
+**Status: IN PROGRESS (started 2026-09-23, branch `phase-5-ml-model-choice`).** Progress log
+(newest last; each entry is committed, so resume from the last one):
+- Decisions made at the start (standing "go with the recommendation" rule):
+  - Platform operator = a platform API key with a new `shared_model` scope. Keys get
+    scopes (existing keys keep usage-metering only), so a metering key can't touch the
+    shared model.
+  - Platform operator actions are **API-only** in this phase. There's no platform-level
+    user login to hang a web page on, so building one is deferred.
+  - The data-pooling disclosure text is a config setting. A placeholder does **not** block
+    production startup (that would stop the live Fly demo). Instead, the UI marks it
+    "placeholder, have counsel review" and startup logs a warning.
+  - Every retrain (shared, bank, customer) compares challenger vs. current model on the
+    **same** recent held-out decisions. Previously a new model's AUC was compared to the old
+    model's stored AUC from a different holdout.
+- Order: 5.1 schema → 5.2 registry/train/predict scoping → 5.3 switching + seed →
+  5.4 fraud-example approval → 5.5 governance routes (tenant + platform) → 5.6 settings UI,
+  consent, customer page → 5.7 docs/tests.
+
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps
 a **bank-only model** trained only on its own data. The shared model is run by the platform
