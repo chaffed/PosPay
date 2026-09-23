@@ -446,7 +446,8 @@ table.evidence tr.mismatch td, table.evidence tr.mismatch th { background: var(-
    screen. */
 .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .table-scroll > table { margin-top: 0.5rem; }
-.card, .page > * { min-width: 0; max-width: 100%; }
+/* min-width only: a max-width here would override .card-narrow's own width. */
+.card, .page > * { min-width: 0; }
 pre, code { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
   /* The root cause of the sideways scrolling: .page's `margin: 0 auto` stops a flex item
@@ -457,7 +458,7 @@ pre, code { overflow-wrap: anywhere; }
   .actions > *, .toolbar > .actions { max-width: 100%; }
 }
 .stat-card .stat-action { margin-top: 0.4rem; font-size: 0.8rem; color: var(--accent); font-weight: 600; }
-.stat-card .stat-value-text { font-size: 1.3rem; line-height: 2.2rem; }
+.stat-card .stat-value-text { font-size: 1.1rem; line-height: 2.2rem; white-space: nowrap; }
 .stat-card-alert { border-color: var(--badge-warn-fg); background: var(--badge-warn-bg); }
 /* The accent-color picker: without a fixed size it stretched full-width and rendered as a
    thin blank line, so it didn't look like a color control at all. */

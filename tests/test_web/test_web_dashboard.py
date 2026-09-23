@@ -58,7 +58,7 @@ def test_dashboard_shows_stat_cards_with_correct_counts(client, db_session, tena
     assert card("Exceptions need attention") == "1"
     assert card("Awaiting my approval") == "0"
     assert card("Due within 24 hours or overdue") == "0"
-    assert card("Oldest item waiting") == "under an hour"
+    assert card("Oldest item waiting") == "Under 1 hour"
     assert card("Outstanding issued checks") == "1"  # presented for the wrong amount, so still outstanding
     assert card("Active stop payments") == "1"
     assert 'href="/ui/exceptions/approvals"' in resp.text

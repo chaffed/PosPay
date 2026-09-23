@@ -45,7 +45,7 @@
     <a class="stat-card" href="/ui/exceptions">
       <div class="stat-value stat-value-text">{{ attention.oldest_age or "—" }}</div>
       <div class="stat-label">Oldest item waiting</div>
-      <div class="stat-action">{{ "Oldest are listed first →" if attention.oldest_age else "Nothing waiting" }}</div>
+      <div class="stat-action">{{ "Oldest first →" if attention.oldest_age else "Nothing waiting" }}</div>
     </a>
     {% endif %}
     {% if outstanding_issued_items_count is not none %}

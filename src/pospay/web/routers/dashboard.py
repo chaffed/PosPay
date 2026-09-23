@@ -27,7 +27,7 @@ def _age(since: datetime) -> str:
         since = since.replace(tzinfo=timezone.utc)
     hours = int((datetime.now(timezone.utc) - since).total_seconds() // 3600)
     if hours < 1:
-        return "under an hour"
+        return "Under 1 hour"
     if hours < 48:
         return f"{hours} hour{'s' if hours != 1 else ''}"
     return f"{hours // 24} days"

@@ -268,7 +268,7 @@ types as readable labels ("Amount mismatch"), not raw codes (`amount_mismatch`,
 `amount_exceeds_limit`). The "ML score: no model yet" column is noise until a model
 exists, so hide it when no model is active.
 
-**U5 — Medium — Mobile layout overflows on most list pages.** At 390px, the whole page
+**U5 — FIXED 2026-09-23 (Phase 7) — Medium — Mobile layout overflows on most list pages.** At 390px, the whole page
 scrolls sideways on Exceptions (+324px), Users (+409px), Audit log (+579px),
 ACH authorizations (+355px), Accounts, Stop payments, Paid/Issued items, ACH
 transactions, Settings, and Customer detail. The card is cut off at the right edge, and
@@ -276,12 +276,12 @@ button rows (e.g. Users: Add/Bulk/Look up/Export) run off-screen. Wrap tables in
 `overflow-x:auto` container (or stack them as cards on small screens) and let button
 toolbars wrap.
 
-**U6 — Low — The dashboard is thin.** The stat cards aren't clickable, and below them is a
+**U6 — FIXED 2026-09-23 (Phase 7) — Low — The dashboard is thin.** The stat cards aren't clickable, and below them is a
 plain list of links that repeats the sidebar. More useful: make the cards link to
 filtered lists, and add "Awaiting my approval", "Oldest open exception age", and
 "Decisions due today".
 
-**U7 — Low — Settings page polish.**
+**U7 — FIXED 2026-09-23 (Phase 7) — Low — Settings page polish.**
 - The accent-color `<input type=color>` is styled full-width and renders as a blank
   horizontal line, so it doesn't look like a color picker.
 - The "Access token timeout" / "Refresh token timeout" labels are developer jargon.
@@ -291,12 +291,12 @@ filtered lists, and add "Awaiting my approval", "Oldest open exception age", and
   which leaks internal server details. Show a relative/logical name.
 - Two inputs on the page have no accessible label (flagged by the automated check).
 
-**U8 — Low — A link leads to a 403 page.** `admin/ml_models.html` L39 links to
+**U8 — FIXED 2026-09-23 (Phase 7) — Low — A link leads to a 403 page.** `admin/ml_models.html` L39 links to
 `/ui/ml-training/fraud-examples`, but Admin doesn't hold `ml_training_example:write` by
 default (deliberately), so the default admin clicks it and gets 403. Wrap the link in
 `can(ctx, ...)` or explain that the permission has to be granted.
 
-**U9 — Low — Error pages are inconsistent.** 403/404 render the branded `error.html`, but
+**U9 — FIXED 2026-09-23 (Phase 7) — Low — Error pages are inconsistent.** 403/404 render the branded `error.html`, but
 unhandled errors show a bare-text 500 (F2).
 
 What's solid (UI): consistent layout and navigation, a skip link, a light/dark/system

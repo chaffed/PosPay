@@ -491,26 +491,42 @@ Files: `templates/exceptions/detail.html`, `templates/exceptions/list.html`,
 
 ## Phase 7 — Layout and polish (1 PR, about 1–2 days) — U5, U6, U7, U8
 
-**Status: IN PROGRESS (started 2026-09-23, branch `phase-7-polish`).** Progress log (newest
+**Status: DONE 2026-09-23 on branch `phase-7-polish`, merged to `main`, not pushed. Full suite: 1,128 passed, 1 skipped; phone overflow 0 of 31 pages; screenshots regenerated.** Progress log (newest
 last; each entry committed):
 - Scope: U5 mobile overflow, U6 dashboard, U7 settings, U8 link guard, plus the Phase 1
   carry-over (inline duplicate errors on the customer, security group, issued item, and ACH
   transaction forms), then screenshots.
+- U5 DONE: root cause was `.page { margin: 0 auto }` on a column flex item on phones (auto
+  margins stop it stretching, so the page grew to its widest table). Pinned to screen width. app.js
+  wraps every table in `.table-scroll`. Measured at 390px: 15 of 31 main pages overflowed (up to
+  689px) → 0 of 31.
+- U6 DONE: the dashboard shows needs-attention, awaiting-my-approval, due-within-24h (highlighted),
+  and oldest-waiting cards, each saying where it goes; the duplicate link list was removed. (The old
+  cards *were* links; the evaluation was wrong about that, but nothing looked clickable.)
+- U7/U8 DONE: color picker sized; auto-import no longer shows the server's absolute path; hidden
+  markdown image input labeled; the Fraud Training link is shown only to people who can open it,
+  and others are told which permission it needs.
+- Carry-over DONE, and it was worse than recorded: seven forms showed **raw database error text**
+  (table/column names and SQL) on failure. `web/form_errors.py::friendly_error` now gives plain
+  messages; security groups show duplicates on the form.
+- Screenshots regenerated (light and dark). **Caught in them and fixed:** my phone-layout rule
+  (`.page > * { max-width: 100% }`) had overridden `.card-narrow`, stretching the Decide form full
+  width; the dashboard's "Oldest" card text wrapped awkwardly.
 
-- [ ] **U5 mobile:** wrap every `<table>` in `.table-scroll { overflow-x:auto }` (put it in
+- [x] **U5 mobile:** wrap every `<table>` in `.table-scroll { overflow-x:auto }` (put it in
       the shared table macro/`app.js` sortable helper so every page gets it). Toolbars and
       button rows get `flex-wrap: wrap`. Re-run the Playwright overflow check (the script
       logic is in the EVALUATION step 10 notes) and aim for 0px overflow on all 27 pages at
       390px.
-- [ ] **U6 dashboard:** make the stat cards links to filtered lists. Add "Awaiting my
+- [x] **U6 dashboard:** make the stat cards links to filtered lists. Add "Awaiting my
       approval", "Oldest open exception", and "Due today". Drop the redundant link list.
-- [ ] **U7 settings:** fix the `input[type=color]` CSS (fixed width and height). Replace the
+- [x] **U7 settings:** fix the `input[type=color]` CSS (fixed width and height). Replace the
       absolute drop-directory path with the tenant-relative folder name. Label the two
       unlabeled inputs.
-- [ ] **U8:** wrap the Fraud Training link in `admin/ml_models.html` with
+- [x] **U8:** wrap the Fraud Training link in `admin/ml_models.html` with
       `can(ctx, "ml_training_example:write")`, or add "(requires the Fraud Training
       permission)".
-- [ ] Regenerate screenshots (`scripts/generate_screenshots.py`).
+- [x] Regenerate screenshots (`scripts/generate_screenshots.py`).
 
 ## Phase 8 — Docs and operational readiness (about 1 day) — F5, F6, F4, F3, S5
 
@@ -550,5 +566,5 @@ last; each entry committed):
 | 4 | SSRF, uploads, demo | M | Public demo is live exposure |
 | 5 | ML model choice per bank | M–L | Done 2026-09-23 |
 | 6 | Exception review UX | M–L | Done 2026-09-23 |
-| 7 | Layout polish | S | Mechanical |
+| 7 | Layout polish | S | Done 2026-09-23 |
 | 8 | Docs/ops | S | Before any real multi-instance deployment |
