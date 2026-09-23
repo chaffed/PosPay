@@ -17,11 +17,12 @@ own. Work top to bottom. Tick boxes as you go so a lost session can resume here.
 
 ## Phase 0 — Land the in-flight work (about ½ hour)
 
-- [ ] Fix the failing `test_web_approvals.py::test_detail_page_shows_notice_instead_of_decide_form_for_own_recommendation`:
+- [x] Fix the failing `test_web_approvals.py::test_detail_page_shows_notice_instead_of_decide_form_for_own_recommendation`:
       put "a different approver must finalize it" on one line in
       `templates/exceptions/detail.html` (L84–85).
-- [ ] Full suite green → commit the approvals queue work (`exceptions.py`,
+- [x] Full suite green (957 passed, 1 skipped) → commit the approvals queue work (`exceptions.py`,
       `approvals.html`, `detail.html`, `base.html`, `.gitignore`, test file).
+      Done 2026-09-22 on branch `approvals-queue` (commits `9bb0adb`, `ae7868e`); not pushed.
 
 ## Phase 1 — Critical and high security fixes, small blast radius (1 PR, about 1 day)
 
