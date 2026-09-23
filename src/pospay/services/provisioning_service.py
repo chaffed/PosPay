@@ -2,9 +2,11 @@
 # Copyright (C) 2026 Chaffed
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from pospay.config import get_settings
 from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
@@ -32,7 +34,14 @@ def create_tenant_with_admin(
     scripts/launcher.py when the database is empty — kept here (not inline in the
     launcher) so it stays testable and reusable if a future admin API wants the same
     'create a new tenant' operation."""
-    tenant = Tenant(name=tenant_name, slug=tenant_slug)
+    # New banks start on the shared model and can't switch to a bank-only model until the
+    # lock passes (FIX_PLAN.md Phase 5; services/tenant_ml_service.py).
+    lock_days = get_settings().ml_new_bank_private_switch_lock_days
+    tenant = Tenant(
+        name=tenant_name,
+        slug=tenant_slug,
+        ml_private_switch_allowed_at=datetime.now(timezone.utc) + timedelta(days=lock_days),
+    )
     session.add(tenant)
     session.flush()
 

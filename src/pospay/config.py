@@ -155,6 +155,25 @@ class Settings(BaseSettings):
     # compute DoS (ml/train.py::train_model). The nightly scheduled job is already gated
     # by ml_min_new_decisions_for_retrain and won't normally trip this too.
     ml_retrain_cooldown_seconds: int = 60
+    # Fraud-scoring model choice per bank (services/tenant_ml_service.py, FIX_PLAN.md
+    # Phase 5). A newly created bank must stay on the shared model this many days before it
+    # may switch to a bank-only model (banks that predate the setting aren't locked).
+    ml_new_bank_private_switch_lock_days: int = 90
+    # A bank-only model retrain replaces the active model only once the bank has at least
+    # this many of its own labeled decisions AND the new model beats the active one on the
+    # same recent held-out decisions (ml/train.py).
+    ml_bank_model_min_decisions: int = 200
+    # Shown, and acknowledged, whenever a bank joins the shared model (onboarding and
+    # Settings). Placeholder wording: have counsel review and replace it. Unlike the WSUD
+    # text this doesn't block production startup; the UI flags the placeholder instead.
+    ml_shared_pool_disclosure_text: str = (
+        "PLACEHOLDER — HAVE COUNSEL REVIEW. By joining the shared fraud-scoring model, your "
+        "institution's pay/return decisions and the transaction features used to score them are "
+        "pooled with those of other participating institutions to train a model that scores all "
+        "of their exceptions. Other institutions never see your data, your name, or which "
+        "decisions came from you. You can switch to a bank-only model later; your data then stops "
+        "being used from the next time the shared model is retrained."
+    )
     ml_artifact_dir: str = "./ml_artifacts"  # NOT inside src/pospay/ — that's installed package code, not a place for runtime output
     enable_ml_scheduler: bool = False  # opt-in: off by default so tests/local dev don't spawn a background thread
     ml_retrain_cron_hour: int = 2  # nightly at 2am when enabled

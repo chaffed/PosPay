@@ -91,4 +91,9 @@ class ExceptionItem(Base):
     # One-way soft-retraction, mirrors BulkUploadFile.backed_out_at/backed_out_by_user_id —
     # only ever set on a TRAINING_BACKFILL exception (see fraud_training_service.retract_*).
     retracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Only meaningful for TRAINING_BACKFILL (fraud-training) examples from a bank on the
+    # shared model: such an example feeds the shared model only once the platform
+    # operator has approved it, so one bank can't quietly poison scoring for all of them
+    # (ml/train.py). Live exceptions and bank-only banks' examples ignore it.
+    shared_training_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     retracted_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)

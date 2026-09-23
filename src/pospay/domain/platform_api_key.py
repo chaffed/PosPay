@@ -4,7 +4,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import JSON, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from pospay.db.base import Base, new_uuid
@@ -34,3 +34,7 @@ class PlatformApiKey(Base):
     # One-way, same pattern as every other revoke in this app (AchAuthorizationRule.status,
     # BulkUploadFile.backed_out_at, ...) — nothing supports un-revoking a key.
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What the key may do: "usage" (the metering API; every key created before scopes
+    # existed) and/or "shared_model" (operating the shared fraud-scoring model —
+    # api/v1/platform_ml.py). Checked by auth/platform_api_key_deps.py.
+    scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["usage"])

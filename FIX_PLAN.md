@@ -267,6 +267,14 @@ Files: new `web/demo_guard.py` dependency, routers listed below
 - Order: 5.1 schema → 5.2 registry/train/predict scoping → 5.3 switching + seed →
   5.4 fraud-example approval → 5.5 governance routes (tenant + platform) → 5.6 settings UI,
   consent, customer page → 5.7 docs/tests.
+- 5.1 DONE (schema): `Tenant.ml_model_source` (SHARED default) + changed-at/by,
+  `ml_private_switch_allowed_at` (set to +90 days for banks created from now on in
+  `provisioning_service`; existing banks NULL = no lock), `ml_shared_consent_at/by`;
+  `MlModel.tenant_id` (customer models backfilled from their customer); `ExceptionItem.
+  shared_training_approved_at`; `PlatformApiKey.scopes` (existing keys = ["usage"]). New
+  settings: `ml_new_bank_private_switch_lock_days`, `ml_bank_model_min_decisions`,
+  `ml_shared_pool_disclosure_text`. Migration `a9c4e2f1d7b5` with a backfill test. An older
+  migration test that read today's ORM after a partial upgrade now upgrades to head.
 
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps

@@ -180,7 +180,9 @@ def test_exception_item_source_survives_migration_and_orm_read(scratch_db):
     conn.commit()
     conn.close()
 
-    command.upgrade(_alembic_config(), "e5f6a7b8c9d0")
+    # Upgrade all the way (not just to e5f6a7b8c9d0, the migration that added `source`):
+    # the ORM model below is today's, so reading through it needs every later column too.
+    command.upgrade(_alembic_config(), "head")
 
     from pospay.db.session import get_session_factory
     from pospay.domain.exception_item import ExceptionItem, ExceptionItemSource
@@ -216,3 +218,47 @@ def test_decision_source_survives_migration_and_orm_read(scratch_db):
         assert row.source == DecisionSource.HUMAN
     finally:
         session.close()
+
+
+def _insert_with_required_defaults(conn, table, values):
+    """Inserts a row, filling any other NOT NULL column that has no database default with
+    a zero value, so a test stays valid as later migrations add required columns."""
+    row = dict(values)
+    for _cid, name, _type, notnull, default, pk in conn.execute(f"PRAGMA table_info({table})"):
+        if notnull and default is None and not pk and name not in row:
+            row[name] = 0
+    columns = ", ".join(row)
+    conn.execute(f"INSERT INTO {table} ({columns}) VALUES ({', '.join('?' for _ in row)})", tuple(row.values()))
+
+
+def test_ml_model_choice_migration_backfills_model_owners_and_keeps_banks_on_shared(scratch_db):
+    """a9c4e2f1d7b5: customer models get their bank as tenant_id, shared models stay
+    ownerless, every existing bank stays on the shared model with no 90-day lock, and
+    existing platform keys stay usage-only."""
+    command.upgrade(_alembic_config(), "f2a9d4c7e1b3")
+    conn = _connect(scratch_db)
+    tenant_id, customer_id = uuid.uuid4().hex, uuid.uuid4().hex
+    shared_model_id, customer_model_id, key_id = uuid.uuid4().hex, uuid.uuid4().hex, uuid.uuid4().hex
+    _insert_with_required_defaults(conn, "tenant", {"id": tenant_id, "name": "Old Bank", "slug": "old-bank"})
+    _insert_with_required_defaults(conn, "customer", {"id": customer_id, "tenant_id": tenant_id, "customer_number": "C1", "name": "Cust"})
+    for model_id, owner in ((shared_model_id, None), (customer_model_id, customer_id)):
+        conn.execute(
+            "INSERT INTO ml_model (id, network_code, customer_id, version, algorithm, artifact_path, trained_from_decision_count, status) "
+            "VALUES (?, 'check', ?, 'v1', 'logistic_regression', '/tmp/x.joblib', 10, 'ACTIVE')",
+            (model_id, owner),
+        )
+    conn.execute("INSERT INTO platform_api_key (id, name, key_hash) VALUES (?, 'billing', 'abc')", (key_id,))
+    conn.commit()
+    conn.close()
+
+    command.upgrade(_alembic_config(), "head")
+
+    conn = _connect(scratch_db)
+    owners = dict(conn.execute("SELECT id, tenant_id FROM ml_model").fetchall())
+    tenant = conn.execute("SELECT ml_model_source, ml_private_switch_allowed_at FROM tenant").fetchone()
+    scopes = conn.execute("SELECT scopes FROM platform_api_key").fetchone()[0]
+    conn.close()
+    assert owners[customer_model_id] == tenant_id
+    assert owners[shared_model_id] is None
+    assert tenant == ("SHARED", None)
+    assert scopes == '["usage"]'
