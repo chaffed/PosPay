@@ -491,6 +491,12 @@ Files: `templates/exceptions/detail.html`, `templates/exceptions/list.html`,
 
 ## Phase 7 — Layout and polish (1 PR, about 1–2 days) — U5, U6, U7, U8
 
+**Status: IN PROGRESS (started 2026-09-23, branch `phase-7-polish`).** Progress log (newest
+last; each entry committed):
+- Scope: U5 mobile overflow, U6 dashboard, U7 settings, U8 link guard, plus the Phase 1
+  carry-over (inline duplicate errors on the customer, security group, issued item, and ACH
+  transaction forms), then screenshots.
+
 - [ ] **U5 mobile:** wrap every `<table>` in `.table-scroll { overflow-x:auto }` (put it in
       the shared table macro/`app.js` sortable helper so every page gets it). Toolbars and
       button rows get `flex-wrap: wrap`. Re-run the Playwright overflow check (the script
