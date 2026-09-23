@@ -12,3 +12,4 @@ data/
 # scripts/generate_keys.py's default output dir for real signing keys — never commit
 # these. dev_keys/ (the checked-in, deliberately public test key pair) is NOT ignored.
 /keys/
+.DS_Store

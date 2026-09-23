@@ -50,6 +50,7 @@
 
         <p class="nav-section">Review</p>
         {{ nav_link("/ui/exceptions", "Exceptions", "flag") }}
+        {% if can(ctx, "exception:decide") %}{{ nav_link("/ui/exceptions/approvals", "Approvals", "check_circle") }}{% endif %}
         {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement", "gavel") }}{% endif %}
         {% if show_customer_banner %}{{ nav_link("/ui/customers/" ~ ctx.customer_id ~ "/banner", "Banner Message", "campaign") }}{% endif %}
         {% if can(ctx, "ml_training_example:write") %}{{ nav_link("/ui/ml-training/fraud-examples", "Fraud Training Data", "model_training") }}{% endif %}

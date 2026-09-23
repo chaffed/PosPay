@@ -27,7 +27,8 @@
   <p>This exception was withdrawn because its underlying item was backed out via a bulk upload reversal.</p>
   {% endif %}
   {% if item.recommended_outcome %}
-  <p>Recommended: <strong>{{ item.recommended_outcome }}</strong> ({{ item.recommended_reason_code }}{% if item.recommended_return_transaction_code %}, trancode {{ item.recommended_return_transaction_code }}{% endif %}){% if item.recommended_notes %} — {{ item.recommended_notes }}{% endif %}</p>
+  <p>Recommended by <strong>{{ recommended_by.email if recommended_by else "someone no longer on this account" }}</strong>:
+    <strong>{{ item.recommended_outcome }}</strong> ({{ item.recommended_reason_code }}{% if item.recommended_return_transaction_code %}, trancode {{ item.recommended_return_transaction_code }}{% endif %}){% if item.recommended_notes %} — {{ item.recommended_notes }}{% endif %}</p>
   {% endif %}
   {% if decision %}
   <p>Decision: <strong>{{ decision.outcome.value }}</strong> ({{ decision.reason_code }}{% if decision.return_transaction_code %}, trancode {{ decision.return_transaction_code }}{% endif %}){% if decision.notes %} — {{ decision.notes }}{% endif %}, decided {{ decision.decided_at.strftime("%Y-%m-%d %H:%M") }}</p>
@@ -38,16 +39,18 @@
 </div>
 
 {% if item.status.value in ["open", "pending_approval"] %}
+{% set is_own_recommendation = require_dual_control and item.status.value == "pending_approval" and item.recommended_by_user_id == ctx.user_id %}
+{% set needs_recommendation_first = require_dual_control and item.status.value == "open" %}
 
 {% if can(ctx, "exception:recommend") %}
 <div class="card card-narrow">
-  <h1>Recommend a decision</h1>
+  <h1>{{ "Revise recommendation" if item.status.value == "pending_approval" else "Recommend a decision" }}</h1>
   <form method="post" action="/ui/exceptions/{{ item.id }}/recommend">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Outcome
       <select name="outcome" required>
-        <option value="pay">Pay</option>
-        <option value="return">Return</option>
+        <option value="pay" {{ "selected" if item.recommended_outcome == "pay" else "" }}>Pay</option>
+        <option value="return" {{ "selected" if item.recommended_outcome == "return" else "" }}>Return</option>
       </select>
     </label>
     {% if item.network_code == "ach" %}
@@ -55,48 +58,62 @@
       <select name="ach_return_reason_id">
         <option value="">— select if returning —</option>
         {% for reason in ach_return_reasons %}
-        <option value="{{ reason.id }}">{{ reason.reason_text }}{% if reason.transaction_code %} (trancode {{ reason.transaction_code }}){% endif %}</option>
+        <option value="{{ reason.id }}" {{ "selected" if reason.id == recommended_ach_return_reason_id else "" }}>{{ reason.reason_text }}{% if reason.transaction_code %} (trancode {{ reason.transaction_code }}){% endif %}</option>
         {% endfor %}
       </select>
     </label>
-    <label>Reason code (used only for Pay) <input type="text" name="reason_code"></label>
+    <label>Reason code (used only for Pay) <input type="text" name="reason_code" value="{{ item.recommended_reason_code or '' }}"></label>
     {% else %}
-    <label>Reason code <input type="text" name="reason_code" required></label>
+    <label>Reason code <input type="text" name="reason_code" value="{{ item.recommended_reason_code or '' }}" required></label>
     {% endif %}
-    <label>Notes <input type="text" name="notes"></label>
+    <label>Notes <input type="text" name="notes" value="{{ item.recommended_notes or '' }}"></label>
     <button type="submit">{{ icon("send") }}Submit recommendation</button>
   </form>
 </div>
 {% endif %}
 
 {% if can(ctx, "exception:decide") %}
-<div class="card card-narrow">
-  <h1>Decide</h1>
-  <form method="post" action="/ui/exceptions/{{ item.id }}/decide">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Outcome
-      <select name="outcome" required>
-        <option value="pay">Pay</option>
-        <option value="return">Return</option>
-      </select>
-    </label>
-    {% if item.network_code == "ach" %}
-    <label>Return reason (required to return an ACH item — replaces freeform text below)
-      <select name="ach_return_reason_id">
-        <option value="">— select if returning —</option>
-        {% for reason in ach_return_reasons %}
-        <option value="{{ reason.id }}">{{ reason.reason_text }}{% if reason.transaction_code %} (trancode {{ reason.transaction_code }}){% endif %}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Reason code (used only for Pay) <input type="text" name="reason_code"></label>
-    {% else %}
-    <label>Reason code <input type="text" name="reason_code" required></label>
+  {% if needs_recommendation_first %}
+    {% if not can(ctx, "exception:recommend") %}
+    <div class="card card-narrow">
+      <p class="text-muted">This exception needs a recommendation from a preparer before it can be decided under dual control.</p>
+    </div>
     {% endif %}
-    <label>Notes <input type="text" name="notes"></label>
-    <button type="submit">{{ icon("send") }}Submit decision</button>
-  </form>
-</div>
+  {% elif is_own_recommendation %}
+  <div class="card card-narrow">
+    <p class="text-muted">You submitted this recommendation — under dual control,
+      a different approver must finalize it. It'll be waiting on someone else's
+      <a href="/ui/exceptions/approvals">Approvals</a> queue.</p>
+  </div>
+  {% else %}
+  <div class="card card-narrow">
+    <h1>{{ "Approve recommendation" if item.status.value == "pending_approval" else "Decide" }}</h1>
+    <form method="post" action="/ui/exceptions/{{ item.id }}/decide">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Outcome
+        <select name="outcome" required>
+          <option value="pay" {{ "selected" if item.recommended_outcome == "pay" else "" }}>Pay</option>
+          <option value="return" {{ "selected" if item.recommended_outcome == "return" else "" }}>Return</option>
+        </select>
+      </label>
+      {% if item.network_code == "ach" %}
+      <label>Return reason (required to return an ACH item — replaces freeform text below)
+        <select name="ach_return_reason_id">
+          <option value="">— select if returning —</option>
+          {% for reason in ach_return_reasons %}
+          <option value="{{ reason.id }}" {{ "selected" if reason.id == recommended_ach_return_reason_id else "" }}>{{ reason.reason_text }}{% if reason.transaction_code %} (trancode {{ reason.transaction_code }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Reason code (used only for Pay) <input type="text" name="reason_code" value="{{ item.recommended_reason_code or '' }}"></label>
+      {% else %}
+      <label>Reason code <input type="text" name="reason_code" value="{{ item.recommended_reason_code or '' }}" required></label>
+      {% endif %}
+      <label>Notes <input type="text" name="notes" value="{{ item.recommended_notes or '' }}"></label>
+      <button type="submit">{{ icon("send") }}Submit decision</button>
+    </form>
+  </div>
+  {% endif %}
 {% endif %}
 
 {% endif %}

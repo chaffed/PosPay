@@ -7,12 +7,15 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.decision import DecisionOutcome
 from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
+from pospay.domain.tenant import Tenant
+from pospay.domain.user import User
 from pospay.networks.registry import get_adapter
 from pospay.repositories.exception_repo import ExceptionRepository
 from pospay.services import ach_return_reason_service, audit_log_service, decision_service, exception_service
@@ -96,6 +99,60 @@ def list_exceptions(
     )
 
 
+@router.get("/approvals")
+def list_approvals(
+    request: Request,
+    network_code: str | None = None,
+    page: int = 1,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("exception:decide")),
+) -> HTMLResponse:
+    """A dedicated queue for checkers -- everything currently pending_approval, with the
+    maker's own recommendation shown inline so a checker doesn't have to open each item
+    just to see what's being asked of them. Split out from the general Exceptions list
+    (which mixes every status together, and whose detail page used to show the maker's
+    "Recommend" form and the checker's "Decide" form stacked together with no indication
+    of who recommended what) specifically because that combined view is what made the
+    maker/checker workflow feel cumbersome -- see exception_detail's decide/recommend
+    split below for the other half of this fix. Registered before /{exception_id} on
+    purpose -- FastAPI resolves that path param's uuid.UUID conversion during request
+    handling, not route matching, so "approvals" would otherwise 422 against it instead
+    of falling through to this route."""
+    page_obj = paginate(
+        page=page,
+        count_fn=lambda: ExceptionRepository(db, ctx.tenant_id, ctx.customer_id).count(
+            network_code=network_code, status=ExceptionStatus.PENDING_APPROVAL
+        ),
+        list_fn=lambda **kw: exception_service.list_exceptions(
+            db, ctx.tenant_id, network_code=network_code, status=ExceptionStatus.PENDING_APPROVAL,
+            customer_id=ctx.customer_id,
+            # Oldest-waiting-first, not newest-first like the general list -- this is a
+            # queue meant to be worked through, not a feed of what just happened.
+            order_by=ExceptionItem.created_at.asc(), **kw,
+        ),
+    )
+    recommender_ids = {item.recommended_by_user_id for item in page_obj.items if item.recommended_by_user_id}
+    recommender_emails = {
+        u.id: u.email for u in db.execute(select(User).where(User.id.in_(recommender_ids))).scalars()
+    } if recommender_ids else {}
+
+    rows = []
+    for item in page_obj.items:
+        adapter = get_adapter(item.network_code)
+        source_item = adapter.load_source_item(db, item.source_item_id)
+        rows.append(
+            {
+                "exception": item,
+                "summary": _summarize_source_item(item.network_code, source_item) if source_item else {"label": "(missing)", "amount": None, "date": ""},
+                "recommended_by_email": recommender_emails.get(item.recommended_by_user_id),
+                "is_own_recommendation": item.recommended_by_user_id == ctx.user_id,
+            }
+        )
+    return render_template(
+        request, "exceptions/approvals.html", ctx=ctx, rows=rows, page_obj=page_obj, network_filter=network_code
+    )
+
+
 @router.get("/{exception_id}")
 def exception_detail(
     request: Request,
@@ -116,6 +173,17 @@ def exception_detail(
         if item.network_code == "ach"
         else []
     )
+    recommended_by = db.get(User, item.recommended_by_user_id) if item.recommended_by_user_id else None
+    # The recommend form only ever collected an ach_return_reason_id (an AchReturnReason
+    # FK); decide()/submit_recommendation() resolve that down to reason_text/transaction_
+    # code before storing it on the exception, so re-deriving the id here (by matching
+    # the stored text back against the live catalog) is what lets the "Decide"/"Revise
+    # recommendation" forms below pre-select the same reason a maker already chose,
+    # instead of a checker having to re-pick it from scratch.
+    recommended_ach_return_reason_id = next(
+        (r.id for r in ach_return_reasons if r.reason_text == item.recommended_reason_code), None
+    )
+    tenant = db.get(Tenant, ctx.tenant_id)
 
     return render_template(
         request,
@@ -126,6 +194,9 @@ def exception_detail(
         summary=summary,
         decision=decision,
         ach_return_reasons=ach_return_reasons,
+        recommended_by=recommended_by,
+        recommended_ach_return_reason_id=recommended_ach_return_reason_id,
+        require_dual_control=tenant.require_dual_control if tenant else False,
     )
 
 

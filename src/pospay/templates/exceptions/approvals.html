@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% import "_macros/pagination.html" as pg %}
+{% block title %}Approvals — {{ ctx.tenant_name }}{% endblock %}
+{% block help_title %}About the approvals queue{% endblock %}
+{% block help_body %}
+<p>Everything here already has a maker's recommendation and is waiting on a
+  <em>different</em> user to approve or override it — you can't approve your own
+  recommendation. Oldest recommendations are listed first, since this is a queue meant to
+  be worked through. The general <a href="/ui/exceptions">Exceptions</a> list still shows
+  everything regardless of status if you need it.</p>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Approvals</h1>
+  <form method="get" action="/ui/exceptions/approvals" class="toolbar">
+    <label style="max-width:180px;">Network
+      <select name="network_code" data-auto-submit>
+        <option value="">All</option>
+        <option value="check" {{ "selected" if network_filter == "check" else "" }}>Check</option>
+        <option value="ach" {{ "selected" if network_filter == "ach" else "" }}>ACH</option>
+      </select>
+    </label>
+  </form>
+
+  {% if page_obj.total_count > 0 %}
+  <table data-sortable>
+    <thead><tr><th>Network</th><th>Item</th><th data-type="number">Amount</th><th>Recommended</th><th>Recommended by</th><th data-no-sort></th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><span class="badge">{{ row.exception.network_code }}</span></td>
+        <td><a href="/ui/exceptions/{{ row.exception.id }}">{{ row.summary.label }}</a></td>
+        <td>{{ row.summary.amount | currency }}</td>
+        <td><span class="badge {{ 'badge-ok' if row.exception.recommended_outcome == 'pay' else 'badge-danger' }}">{{ row.exception.recommended_outcome }}</span></td>
+        <td>{{ row.recommended_by_email or "someone no longer on this account" }}</td>
+        <td>{% if row.is_own_recommendation %}<span class="badge badge-warn">your recommendation</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ pg.pager(page_obj, request) }}
+  {% else %}
+  <p>Nothing waiting on approval right now.</p>
+  {% endif %}
+</div>
+{% endblock %}
