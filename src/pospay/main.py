@@ -75,7 +75,7 @@ def create_app() -> FastAPI:
     # even finish starting (see SECURITY_REVIEW.md and config.py::assert_production_safe).
     assert_production_safe(get_settings())
 
-    app = FastAPI(title="PosPay", version="1.0.0", lifespan=_lifespan)
+    app = FastAPI(title="PosPay", version="1.5.0", lifespan=_lifespan)
 
     # Importing each network package triggers its register_adapter() call at import
     # time (see networks/registry.py). Adding a new network later means adding one
