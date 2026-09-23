@@ -3,20 +3,23 @@
 {% block title %}Exceptions — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About the exceptions queue{% endblock %}
 {% block help_body %}
-<p>An exception is a presented check or ACH transaction that didn't match cleanly
-  against what was expected — a reviewer decides pay or return.</p>
+<p>An exception is a presented check or ACH transaction that didn't match what was
+  expected. Someone decides whether to pay or return it.</p>
 <ul>
-  <li><strong>ML score</strong> — a model-estimated likelihood of "return," where
-    enough decision history exists to train one; otherwise "no model yet."</li>
-  <li><strong>Status</strong> — open (needs review) → pending_approval (a maker
-    recommended, awaiting a different checker's approval, dual-control tenants only) →
-    pay/return (final) or escalated. "Withdrawn" means the underlying item was backed
-    out via a bulk-upload reversal before anyone decided it.</li>
+  <li>The queue opens on <strong>Needs attention</strong>: items that are still open, or
+    whose recommendation is awaiting approval. The oldest are listed first. Use Status to see
+    decided items too.</li>
+  <li><strong>Why it's here</strong> says which checks failed, for example "Amount
+    mismatch" or "Stop payment".</li>
+  <li><strong>Fraud risk</strong> is the model's estimate of how likely an item is to need
+    returning, where there's enough decision history to have trained one.</li>
+  <li><strong>Decide by</strong> appears when a customer has a default disposition: if nobody
+    decides in time, it's applied automatically.</li>
 </ul>
 {% endblock %}
 {% block content %}
 <div class="card">
-  <h1>Exceptions Queue</h1>
+  <h1>Exceptions</h1>
   <form method="get" action="/ui/exceptions" class="toolbar">
     <label style="max-width:180px;">Network
       <select name="network_code" data-auto-submit>
@@ -25,35 +28,48 @@
         <option value="ach" {{ "selected" if network_filter == "ach" else "" }}>ACH</option>
       </select>
     </label>
-    <label style="max-width:220px;">Status
+    <label style="max-width:240px;">Status
       <select name="status" data-auto-submit>
-        <option value="">All</option>
-        {% for s in ["open", "pending_approval", "pay", "return", "escalated", "withdrawn"] %}
-        <option value="{{ s }}" {{ "selected" if status_filter and status_filter.value == s else "" }}>{{ s }}</option>
+        <option value="" {{ "selected" if not status_filter else "" }}>Needs attention</option>
+        {% for s in statuses %}
+        <option value="{{ s }}" {{ "selected" if status_filter == s else "" }}>{{ s | exception_status }}</option>
         {% endfor %}
+        <option value="all" {{ "selected" if status_filter == "all" else "" }}>All</option>
       </select>
     </label>
   </form>
 
   {% if page_obj.total_count > 0 %}
   <table data-sortable>
-    <thead><tr><th>Network</th><th>Item</th><th data-type="number">Amount</th><th>Types</th><th data-type="number">ML score</th><th>Status</th></tr></thead>
+    <thead><tr>
+      <th>Item</th><th>Account</th>{% if show_customers %}<th>Customer</th>{% endif %}
+      <th data-type="number">Amount</th><th>Date</th><th>Why it's here</th>
+      {% if show_scores %}<th>Fraud risk</th>{% endif %}
+      {% if show_deadlines %}<th>Decide by</th>{% endif %}
+      <th>Status</th>
+    </tr></thead>
     <tbody>
       {% for row in rows %}
+      {% set risk = fraud_risk(row.exception.ml_score) %}
       <tr>
-        <td><span class="badge">{{ row.exception.network_code }}</span></td>
-        <td><a href="/ui/exceptions/{{ row.exception.id }}">{{ row.summary.label }}</a></td>
+        <td><a href="/ui/exceptions/{{ row.exception.id }}">{{ row.summary.label }}</a> <span class="badge">{{ row.exception.network_code | upper }}</span></td>
+        <td>{{ row.account }}</td>
+        {% if show_customers %}<td>{{ row.customer }}</td>{% endif %}
         <td>{{ row.summary.amount | currency }}</td>
-        <td>{{ row.exception.exception_types.replace(",", ", ") }}</td>
-        <td>{% if row.exception.ml_score is not none %}{{ "%.2f"|format(row.exception.ml_score) }}{% else %}<span class="badge">no model yet</span>{% endif %}</td>
-        <td><span class="badge {{ 'badge-ok' if row.exception.status.value == 'pay' else 'badge-danger' if row.exception.status.value in ['return','escalated'] else '' if row.exception.status.value == 'withdrawn' else 'badge-warn' }}">{{ row.exception.status.value }}</span></td>
+        <td>{{ row.summary.date }}</td>
+        <td>{{ row.exception.exception_types | exception_types }}</td>
+        {% if show_scores %}<td>{% if risk %}<span class="badge {{ risk.badge }}">{{ risk.level }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>{% endif %}
+        {% if show_deadlines %}<td>{% if row.exception.decision_deadline and row.exception.status.value in ["open", "pending_approval"] %}<time datetime="{{ row.exception.decision_deadline.isoformat() }}" data-local-time data-relative-time>{{ row.exception.decision_deadline.strftime("%Y-%m-%d %H:%M") }} UTC</time>{% endif %}</td>{% endif %}
+        <td><span class="badge {{ 'badge-ok' if row.exception.status.value == 'pay' else 'badge-danger' if row.exception.status.value in ['return','escalated'] else '' if row.exception.status.value == 'withdrawn' else 'badge-warn' }}">{{ row.exception.status | exception_status }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {{ pg.pager(page_obj, request) }}
+  {% elif not status_filter %}
+  <p>Nothing needs attention right now. <a href="/ui/exceptions?status=all">See all exceptions</a>.</p>
   {% else %}
-  <p>No exceptions — nothing needs review right now.</p>
+  <p>No exceptions with this status.</p>
   {% endif %}
 </div>
 {% endblock %}

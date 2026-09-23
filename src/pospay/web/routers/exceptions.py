@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
+from pospay.domain.customer import Customer
 from pospay.domain.decision import DecisionOutcome
 from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
 from pospay.domain.tenant import Tenant
 from pospay.domain.user import User
 from pospay.networks.registry import get_adapter
+from pospay.repositories.account_repo import AccountRepository
 from pospay.repositories.exception_repo import ExceptionRepository
 from pospay.services import (
     ach_return_reason_service,
@@ -80,41 +82,74 @@ def _summarize_source_item(network_code: str, source_item: Any) -> dict[str, Any
     return {"label": str(source_item.id), "amount": None, "date": ""}
 
 
+# The queue's status filter: "" (the default) = everything still waiting on a person,
+# "all" = every status, or one specific ExceptionStatus value.
+_ALL_STATUSES = "all"
+
+
+def _names_for_page(db: Session, ctx: TenantContext, items: list[ExceptionItem], sources: dict) -> tuple[dict, dict]:
+    """Account and customer names for one page of the queue, fetched in two queries rather
+    than one per row, through the viewer's own scope."""
+    account_ids = {getattr(sources.get(i.id), "account_id", None) for i in items} - {None}
+    accounts = {a.id: a for a in AccountRepository(db, ctx.tenant_id, ctx.customer_id).get_many(account_ids)}
+    customer_ids = {i.customer_id for i in items} - {None}
+    customers = {
+        c.id: c.name for c in db.execute(
+            select(Customer).where(Customer.tenant_id == ctx.tenant_id, Customer.id.in_(customer_ids))
+        ).scalars()
+    } if customer_ids and ctx.customer_id is None else {}
+    return accounts, customers
+
+
 @router.get("")
 def list_exceptions(
     request: Request,
     network_code: str | None = None,
-    status: ExceptionStatus | None = None,
+    status: str = "",
     page: int = 1,
     db: Session = Depends(get_db),
     ctx: TenantContext = Depends(require_web_permission("exception:read")),
 ) -> HTMLResponse:
+    """Defaults to what still needs a person (open, or awaiting approval), oldest first:
+    a work queue. Choosing a decided status, or "All", shows newest first instead."""
+    if status == _ALL_STATUSES:
+        statuses, oldest_first = None, False
+    elif status in {s.value for s in ExceptionStatus}:
+        statuses = (ExceptionStatus(status),)
+        oldest_first = statuses[0] in exception_service.NEEDS_ATTENTION
+    else:
+        status, statuses, oldest_first = "", exception_service.NEEDS_ATTENTION, True
+
+    filters = dict(network_code=network_code or None, statuses=statuses, customer_id=ctx.customer_id)
     page_obj = paginate(
         page=page,
-        count_fn=lambda: ExceptionRepository(db, ctx.tenant_id, ctx.customer_id).count(
-            network_code=network_code, status=status
-        ),
+        count_fn=lambda: exception_service.count_exceptions(db, ctx.tenant_id, **filters),
         list_fn=lambda **kw: exception_service.list_exceptions(
-            db, ctx.tenant_id, network_code=network_code, status=status, customer_id=ctx.customer_id,
-            order_by=ExceptionItem.created_at.desc(), **kw,
+            db, ctx.tenant_id, **filters,
+            order_by=ExceptionItem.created_at.asc() if oldest_first else ExceptionItem.created_at.desc(), **kw,
         ),
     )
-    # Per-row enrichment only ever runs over the current page's rows, not the whole
-    # filtered result set — a nice side effect of paginating this network-agnostic
-    # per-item load_source_item() call, which used to run once per row across every
-    # matching exception regardless of how many were ever shown at once.
+    # Per-row enrichment only ever runs over the current page's rows.
+    sources = {item.id: get_adapter(item.network_code).load_source_item(db, item.source_item_id) for item in page_obj.items}
+    accounts, customers = _names_for_page(db, ctx, page_obj.items, sources)
     rows = []
     for item in page_obj.items:
-        adapter = get_adapter(item.network_code)
-        source_item = adapter.load_source_item(db, item.source_item_id)
+        source_item = sources[item.id]
+        account = accounts.get(getattr(source_item, "account_id", None))
         rows.append(
             {
                 "exception": item,
                 "summary": _summarize_source_item(item.network_code, source_item) if source_item else {"label": "(missing)", "amount": None, "date": ""},
+                "account": f"{account.account_number} ({account.name})" if account else "",
+                "customer": customers.get(item.customer_id, ""),
             }
         )
     return render_template(
-        request, "exceptions/list.html", ctx=ctx, rows=rows, page_obj=page_obj, network_filter=network_code, status_filter=status
+        request, "exceptions/list.html", ctx=ctx, rows=rows, page_obj=page_obj, network_filter=network_code,
+        status_filter=status, statuses=[s.value for s in ExceptionStatus],
+        show_scores=any(r["exception"].ml_score is not None for r in rows),
+        show_deadlines=any(r["exception"].decision_deadline is not None for r in rows),
+        show_customers=ctx.customer_id is None and any(r["customer"] for r in rows),
     )
 
 

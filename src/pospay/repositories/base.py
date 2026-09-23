@@ -31,6 +31,14 @@ class TenantScopedRepository(Generic[ModelT]):
         stmt = self.query().where(self.model.id == id_)
         return self.session.execute(stmt).scalar_one_or_none()
 
+    def get_many(self, ids) -> list[ModelT]:
+        """Several rows by id in one query, still limited to this repository's scope — for
+        filling in names across a page of results without a query per row."""
+        ids = list(ids)
+        if not ids:
+            return []
+        return list(self.session.execute(self.query().where(self.model.id.in_(ids))).scalars().all())
+
     def _filtered_query(self, **equality_filters: Any) -> Select:
         stmt = self.query()
         for column_name, value in equality_filters.items():
