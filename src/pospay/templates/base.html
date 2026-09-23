@@ -93,6 +93,11 @@
     {% endif %}
 
     <div class="page" id="main-content">
+      {% if ctx and ctx.is_demo %}
+      <p class="flash flash-warn demo-notice" role="note"><strong>Public demo.</strong> Everyone
+        shares this organization, and it resets every hour. A few settings that could lock other
+        visitors out are turned off.</p>
+      {% endif %}
       {% include "partials/_flash.html" %}
       {% include "partials/_banner.html" %}
       {% set has_help = self.help_body()|trim %}

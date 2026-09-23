@@ -6,7 +6,13 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from pospay.config import get_settings
-from pospay.workers.tasks import dropbox_import_job, notification_dispatch_job, retrain_job, sweep_expired_dispositions_job
+from pospay.workers.tasks import (
+    demo_reset_job,
+    dropbox_import_job,
+    notification_dispatch_job,
+    retrain_job,
+    sweep_expired_dispositions_job,
+)
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -46,8 +52,19 @@ def start_scheduler() -> BackgroundScheduler:
             id="sweep_expired_dispositions_job",
             replace_existing=True,
         )
+    if demo_reset_enabled(settings):
+        _scheduler.add_job(
+            demo_reset_job,
+            IntervalTrigger(minutes=settings.demo_tenant_reset_interval_minutes),
+            id="demo_reset_job",
+            replace_existing=True,
+        )
     _scheduler.start()
     return _scheduler
+
+
+def demo_reset_enabled(settings) -> bool:
+    return settings.demo_tenant_enabled and settings.demo_tenant_reset_interval_minutes > 0
 
 
 def stop_scheduler() -> None:

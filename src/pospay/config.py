@@ -199,6 +199,11 @@ class Settings(BaseSettings):
     demo_tenant_enabled: bool = False
     demo_tenant_password: str | None = None
     demo_tenant_session_minutes: int = 60
+    # Besides the reset-after-idle above, the demo also resets on this fixed schedule,
+    # because a visitor who stays active would otherwise keep whatever they changed in
+    # place for everyone else indefinitely (see workers/tasks.py::demo_reset_job). 0 turns
+    # the scheduled reset off.
+    demo_tenant_reset_interval_minutes: int = 60
 
     smtp_host: str | None = None
     smtp_port: int = 587

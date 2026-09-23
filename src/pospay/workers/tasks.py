@@ -19,7 +19,7 @@ from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, tra
 from pospay.networks.registry import registered_codes
 from pospay.notifications.email.factory import get_email_provider
 from pospay.notifications.sms.factory import get_sms_provider
-from pospay.services import auto_disposition_service
+from pospay.services import auto_disposition_service, demo_tenant_service
 from pospay.services.dropbox_import_service import scan_and_import_all_tenants
 
 logger = logging.getLogger(__name__)
@@ -146,6 +146,29 @@ def dropbox_import_job() -> None:
         failed = sum(r.outcome == "failed" for r in results)
         duplicates = sum(r.outcome == "duplicate" for r in results)
         logger.info("Dropbox import scan: %d imported, %d failed, %d duplicates skipped", imported, failed, duplicates)
+    finally:
+        session.close()
+
+
+def demo_reset_job() -> None:
+    """Resets the public demo organization on a fixed schedule
+    (config.Settings.demo_tenant_reset_interval_minutes). The login-time idle reset
+    (services/demo_tenant_service.py::maybe_reset_if_demo_idle_by_slug) only fires once
+    nobody has signed in for a while, which never happens while a visitor keeps using
+    it — so without this, whatever one visitor changed would stay in place for everyone
+    else. Anyone signed in at the moment of a reset is sent back to the sign-in page.
+    A no-op if there's no demo organization or no demo password configured."""
+    session = get_session_factory()()
+    try:
+        if demo_tenant_service.get_demo_tenant(session) is None:
+            return
+        demo_tenant_service.reset_demo_tenant(session)
+        logger.info("Scheduled demo reset complete")
+    except demo_tenant_service.DemoTenantNotConfigured as exc:
+        logger.warning("Scheduled demo reset skipped: %s", exc)
+    except Exception:  # noqa: BLE001 -- a failed reset must never take the scheduler down
+        logger.exception("Scheduled demo reset failed")
+        session.rollback()
     finally:
         session.close()
 

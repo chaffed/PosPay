@@ -372,6 +372,26 @@ def _wipe_tenant_children(session: Session, tenant_id: uuid.UUID) -> None:
     session.flush()
 
 
+# Identity and lifecycle columns a reset must never touch; every other Tenant column is a
+# setting a visitor could have changed and is put back to what a freshly created demo has.
+_TENANT_COLUMNS_KEPT_ON_RESET = frozenset({"id", "slug", "is_demo", "is_active", "created_at"})
+
+
+def _restore_tenant_settings(tenant: Tenant, settings) -> None:
+    """Puts the organization-level settings (banner and login messages, colors, dual
+    control, password rules, and so on) back to a new demo's values. Wiping the tenant's
+    child rows alone left these as the last visitor set them. Driven by the table's own
+    column defaults, so a setting added later is reset too without touching this code."""
+    for column in Tenant.__table__.columns:
+        if column.key in _TENANT_COLUMNS_KEPT_ON_RESET:
+            continue
+        default = column.default.arg if column.default is not None and not callable(column.default.arg) else None
+        setattr(tenant, column.key, default)
+    tenant.name = DEMO_TENANT_NAME
+    tenant.access_token_expire_minutes = settings.demo_tenant_session_minutes
+    tenant.refresh_token_expire_minutes = settings.demo_tenant_session_minutes
+
+
 def reset_demo_tenant(session: Session) -> Tenant:
     """Wipes and rebuilds the demo tenant from scratch -- only ever operates on the one
     tenant flagged is_demo=True, looked up fresh, never accepting a caller-supplied
@@ -386,6 +406,7 @@ def reset_demo_tenant(session: Session) -> Tenant:
 
     logger.info("Resetting demo tenant %s...", tenant.slug)
     _wipe_tenant_children(session, tenant.id)
+    _restore_tenant_settings(tenant, settings)
     session.commit()
 
     groups = security_group_service.seed_default_security_groups(session, tenant.id)

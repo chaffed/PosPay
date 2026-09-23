@@ -35,7 +35,13 @@ logger = logging.getLogger(__name__)
 async def _lifespan(app: FastAPI):
     scheduler = None
     settings = get_settings()
-    if settings.enable_ml_scheduler or settings.auto_import_enabled or settings.notifications_enabled or settings.enable_disposition_scheduler:
+    if (
+        settings.enable_ml_scheduler
+        or settings.auto_import_enabled
+        or settings.notifications_enabled
+        or settings.enable_disposition_scheduler
+        or (settings.demo_tenant_enabled and settings.demo_tenant_reset_interval_minutes > 0)
+    ):
         from pospay.workers.scheduler import start_scheduler, stop_scheduler
 
         scheduler = start_scheduler()

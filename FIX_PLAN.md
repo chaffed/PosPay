@@ -190,8 +190,14 @@ newest entry is last. Each entry is committed, so resume from the last one:
   Legacy SVG logos stop being served. Bulk-upload downloads are always
   application/octet-stream. Old tests used fake image bytes and now use real tiny images
   (`tests/image_helpers.py`). 76 related tests pass.
-- 4c IN PROGRESS: central lock list in `web/demo_guard.py`, checked in web and API auth
-  (committed). Still to do: the hourly reset job, the demo notice, tests.
+- 4c DONE: central lock list in `web/demo_guard.py`, checked in web and API auth (one
+  place to audit; a test checks every pattern still matches a real route). Hourly
+  `demo_reset_job` (`demo_tenant_reset_interval_minutes`, default 60; the scheduler now
+  also starts for it). **Found and fixed:** the demo reset never restored organization-level
+  settings (banner and login messages, colors, dual control, password rules…), so a visitor's
+  changes survived every reset. It now restores every Tenant column to a new demo's values.
+  Demo notices on the demo's pages and its sign-in page. 34 demo tests pass.
+- NEXT: docs (.env.example, README, admin docs), full suite, live check, then close Phase 4.
 
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
@@ -219,16 +225,16 @@ Files: `services/tenant_service.py`, `web/routers/branding.py`, `web/routers/bul
 
 ### 4c. S10 — Demo guardrails
 Files: new `web/demo_guard.py` dependency, routers listed below
-- [ ] `forbid_on_demo` dependency: raises `WebForbidden` with the message "Disabled in the public
+- [x] `forbid_on_demo` dependency: raises `WebForbidden` with the message "Disabled in the public
       demo" when `ctx.tenant_id` is the demo tenant. Apply it to: SSO connection
       create/edit (bank and customer), password change/reset, user
       deactivate/membership edits for the seeded demo users, `require_webauthn` toggles,
       logo/favicon upload, session-timeout settings, data export, ML
       retrain/activate.
-- [ ] Banner/login messages: allow edits, but add an **hourly** scheduled demo reset
+- [x] Banner/login messages: allow edits, but add an **hourly** scheduled demo reset
       (decided 2026-09-22) via the existing APScheduler, in addition to the idle reset.
       Show "This demo resets every hour" on the demo login page.
-- [ ] Show a "Demo mode — some settings are locked" notice in the base template for the
+- [x] Show a "Demo mode — some settings are locked" notice in the base template for the
       demo tenant.
 
 ### 4d. S11
