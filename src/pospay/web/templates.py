@@ -72,6 +72,74 @@ def _format_metrics(metrics: dict | None) -> str:
 templates.env.globals["format_metrics"] = _format_metrics
 
 
+# Plain-English names for the rule codes stored in ExceptionItem.exception_types
+# (networks/check/types.py, networks/ach/types.py). An unknown code falls back to a
+# readable version of itself, so a new rule never renders blank.
+_EXCEPTION_TYPE_LABELS = {
+    "duplicate_paid": "Already paid",
+    "stopped": "Stop payment",
+    "voided": "Voided check",
+    "not_in_file": "Not in issued file",
+    "amount_mismatch": "Amount mismatch",
+    "payee_mismatch": "Payee mismatch",
+    "stale_dated": "Stale-dated",
+    "unauthorized_originator": "Unauthorized originator",
+    "receiver_id_not_permitted": "Receiver not authorized",
+    "amount_exceeds_limit": "Over authorized amount",
+    "frequency_exceeded": "Over authorized frequency",
+    "sec_code_not_permitted": "SEC code not authorized",
+}
+
+
+def _exception_type_label(code: str) -> str:
+    code = (code or "").strip()
+    return _EXCEPTION_TYPE_LABELS.get(code, code.replace("_", " ").capitalize())
+
+
+def _exception_type_labels(codes: str | None) -> str:
+    """Registered as the `exception_types` filter: "amount_mismatch,stale_dated" →
+    "Amount mismatch, Stale-dated"."""
+    return ", ".join(_exception_type_label(c) for c in (codes or "").split(",") if c.strip())
+
+
+_EXCEPTION_STATUS_LABELS = {
+    "open": "Needs review",
+    "pending_approval": "Awaiting approval",
+    "pay": "Paid",
+    "return": "Returned",
+    "escalated": "Escalated",
+    "withdrawn": "Withdrawn",
+}
+
+
+def _exception_status_label(status) -> str:
+    value = getattr(status, "value", status) or ""
+    return _EXCEPTION_STATUS_LABELS.get(value, value.replace("_", " ").capitalize())
+
+
+def _fraud_risk(score: float | None) -> dict | None:
+    """Exposed as `fraud_risk(item.ml_score)`. ExceptionItem.ml_score is the model's
+    probability that the item should be PAID (ml/model.py; auto-disposition pays at
+    >= 0.5). Reviewers think in terms of risk, and a bare "0.95" is easy to read the wrong
+    way round, so this turns it into a level plus the chance it should be returned.
+    None when there's no score yet."""
+    if score is None:
+        return None
+    return_chance = max(0.0, min(1.0, 1.0 - float(score)))
+    if return_chance >= 0.5:
+        level, badge = "High", "badge-danger"
+    elif return_chance >= 0.2:
+        level, badge = "Medium", "badge-warn"
+    else:
+        level, badge = "Low", "badge-ok"
+    return {"level": level, "badge": badge, "return_percent": round(return_chance * 100)}
+
+
+templates.env.filters["exception_types"] = _exception_type_labels
+templates.env.filters["exception_status"] = _exception_status_label
+templates.env.globals["fraud_risk"] = _fraud_risk
+
+
 def _currency(value):
     """Registered as the `currency` Jinja filter — formats a Decimal/numeric amount as
     `$1,234.56`. Returns None unchanged (rather than raising or printing "None") so
