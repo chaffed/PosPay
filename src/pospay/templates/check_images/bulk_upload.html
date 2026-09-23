@@ -51,9 +51,9 @@
     check number are read from each check's On-Us and Auxiliary On-Us MICR fields — a
     common real-world convention, not a guarantee for every bank's own MICR layout; if a
     file's checks don't resolve correctly this way, use the ZIP+CSV format above instead,
-    which lets you specify account and check numbers explicitly. File/cash-letter/bundle
-    control totals are not validated — a malformed file may partially import rather than
-    being rejected outright.</p>
+    which lets you specify account and check numbers explicitly. The file's bundle,
+    cash-letter and file control totals (item count and dollar amount) are checked: if any
+    of them doesn't match the checks in the file, nothing is imported.</p>
   <form method="post" action="/ui/check-images/bulk" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="format" value="x937">

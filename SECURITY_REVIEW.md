@@ -150,8 +150,8 @@ the bank-wide route or a different customer's page, only via its own.
 declared entry/addenda count, entry hash, and total debit/credit dollar amounts against
 what was actually parsed, raising a clear per-field mismatch error. `x937.py` does the
 same for Cash Letter Control (type 90) and File Control (type 99) item count and total
-dollar amount — Bundle Control (type 70) is still not validated, since PosPay doesn't
-track bundle boundaries as a concept at all. X9.37's control-record field positions are
+dollar amount, and (since Phase 8 of FIX_PLAN.md) Bundle Control (type 70) against the
+checks since the preceding Bundle Header (type 20). X9.37's control-record field positions are
 this module's own best-effort, documented convention (same caveat its test suite already
 disclosed for the rest of the parser) — there's no real sample cash-letter file in this
 repo to verify byte-for-byte against, so if a real file from your processor gets rejected

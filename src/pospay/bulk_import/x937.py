@@ -25,23 +25,24 @@ side is inferred from order, matching the standard duplex-scan convention).
 Deliberately NOT supported, matching this app's existing NACHA parser's "lenient,
 documented subset" philosophy (bulk_import/nacha.py): the alternate fixed-length
 undelimited binary X9.37 variant, EBCDIC-encoded files, return/adjustment cash letters,
-credit reconcilement records, and bundle-level (Type 70) control-total validation —
-PosPay doesn't track bundle boundaries as a concept at all (checks flow through
-regardless of which bundle they're in), so validating at that finer grain would need a
-boundary-tracking concept the app doesn't otherwise need. Cash Letter Control (Type 90)
-and File Control (Type 99) item-count and total-dollar-amount ARE validated against what
-was actually parsed (see _validate_cash_letter_control/_validate_file_control below) —
-header records (types 01, 20, 70) are still only read far enough to skip over them. The
-one other exception is the Cash Letter Header (Type 10), whose Business Date field is
-read so bulk-loaded items carry a real presented_date instead of always defaulting to
-today.
+and credit reconcilement records.
 
-The Type 90/99 field positions below are this module's own best-effort, documented
-convention — same caveat the test suite's own docstring already discloses for the rest
-of this parser: X9.37 control-record layouts vary more across real-world implementations
-than NACHA's rigidly standardized 94-character format, and this repo has no real sample
-cash-letter file to verify byte-for-byte against. If a real file from your processor
-gets rejected on a control-total mismatch that looks wrong, check these positions first.
+Control totals ARE validated against what was actually parsed, at every level: Bundle
+Control (Type 70) against the checks since the preceding Bundle Header (Type 20), Cash
+Letter Control (Type 90) against the cash letter, and File Control (Type 99) against the
+whole file — item count and total dollar amount each. A mismatch means the file was
+truncated, altered, or assembled wrongly, so the whole file is rejected rather than
+loading a partial or inconsistent set of checks. Header records (types 01, 20) are
+otherwise only read far enough to skip over them, apart from the Cash Letter Header
+(Type 10), whose Business Date is read so bulk-loaded items carry a real presented_date
+instead of always defaulting to today.
+
+The control-record field positions follow the commonly published X9.37 (DSTU X9.37-2003)
+layouts, but this repo has no real bank-produced cash-letter file to verify byte-for-byte
+against (the test suite builds synthetic files from these same constants). X9.37 layouts
+vary more across real-world implementations than NACHA's rigid 94-character format: if a
+real file from your processor is rejected on a control-total mismatch that looks wrong,
+check these positions first.
 """
 
 from dataclasses import dataclass
@@ -107,7 +108,12 @@ _T90_TOTAL_AMOUNT = slice(16, 30)
 _T99_ITEMS_COUNT = slice(16, 24)
 _T99_TOTAL_AMOUNT = slice(24, 39)
 
-_SKIP_RECORD_TYPES = {"01", "20", "26", "27", "28", "31", "32", "33", "34", "70"}
+# Type 70 - Bundle Control Record (80 bytes): Items Within Bundle Count (4, positions 3-6)
+# and Bundle Total Amount (12, positions 7-18, implied 2 decimal places).
+_T70_ITEMS_COUNT = slice(2, 6)
+_T70_TOTAL_AMOUNT = slice(6, 18)
+
+_SKIP_RECORD_TYPES = {"01", "26", "27", "28", "31", "32", "33", "34"}
 
 
 def _parse_business_date(raw: str) -> date:
@@ -158,6 +164,8 @@ def parse_x937_file(content: bytes) -> list[X937CheckItem]:
     current_images: list[bytes] = []
     current_business_date = date.today()
 
+    bundle_items = 0
+    bundle_amount_cents = 0
     cash_letter_items = 0
     cash_letter_amount_cents = 0
     file_items = 0
@@ -204,6 +212,8 @@ def parse_x937_file(content: bytes) -> list[X937CheckItem]:
                 raise X937ParseError(
                     f"Check Detail Record #{item_number} at byte {cursor} has a non-numeric amount field: {amount_raw!r}"
                 ) from None
+            bundle_items += 1
+            bundle_amount_cents += amount_cents
             cash_letter_items += 1
             cash_letter_amount_cents += amount_cents
             file_items += 1
@@ -218,6 +228,23 @@ def parse_x937_file(content: bytes) -> list[X937CheckItem]:
             current_business_date = _parse_business_date(record[_T10_BUSINESS_DATE].decode("ascii", errors="replace").strip())
             cash_letter_items = 0
             cash_letter_amount_cents = 0
+            cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
+
+        elif record_type == "20":
+            if remaining < _STANDARD_RECORD_LEN:
+                raise X937ParseError(f"Truncated Bundle Header Record (Type 20) at byte {cursor}")
+            bundle_items = 0
+            bundle_amount_cents = 0
+            cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
+
+        elif record_type == "70":
+            if remaining < _STANDARD_RECORD_LEN:
+                raise X937ParseError(f"Truncated Bundle Control Record (Type 70) at byte {cursor}")
+            record = content[cursor : cursor + _STANDARD_RECORD_LEN]
+            declared_items = _parse_declared_int(record[_T70_ITEMS_COUNT], field_name="items count", cursor=cursor)
+            declared_amount = _parse_declared_int(record[_T70_TOTAL_AMOUNT], field_name="total amount", cursor=cursor)
+            _compare_control_total(field_name="items count", declared=declared_items, actual=bundle_items, cursor=cursor, scope="Bundle")
+            _compare_control_total(field_name="total amount", declared=declared_amount, actual=bundle_amount_cents, cursor=cursor, scope="Bundle")
             cursor = _skip_separators(content, cursor + _STANDARD_RECORD_LEN)
 
         elif record_type == "90":

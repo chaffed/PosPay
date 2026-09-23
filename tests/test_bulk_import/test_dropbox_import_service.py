@@ -349,7 +349,7 @@ def test_x937_dispatch(db_session, tenant_factory, monkeypatch, tmp_path):
             _check_detail(routing="12345678", on_us=account.account_number, aux_on_us="5001", amount_cents=15000),
             _image_view_detail(),
             _image_view_data(front),
-            _bundle_control(),
+            _bundle_control(items=1, amount_cents=15000),
             _cash_letter_control(items=1, amount_cents=15000),
             _file_control(items=1, amount_cents=15000),
         ]

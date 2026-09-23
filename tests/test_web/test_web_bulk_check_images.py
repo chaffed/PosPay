@@ -12,6 +12,8 @@ from pospay.bulk_import.x937 import (
     _T25_AUX_ON_US,
     _T25_ON_US,
     _T25_ROUTING_NUMBER,
+    _T70_ITEMS_COUNT,
+    _T70_TOTAL_AMOUNT,
     _T90_ITEMS_COUNT,
     _T90_TOTAL_AMOUNT,
     _T99_ITEMS_COUNT,
@@ -84,7 +86,13 @@ def _synthetic_x937_file(*, account_number: str, check_number: str, amount_cents
             ),
             _fixed_record("50", {}, length=200),
             image_record,
-            _fixed_record("70", {}),
+            _fixed_record(
+                "70",
+                {
+                    _T70_ITEMS_COUNT: str(1).zfill(_T70_ITEMS_COUNT.stop - _T70_ITEMS_COUNT.start),
+                    _T70_TOTAL_AMOUNT: str(amount_cents).zfill(_T70_TOTAL_AMOUNT.stop - _T70_TOTAL_AMOUNT.start),
+                },
+            ),
             _fixed_record(
                 "90",
                 {

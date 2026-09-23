@@ -534,6 +534,14 @@ last; each entry committed):
 last; each entry committed):
 - Order: F4 (X9.37 bundle control, code) → F6 (scheduler leader lock, code) → S5 + F6 docs →
   F5 architecture doc → final review of EVALUATION/FIX_PLAN.
+- F4 done: `x937.py` validates Bundle Control (Type 70) item count and total amount against
+  the checks since the preceding Bundle Header (Type 20), which resets the counters. It uses
+  the standard layout (count at bytes 3–6, amount at 7–18), in line with the Type 90/99
+  positions. Test fixtures now write real bundle totals. New tests: count mismatch, amount
+  mismatch, a blank control rejected, and totals resetting between bundles. README,
+  SECURITY_REVIEW and the X9.37 upload help text were stale (they said no control totals
+  were checked) and are corrected. Still no real processor sample file in the repo: that
+  part of F4 needs a file from a bank.
 
 - [ ] **F5:** write `docs/ARCHITECTURE.md` (data model, network-adapter pattern, matching
       rules, ML pipeline, tenancy layers). Point the README and code comments at it.
@@ -541,7 +549,7 @@ last; each entry committed):
       (a Postgres advisory lock around each scheduled job; on SQLite, keep single-process).
 - [ ] **S5:** document that the rate limiter is per process. A shared store (for example
       Redis) is optional and only needed for multi-instance deployments.
-- [ ] **F4:** validate X9.37 Bundle Control (type 70). Get a real processor sample file and
+- [x] **F4:** validate X9.37 Bundle Control (type 70). Get a real processor sample file and
       add it as a fixture.
 - [ ] **F3:** keep the Textract/Azure providers as roadmap items. No change is needed
       (startup already guards against them).

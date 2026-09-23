@@ -292,8 +292,10 @@ follow-up step.
   the common ASCII, line-delimited "variable format" variant with embedded TIFF/JPEG
   images in Image View Data (Type 52) records; does not support the alternate
   fixed-length undelimited binary variant, EBCDIC encoding, return/adjustment cash
-  letters, credit reconcilement records, or file/cash-letter/bundle control-total
-  validation. Account number and check number come from each check detail record's On-Us
+  letters, or credit reconcilement records. Bundle (Type 70), cash letter (Type 90) and
+  file (Type 99) control totals are validated: a mismatched item count or dollar amount
+  rejects the whole file. The control-record field positions follow the published
+  layouts but haven't been checked against a real processor's file. Account number and check number come from each check detail record's On-Us
   and Auxiliary On-Us MICR fields respectively — a common real-world convention (the
   check's own serial number in Auxiliary On-Us, the payor's account number in On-Us), not
   a standard-mandated split, so a bank whose files use a different layout won't resolve

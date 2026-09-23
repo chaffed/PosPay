@@ -24,6 +24,8 @@ from pospay.bulk_import.x937 import (
     _T50_LEN,
     _T52_HEADER_BEFORE_LENGTH_FIELD,
     _T52_LENGTH_FIELD_LEN,
+    _T70_ITEMS_COUNT,
+    _T70_TOTAL_AMOUNT,
     _T90_ITEMS_COUNT,
     _T90_TOTAL_AMOUNT,
     _T99_ITEMS_COUNT,
@@ -77,8 +79,14 @@ def _image_view_data(image_bytes: bytes) -> bytes:
     return bytes(header) + length_field + image_bytes
 
 
-def _bundle_control() -> bytes:
-    return _fixed_record("70", {})
+def _bundle_control(*, items: int = 1, amount_cents: int = 0) -> bytes:
+    return _fixed_record(
+        "70",
+        {
+            _T70_ITEMS_COUNT: str(items).zfill(_T70_ITEMS_COUNT.stop - _T70_ITEMS_COUNT.start),
+            _T70_TOTAL_AMOUNT: str(amount_cents).zfill(_T70_TOTAL_AMOUNT.stop - _T70_TOTAL_AMOUNT.start),
+        },
+    )
 
 
 def _cash_letter_control(*, items: int = 1, amount_cents: int = 0) -> bytes:
@@ -114,7 +122,7 @@ def test_parses_a_single_check_with_front_and_back_images():
             _image_view_data(front),
             _image_view_detail(),
             _image_view_data(back),
-            _bundle_control(),
+            _bundle_control(items=1, amount_cents=15000),
             _cash_letter_control(items=1, amount_cents=15000),
             _file_control(items=1, amount_cents=15000),
         ]
@@ -144,7 +152,7 @@ def test_parses_multiple_checks_in_one_cash_letter():
             _check_detail(routing="12345678", on_us="1002", aux_on_us="5002", amount_cents=2599),
             _image_view_detail(),
             _image_view_data(b"front-2"),
-            _bundle_control(),
+            _bundle_control(items=2, amount_cents=17599),
             _cash_letter_control(items=2, amount_cents=17599),
             _file_control(items=2, amount_cents=17599),
         ]
@@ -164,7 +172,7 @@ def test_check_with_no_image_pair_gets_empty_front_bytes():
             _cash_letter_header(),
             _bundle_header(),
             _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100),
-            _bundle_control(),
+            _bundle_control(items=1, amount_cents=100),
             _file_control(items=1, amount_cents=100),
         ]
     )
@@ -296,3 +304,66 @@ def test_cash_letter_totals_reset_between_cash_letters():
     )
     items = parse_x937_file(content)
     assert len(items) == 2
+
+
+def test_bundle_control_item_count_mismatch_raises():
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _bundle_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _bundle_control(items=2, amount_cents=100)
+        + _cash_letter_control(items=1, amount_cents=100)
+        + _file_control(items=1, amount_cents=100)
+    )
+    with pytest.raises(X937ParseError, match="Bundle Control.*items count"):
+        parse_x937_file(content)
+
+
+def test_bundle_control_total_amount_mismatch_raises():
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _bundle_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _bundle_control(items=1, amount_cents=999)
+        + _cash_letter_control(items=1, amount_cents=100)
+        + _file_control(items=1, amount_cents=100)
+    )
+    with pytest.raises(X937ParseError, match="Bundle Control.*total amount"):
+        parse_x937_file(content)
+
+
+def test_blank_bundle_control_is_rejected():
+    """A Bundle Control with its count fields left blank can't be checked, so the file is
+    rejected rather than trusted."""
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _bundle_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _fixed_record("70", {})
+        + _file_control(items=1, amount_cents=100)
+    )
+    with pytest.raises(X937ParseError):
+        parse_x937_file(content)
+
+
+def test_bundle_totals_reset_between_bundles():
+    """Two bundles in one cash letter: each bundle control validates only its own items,
+    the cash letter control validates the sum."""
+    content = (
+        _file_header()
+        + _cash_letter_header()
+        + _bundle_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5001", amount_cents=100)
+        + _bundle_control(items=1, amount_cents=100)
+        + _bundle_header()
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5002", amount_cents=250)
+        + _check_detail(routing="12345678", on_us="1001", aux_on_us="5003", amount_cents=50)
+        + _bundle_control(items=2, amount_cents=300)
+        + _cash_letter_control(items=3, amount_cents=400)
+        + _file_control(items=3, amount_cents=400)
+    )
+    items = parse_x937_file(content)
+    assert [i.check_number for i in items] == ["5001", "5002", "5003"]
