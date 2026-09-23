@@ -20,8 +20,8 @@
   <div class="app-shell">
     {% if ctx %}
     {% from "_macros/icon.html" import icon %}
-    {% macro nav_link(href, label, icon_name) %}
-    <a href="{{ href }}" class="{{ 'active' if (request.url.path == href or request.url.path.startswith(href + '/')) else '' }}">{{ icon(icon_name) }}{{ label }}</a>
+    {% macro nav_link(href, label, icon_name, badge=0) %}
+    <a href="{{ href }}" class="{{ 'active' if (request.url.path == href or request.url.path.startswith(href + '/')) else '' }}">{{ icon(icon_name) }}{{ label }}{% if badge %}<span class="nav-count" aria-label="{{ badge }} waiting">{{ badge }}</span>{% endif %}</a>
     {% endmacro %}
     {% set show_ach_return_reasons = can(ctx, "ach_return_reason:manage") %}
     {% set show_wsud = ctx.customer_id is not none and can(ctx, "wsud:sign") %}
@@ -59,7 +59,7 @@
 
         <p class="nav-section">Review</p>
         {{ nav_link("/ui/exceptions", "Exceptions", "flag") }}
-        {% if can(ctx, "exception:decide") %}{{ nav_link("/ui/exceptions/approvals", "Approvals", "check_circle") }}{% endif %}
+        {% if can(ctx, "exception:decide") %}{{ nav_link("/ui/exceptions/approvals", "Approvals", "check_circle", badge=ctx.pending_approval_count) }}{% endif %}
         {% if show_wsud %}{{ nav_link("/ui/wsud", "Unauthorized Debit Statement", "gavel") }}{% endif %}
         {% if show_customer_banner %}{{ nav_link("/ui/customers/" ~ ctx.customer_id ~ "/banner", "Banner Message", "campaign") }}{% endif %}
         {% if can(ctx, "ml_training_example:write") %}{{ nav_link("/ui/ml-training/fraud-examples", "Fraud Training Data", "model_training") }}{% endif %}

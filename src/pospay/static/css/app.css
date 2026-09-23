@@ -439,3 +439,4 @@ table.evidence tr.mismatch td, table.evidence tr.mismatch th { background: var(-
 .check-images { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
 .check-images img { max-width: min(100%, 420px); height: auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
 [hidden] { display: none !important; }
+.nav-count { margin-left: auto; min-width: 1.4rem; padding: 0 0.4rem; border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.75rem; font-weight: 700; text-align: center; line-height: 1.4rem; }

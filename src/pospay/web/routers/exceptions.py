@@ -228,13 +228,10 @@ def exception_detail(
         else []
     )
     recommended_by = db.get(User, item.recommended_by_user_id) if item.recommended_by_user_id else None
-    # The recommend form only ever collected an ach_return_reason_id (an AchReturnReason
-    # FK); decide()/submit_recommendation() resolve that down to reason_text/transaction_
-    # code before storing it on the exception, so re-deriving the id here (by matching
-    # the stored text back against the live catalog) is what lets the "Decide"/"Revise
-    # recommendation" forms below pre-select the same reason a maker already chose,
-    # instead of a checker having to re-pick it from scratch.
-    recommended_ach_return_reason_id = next(
+    # Lets the "Approve"/"Revise recommendation" forms pre-select the return reason the
+    # maker chose. Recommendations made before the id was stored fall back to matching the
+    # stored reason text against the live catalog.
+    recommended_ach_return_reason_id = item.recommended_ach_return_reason_id or next(
         (r.id for r in ach_return_reasons if r.reason_text == item.recommended_reason_code), None
     )
     tenant = db.get(Tenant, ctx.tenant_id)

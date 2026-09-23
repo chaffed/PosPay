@@ -73,6 +73,13 @@ class ExceptionItem(Base):
     # what this is (and isn't).
     recommended_return_transaction_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
     recommended_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # The catalog entry the maker picked when recommending an ACH return, so the checker's
+    # form can pre-select exactly that entry. (It used to be recovered by matching
+    # recommended_reason_code text back to the catalog, which breaks if a reason is renamed
+    # or two share the same text.)
+    recommended_ach_return_reason_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ach_return_reason.id"), nullable=True
+    )
     recommended_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("user.id"), nullable=True)
 
     decision_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from pospay.auth.permissions import CUSTOMER_SCOPE_MASKED_PERMISSIONS
@@ -15,6 +15,7 @@ from pospay.auth.security import decode_token
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.customer import Customer
+from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
 from pospay.domain.security_group import SecurityGroup
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
@@ -37,6 +38,17 @@ class AccessRevoked(Exception):
     security group it points at no longer exists. Treated identically to an invalid
     token by every caller — this is what makes deactivating a user/membership take effect
     immediately rather than waiting for the token to expire."""
+
+
+def _pending_approval_count(db: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID | None, user_id: uuid.UUID) -> int:
+    stmt = select(func.count(ExceptionItem.id)).where(
+        ExceptionItem.tenant_id == tenant_id,
+        ExceptionItem.status == ExceptionStatus.PENDING_APPROVAL,
+        or_(ExceptionItem.recommended_by_user_id.is_(None), ExceptionItem.recommended_by_user_id != user_id),
+    )
+    if customer_id is not None:
+        stmt = stmt.where(ExceptionItem.customer_id == customer_id)
+    return db.execute(stmt).scalar_one()
 
 
 def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> TenantContext:
@@ -144,6 +156,9 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         session_id=uuid.UUID(payload["sid"]) if payload.get("sid") else None,
         access_expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
         session_expires_at=datetime.fromtimestamp(payload["sxp"], tz=timezone.utc) if payload.get("sxp") else None,
+        pending_approval_count=_pending_approval_count(db, tenant_id, customer_id, user_id)
+        if "exception:decide" in permissions
+        else 0,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting

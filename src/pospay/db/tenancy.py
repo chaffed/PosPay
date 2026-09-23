@@ -85,6 +85,11 @@ class TenantContext:
     # shows a demo notice.
     is_demo: bool = False
 
+    # For base.html's "Approvals" nav badge: recommendations waiting on someone other than
+    # their maker, in this session's scope. Only computed for sessions that can approve
+    # (exception:decide), so it's 0 for everyone else.
+    pending_approval_count: int = 0
+
     # The login session this request belongs to (auth/security.py::create_session_tokens):
     # `session_id` is what logout revokes; the two expiry times drive base.html's
     # keep-alive / idle-warning script and are what an organization switch or password

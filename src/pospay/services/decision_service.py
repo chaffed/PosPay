@@ -100,6 +100,9 @@ def submit_recommendation(
     exception.recommended_reason_code = resolved.reason_code
     exception.recommended_return_transaction_code = resolved.transaction_code
     exception.recommended_notes = notes
+    exception.recommended_ach_return_reason_id = (
+        ach_return_reason_id if exception.network_code == "ach" and outcome == DecisionOutcome.RETURN else None
+    )
     exception.recommended_by_user_id = ctx.user_id
     exception.status = ExceptionStatus.PENDING_APPROVAL
     session.flush()
