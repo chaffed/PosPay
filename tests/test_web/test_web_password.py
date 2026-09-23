@@ -176,9 +176,24 @@ def test_password_change_is_refused_in_demo_organization(client, db_session, ten
 
     resp = _change(client, TenantFactory.PASSWORD, NEW_PASSWORD)
 
-    assert resp.status_code == 400
+    # Refused up front by the demo lock (web/demo_guard.py)...
+    assert resp.status_code == 403
     assert "demo" in resp.text
     assert _logged_in(_login(TestClient(client.app), tenant.slug, users["viewer"].email))
+
+
+def test_password_service_also_refuses_the_demo_organization(db_session, tenant_factory):
+    """...and by the service itself, as a second layer if a route ever skips the lock."""
+    import pytest
+
+    tenant, _account, users = tenant_factory.make(slug="pw-demo-service")
+    tenant.is_demo = True
+    db_session.commit()
+
+    with pytest.raises(user_service.PasswordChangeError, match="demo"):
+        user_service.change_own_password(
+            db_session, tenant.id, users["viewer"].id, current_password=TenantFactory.PASSWORD, new_password=NEW_PASSWORD
+        )
 
 
 # --- Admin reset ---
