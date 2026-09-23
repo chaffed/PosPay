@@ -11,6 +11,46 @@ document.addEventListener("DOMContentLoaded", () => {
   // back", so a rejected form's typed values are still there) — wired up here rather
   // than as a javascript: href, which the strict script-src CSP blocks. Its real href is
   // the no-JS / no-history fallback.
+  // Exception decision forms (exceptions/detail.html): show only the reason field that
+  // fits the chosen outcome (e.g. the ACH return-reason list only for Return), and ask
+  // for confirmation before paying an item whose fraud risk is High. The server still
+  // enforces everything that matters; this only keeps the form uncluttered and slows
+  // down an accidental click.
+  document.querySelectorAll("[data-decision-form]").forEach((form) => {
+    const select = form.querySelector("[data-outcome-select]");
+    if (!select) return;
+    const sync = () => {
+      form.querySelectorAll("[data-show-for-outcome]").forEach((field) => {
+        field.hidden = field.dataset.showForOutcome !== select.value;
+      });
+    };
+    select.addEventListener("change", sync);
+    sync();
+    form.addEventListener("submit", (event) => {
+      if (select.value === "pay" && form.dataset.confirmPay && !window.confirm(form.dataset.confirmPay)) {
+        event.preventDefault();
+      }
+    });
+  });
+
+  // <time datetime="..." data-local-time> shows the reviewer's own local time instead of
+  // the server's UTC fallback text; data-relative-time adds "in 2h 13m" / "overdue".
+  document.querySelectorAll("time[data-local-time]").forEach((el) => {
+    const when = new Date(el.getAttribute("datetime"));
+    if (Number.isNaN(when.getTime())) return;
+    let text = when.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    if (el.hasAttribute("data-relative-time")) {
+      const minutes = Math.round((when.getTime() - Date.now()) / 60000);
+      if (minutes <= 0) {
+        text += " (overdue)";
+      } else {
+        const hours = Math.floor(minutes / 60);
+        text += ` (in ${hours ? `${hours}h ` : ""}${minutes % 60}m)`;
+      }
+    }
+    el.textContent = text;
+  });
+
   // A button with data-copy-target="<element id>" copies that element's text (e.g. the
   // one-time temporary password on users/reset_password_result.html) and briefly
   // confirms. Clipboard access can be refused (permissions, non-HTTPS origin), in which

@@ -18,7 +18,13 @@ from pospay.domain.tenant import Tenant
 from pospay.domain.user import User
 from pospay.networks.registry import get_adapter
 from pospay.repositories.exception_repo import ExceptionRepository
-from pospay.services import ach_return_reason_service, audit_log_service, decision_service, exception_service
+from pospay.services import (
+    ach_return_reason_service,
+    audit_log_service,
+    decision_service,
+    exception_evidence,
+    exception_service,
+)
 from pospay.services.decision_service import DecisionError
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.pagination import paginate
@@ -35,6 +41,19 @@ _DECISION_ERROR_MESSAGES = {
     DecisionError.RETURN_REASON_REQUIRED: "Select a return reason from the list — freeform text isn't accepted for ACH returns.",
     DecisionError.INVALID_RETURN_REASON: "That return reason no longer exists or has been deactivated — pick another.",
 }
+
+
+_CHOOSE_OUTCOME = "Choose Pay or Return."
+
+
+def _parse_outcome(raw: str) -> DecisionOutcome | None:
+    """The forms start with no outcome selected (FIX_PLAN.md Phase 6, U3) so nobody pays an
+    item by accident. An empty or unknown value gets a clear message, not a raw
+    validation error."""
+    try:
+        return DecisionOutcome(raw)
+    except ValueError:
+        return None
 
 
 def _parse_optional_uuid(raw: str) -> uuid.UUID | None:
@@ -184,13 +203,14 @@ def exception_detail(
         (r.id for r in ach_return_reasons if r.reason_text == item.recommended_reason_code), None
     )
     tenant = db.get(Tenant, ctx.tenant_id)
+    evidence = exception_evidence.build_evidence(db, item, source_item, scope_customer_id=ctx.customer_id)
 
     return render_template(
         request,
         "exceptions/detail.html",
         ctx=ctx,
         item=item,
-        exception_types=item.exception_types.split(",") if item.exception_types else [],
+        evidence=evidence,
         summary=summary,
         decision=decision,
         ach_return_reasons=ach_return_reasons,
@@ -203,7 +223,7 @@ def exception_detail(
 @router.post("/{exception_id}/recommend")
 def recommend(
     exception_id: uuid.UUID,
-    outcome: DecisionOutcome = Form(...),
+    outcome: str = Form(""),
     reason_code: str = Form(""),
     notes: str = Form(""),
     ach_return_reason_id: str = Form(""),
@@ -211,6 +231,9 @@ def recommend(
     ctx: TenantContext = Depends(require_web_permission("exception:recommend")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
+    outcome = _parse_outcome(outcome)
+    if outcome is None:
+        return RedirectResponse(f"/ui/exceptions/{exception_id}?error={quote(_CHOOSE_OUTCOME)}", status_code=303)
     result = decision_service.submit_recommendation(
         db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None,
         ach_return_reason_id=_parse_optional_uuid(ach_return_reason_id),
@@ -236,7 +259,7 @@ def recommend(
 @router.post("/{exception_id}/decide")
 def decide(
     exception_id: uuid.UUID,
-    outcome: DecisionOutcome = Form(...),
+    outcome: str = Form(""),
     reason_code: str = Form(""),
     notes: str = Form(""),
     ach_return_reason_id: str = Form(""),
@@ -244,6 +267,9 @@ def decide(
     ctx: TenantContext = Depends(require_web_permission("exception:decide")),
     _csrf: None = Depends(verify_csrf),
 ) -> RedirectResponse:
+    outcome = _parse_outcome(outcome)
+    if outcome is None:
+        return RedirectResponse(f"/ui/exceptions/{exception_id}?error={quote(_CHOOSE_OUTCOME)}", status_code=303)
     result = decision_service.decide(
         db, ctx.tenant_id, exception_id, ctx, outcome=outcome, reason_code=reason_code, notes=notes or None,
         ach_return_reason_id=_parse_optional_uuid(ach_return_reason_id),

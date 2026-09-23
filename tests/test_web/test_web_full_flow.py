@@ -129,8 +129,8 @@ def test_full_exception_review_flow_via_web(client, tenant_factory):
     exception_id = _extract_uuid(queue.text, "/ui/exceptions/")
 
     detail = client.get(f"/ui/exceptions/{exception_id}")
-    assert "amount_mismatch" in detail.text
-    assert "not enough data to score yet" in detail.text  # cold start, no model trained
+    assert "Amount mismatch" in detail.text  # shown in plain English, not the rule code
+    assert "Not scored yet" in detail.text  # cold start, no model trained
 
     decide_resp = client.post(
         f"/ui/exceptions/{exception_id}/decide",
