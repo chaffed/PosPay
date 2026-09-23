@@ -127,7 +127,11 @@ erDiagram
 <tr><td>password_require_number</td><td>Boolean</td><td>no</td><td></td><td>Baseline password complexity requirement.</td></tr>
 <tr><td>password_require_symbol</td><td>Boolean</td><td>no</td><td></td><td>Baseline password complexity requirement.</td></tr>
 <tr><td>is_active</td><td>Boolean</td><td>no</td><td></td><td>Deactivated tenants are not deleted, just disabled.</td></tr>
-<tr><td>is_demo</td><td>Boolean</td><td>no</td><td></td><td>True for at most one tenant — the persistent sales demo, which resets itself on idle login.</td></tr>
+<tr><td>is_demo</td><td>Boolean</td><td>no</td><td></td><td>True for at most one tenant — the persistent public demo, which resets itself hourly and on idle login.</td></tr>
+<tr><td>ml_model_source</td><td>String(10) enum</td><td>no</td><td></td><td>shared (default: the shared network model) / private (a bank-only model trained on this organization's own decisions).</td></tr>
+<tr><td>ml_source_changed_at / ml_source_changed_by_user_id</td><td>Timestamp / UUID</td><td>yes</td><td>FK → user.id</td><td>When, and by whom, the model choice last changed.</td></tr>
+<tr><td>ml_private_switch_allowed_at</td><td>Timestamp</td><td>yes</td><td></td><td>The earliest this organization may switch to a bank-only model (90 days after creation). Null = no lock (organizations that predate it, or once the platform operator lifts it).</td></tr>
+<tr><td>ml_shared_consent_at / ml_shared_consent_by_user_id</td><td>Timestamp / UUID</td><td>yes</td><td>FK → user.id</td><td>When, and by whom, the shared model's data-pooling disclosure was acknowledged.</td></tr>
 <tr><td>created_at</td><td>Timestamp</td><td>no</td><td></td><td></td></tr>
 <tr><td>logo_path / logo_content_type</td><td>String / String(100)</td><td>yes</td><td></td><td>Disk path and MIME type of the uploaded logo, if any.</td></tr>
 <tr><td>favicon_path / favicon_content_type</td><td>String / String(100)</td><td>yes</td><td></td><td>Disk path and MIME type of the uploaded favicon, if any.</td></tr>
@@ -567,7 +571,8 @@ erDiagram
 <h2 id="exceptions-ml">4. Exceptions, Decisions &amp; ML</h2>
 <p>A check or ACH item that didn't match cleanly becomes an <strong>exception_item</strong>;
 resolving it produces exactly one <strong>decision</strong>. <strong>ml_model</strong>
-holds trained fraud-scoring model versions, either global or per-customer.
+holds trained fraud-scoring model versions: the shared model, a bank's own bank-only
+model, or a customer's model.
 <strong>payment_network</strong> is the small, fixed lookup table (<code>check</code>,
 <code>ach</code>) almost every other table's network_code refers to.</p>
 
@@ -659,6 +664,7 @@ erDiagram
 <tr><td>source</td><td>String(20) enum</td><td>no</td><td></td><td><code>LIVE</code> (real activity) or <code>TRAINING_BACKFILL</code> (a known-fraud label submitted directly for model training).</td></tr>
 <tr><td>is_correction</td><td>Boolean</td><td>no</td><td></td><td>True when a training-backfill label corrects an earlier live decision.</td></tr>
 <tr><td>retracted_at / retracted_by_user_id</td><td>Timestamp / UUID</td><td>yes</td><td>FK → user.id</td><td>Set when a training example is retracted; it stops counting toward future training.</td></tr>
+<tr><td>shared_training_approved_at</td><td>Timestamp</td><td>yes</td><td></td><td>For a training example from an organization on the shared model: when the platform operator approved it for training the shared model. Until then it's excluded from the shared model.</td></tr>
 </tbody>
 </table>
 
@@ -687,7 +693,8 @@ erDiagram
 <tbody>
 <tr><td>id</td><td>UUID</td><td>no</td><td>PK</td><td></td></tr>
 <tr><td>network_code</td><td>String(32)</td><td>no</td><td>FK → payment_network.code</td><td></td></tr>
-<tr><td>customer_id</td><td>UUID</td><td>yes</td><td>FK → customer.id</td><td>Null = the global, tenant-agnostic model — the only table with no tenant_id at all, since a global model is genuinely shared/trained across every tenant.</td></tr>
+<tr><td>customer_id</td><td>UUID</td><td>yes</td><td>FK → customer.id</td><td>Set for a customer's own model.</td></tr>
+<tr><td>tenant_id</td><td>UUID</td><td>yes</td><td>FK → tenant.id</td><td>The owning organization. Null (with customer_id null) = the shared model, trained on every organization that chose it and run by the platform operator; set with customer_id null = that organization's bank-only model.</td></tr>
 <tr><td>version</td><td>String(64)</td><td>no</td><td></td><td></td></tr>
 <tr><td>algorithm</td><td>String(64)</td><td>no</td><td></td><td></td></tr>
 <tr><td>artifact_path</td><td>String(500)</td><td>no</td><td></td><td>Where the trained model file lives on disk.</td></tr>
@@ -707,7 +714,7 @@ erDiagram
 <tr><td>id</td><td>UUID</td><td>no</td><td>PK</td><td></td></tr>
 <tr><td>tenant_id / customer_id</td><td>UUID</td><td>no</td><td>FK</td><td></td></tr>
 <tr><td>network_code</td><td>String(32)</td><td>no</td><td>FK → payment_network.code, UK (with customer_id)</td><td></td></tr>
-<tr><td>mode</td><td>String(10) enum</td><td>no</td><td></td><td>auto (use this customer's own model once trained, else global) / always_global / always_customer.</td></tr>
+<tr><td>mode</td><td>String(10) enum</td><td>no</td><td></td><td>auto (this customer's own model once trained, else the organization's model) / global, shown as "Bank's model" (always the organization's model: shared or bank-only) / customer.</td></tr>
 <tr><td>updated_at</td><td>Timestamp</td><td>no</td><td></td><td></td></tr>
 <tr><td colspan="5"><strong>customer_disposition_setting</strong> — one row per (customer, network)</td></tr>
 <tr><td>id</td><td>UUID</td><td>no</td><td>PK</td><td></td></tr>
@@ -876,6 +883,7 @@ erDiagram
 <tr><td>key_hash</td><td>String(64)</td><td>no</td><td>UK</td><td>SHA-256 of the raw key; the raw value is shown once at creation and never stored.</td></tr>
 <tr><td>created_at / last_used_at</td><td>Timestamp</td><td>varies</td><td></td><td></td></tr>
 <tr><td>revoked_at</td><td>Timestamp</td><td>yes</td><td></td><td></td></tr>
+<tr><td>scopes</td><td>JSON</td><td>no</td><td></td><td>What the key may do: "usage" (the usage-metering API) and/or "shared_model" (operating the shared fraud-scoring model).</td></tr>
 </tbody>
 </table>
 <p class="hint">No tenant_id column at all — this is the one deliberately cross-tenant

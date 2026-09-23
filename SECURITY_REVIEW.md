@@ -282,4 +282,18 @@ downloads are always `application/octet-stream`.
 disrupt the others. The demo resets hourly, and resets now also restore the organization's
 own settings.
 
-Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5).
+**FIXED (2026-09-23) — any tenant's admin controlled the global ML model that scores every
+tenant** (the long-standing IOU in the original review above). Each organization now chooses
+the shared model or a bank-only model. The shared model is trained only on organizations that
+chose it, and can be retrained, activated, or inspected only with a platform API key carrying the
+new `shared_model` scope (existing keys are usage-only). Bank admins manage only their own
+bank-only model, and model activation is ownership-checked by slot. Other banks'
+fraud-training examples need platform approval before they train the shared model (anti-poisoning).
+The raw `tenant_id` model feature is gone, so the shared model's coefficients no longer reveal
+which organizations exist. When a bank leaves, the shared model is rebuilt without its data.
+Also fixed: the admin model-list API returned every bank's models, and the admin page's
+training counts covered all banks.
+
+Still open from the original review: the Low-severity note that model artifacts are loaded
+with `joblib` (pickle) without a signature check. (Not attacker-reachable today: artifact
+paths come from the database, never from a request.)

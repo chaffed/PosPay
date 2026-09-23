@@ -270,14 +270,18 @@ Error responses specific to decisioning (all `HTTPException` with a matching sta
 
 ### Admin — `/api/v1/admin`
 
-All gated on `admin:manage`.
+All gated on `admin:manage`. Each organization chooses its fraud-scoring model (Settings →
+Fraud scoring model in the web UI): the **shared model**, trained on every participating
+bank's decisions and run only by the platform operator (see "Platform — shared model"
+below), or a **bank-only model** trained on its own decisions, which these endpoints manage.
 
 | method | path | notes |
 |---|---|---|
 | GET | `/payment-networks` | list registered network codes (`list[str]`) |
-| POST | `/ml/retrain?network_code=...` | retrain the fraud-scoring model for a network → `RetrainResponse`; `409` if there isn't enough training data yet |
-| GET | `/ml/models` | list model versions; optional `?network_code=` filter |
-| PATCH | `/ml/models/{model_id}/activate` | promote a trained model to active |
+| POST | `/ml/retrain?network_code=...` | retrain this organization's **bank-only** model → `RetrainResponse`; `403` for an organization on the shared model; `409` if there isn't enough training data yet, or it was retrained moments ago. The new version is activated only if it scores at least as well as the active one on the same recent decisions and was trained on enough of the bank's own decisions (`ml_bank_model_min_decisions`, default 200); the reason is in `metrics_json.evaluation.reason` |
+| GET | `/ml/models` | this organization's own model versions (bank-only and customer models); optional `?network_code=` filter |
+| GET | `/ml/shared-model` | the shared model's active version per network, with counts only → `list[SharedModelSummaryRead]` (`network_code`, `version`, `activated_at`, `trained_from_decision_count`, `contributing_bank_count`) |
+| PATCH | `/ml/models/{model_id}/activate` | activate one of this organization's bank-only models; `404` for any other model |
 
 `MlModelRead`: `id`, `network_code`, `version`, `algorithm`,
 `trained_from_decision_count`, `metrics_json`, `status` (`training` / `active` /
@@ -286,10 +290,29 @@ All gated on `admin:manage`.
 `RetrainResponse`: `network_code`, `promoted` (bool), `metrics` (`dict[str, float]`),
 `model` (`MlModelRead`).
 
-> ML models are global per network, not per-tenant (a deliberate design decision to solve
-> cold-start scoring for new tenants) — `admin:manage` on any one tenant can currently
-> retrain/activate a model that scores every tenant's exceptions. This is flagged as a
-> gap for a real multi-tenant deployment, not something to route around.
+Retrain and activate are written to the organization's audit log.
+
+### Platform — shared model — `/api/v1/platform`
+
+For the platform operator only, **not** a user token: send a platform API key with the
+`shared_model` scope as `X-Api-Key` (mint one with
+`python scripts/create_metering_api_key.py "Platform ML operator" --scope shared_model`).
+`401` for a bad key, `403` for a key without the scope. A usage-metering key can't use these,
+and a `shared_model` key can't read usage.
+
+| method | path | notes |
+|---|---|---|
+| GET | `/ml/models` | the shared model's versions; optional `?network_code=` |
+| POST | `/ml/retrain?network_code=...` | retrain the shared model (decisions from banks on the shared model only, plus approved fraud-training examples) → `RetrainResponse` |
+| PATCH | `/ml/models/{model_id}/activate` | activate a shared-model version; `404` for a bank's own model |
+| GET | `/ml/models/{model_id}/feature-importance` | the model's coefficients by feature, largest effect first |
+| GET | `/ml/fraud-examples/pending` | fraud-training examples from banks on the shared model that aren't yet approved to train it → `list[PendingFraudExampleRead]` |
+| POST | `/ml/fraud-examples/{exception_id}/approve` | approve one for the shared model (`204`); recorded in that bank's audit log |
+| POST | `/tenants/{tenant_id}/ml-switch-lock/clear` | let a new organization switch to a bank-only model before its first 90 days are up; recorded in its audit log |
+
+When an organization switches to a bank-only model, the next scheduled retrain rebuilds the
+shared model without its data and activates the result even if it scores lower, because
+removing that bank's data comes first.
 
 ### Users — `/api/v1/users`
 

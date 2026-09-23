@@ -809,8 +809,8 @@ on the single-tenant operational tables (`account`, `issued_item`, `stop_payment
 defense-in-depth alongside the primary
 tenant-isolation mechanism (the repository-layer filter in `repositories/base.py`, which
 is what's actually under test in `tests/test_api/test_cross_tenant_isolation.py`).
-`exception_item`/`decision` (the ML pipeline reads across all tenants by design, see
-`ml/train.py`) and `user` (a global login identity with no single-tenant row-ownership
+`exception_item`/`decision` (the shared ML model trains across every organization that
+chose it, see `ml/train.py`) and `user` (a global login identity with no single-tenant row-ownership
 story — see "Users, security groups, and cross-tenant access" above) are deliberately
 excluded. This RLS migration has been schema-compile-verified against the Postgres
 dialect but **not yet exercised against a live Postgres instance** in development (no
@@ -892,8 +892,14 @@ cosmetic, the POST route's own permission check is what actually enforces it.
   `exception_item`, `decision`, `ml/`, or the `/exceptions` API.
 - `ocr/` — pluggable OCR (`OCRProvider` protocol; Tesseract is the default, cloud
   providers are stubbed behind optional extras)
-- `ml/` — model training/scoring, one model per network, fed by human pay/return
-  decisions (`decision.features_json`)
+- `ml/` — model training/scoring per network, fed by human pay/return decisions
+  (`decision.features_json`). Each organization chooses the **shared model** (trained on
+  every participating organization's decisions, run by the platform operator through
+  `/api/v1/platform/ml/*` with a `shared_model`-scoped platform key) or a **bank-only model**
+  (its own decisions only, seeded from a copy of the shared model when it switches, run by
+  its own admins). Customer models sit on top of either. See `ml/predict.py` for which model
+  scores an exception, `services/tenant_ml_service.py` for switching, and the admin "ML
+  Scoring" docs for the details a bank sees.
 - `api/v1/` — FastAPI routers; `exceptions.py`/`decisions.py` are network-agnostic
 - `workers/` — the ML retrain job, runnable via an opt-in in-process APScheduler
   (`POSPAY_ENABLE_ML_SCHEDULER=true`) or an external cron/k8s CronJob calling
