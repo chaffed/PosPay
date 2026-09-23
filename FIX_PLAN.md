@@ -433,7 +433,7 @@ data migration is needed.
 
 ## Phase 6 — Exception review UX (1–2 PRs, about 3 days) — U2, U3, U4
 
-**Status: IN PROGRESS (started 2026-09-23, branch `phase-6-exception-review`).** Progress log
+**Status: DONE 2026-09-23 on branch `phase-6-exception-review`, merged to `main`, not pushed. Full suite: 1,123 passed, 1 skipped (after fixing one older test that looked for the old link wording).** Progress log
 (newest last; each entry committed):
 - **Found at the start (High, UX):** `ml_score` is the model's probability the item should
   be **paid** (`ml/model.py`, and auto-disposition pays at ≥ 0.5), but the queue's help text
@@ -443,33 +443,50 @@ data migration is needed.
 - Plan: 6.1 evidence service + labels/filters → 6.2 detail page (evidence, image, deadline,
   safe forms) → 6.3 queue (defaults, columns, labels) → 6.4 approvals follow-ups (FK +
   badge) → tests/docs.
+- 6.1 DONE: `services/exception_evidence.py` (expected-vs-presented rows with mismatches flagged,
+  plus stop payment, duplicate, void, and no-authorization notes, the check image, account/customer,
+  and deadline, all through customer-scoped repositories). Label filters and `fraud_risk()` in
+  `web/templates.py`.
+- 6.2 DONE: detail page (facts header, evidence table, images, deadline in local time with
+  what happens next, fraud risk wording). Safe forms: outcome starts on "Choose" (approve and revise
+  start on the maker's choice), an empty outcome gets a clear message rather than a raw validation
+  error, only the relevant reason field is shown, a High-risk Pay asks for confirmation, and with
+  dual control off a decider sees only Decide.
+- 6.3 DONE: the queue defaults to Needs attention (open + awaiting approval), oldest first;
+  Account/Customer/Date/Decide-by columns; plain-English types and statuses; risk badges.
+- 6.4 DONE: `recommended_ach_return_reason_id` FK (migration `b7d3e9a2c4f1`, with a text-match
+  fallback for older rows); Approvals nav count badge (excludes your own recommendations).
+- Tests: 17 new, two deliberate-breakage checks caught; two older assertions updated for the new
+  wording. Checked live: the queue, and the check/ACH/stop detail pages. **Fixed after the live
+  check:** confusing "couldn't be found" wording for stops on never-issued checks, a doubled period,
+  and a duplicate-payment amount without "$".
 
 Files: `templates/exceptions/detail.html`, `templates/exceptions/list.html`,
 `web/routers/exceptions.py`, `web/templates.py` (label filter)
-- [ ] **U2 evidence panel:** a check exception shows an "Issued vs Presented" table (check #,
+- [x] **U2 evidence panel:** a check exception shows an "Issued vs Presented" table (check #,
       amount, payee, date, account) with the mismatched fields highlighted, using
       `related_reference_id` → `IssuedItem`. An ACH exception shows the matched/closest
       authorization rule (max amount, SEC codes, company ID) and the transaction's values.
-- [ ] Inline check image (front/back thumbnails → full-size viewer) when one exists,
+- [x] Inline check image (front/back thumbnails → full-size viewer) when one exists,
       plus links to the paid item and image record.
-- [ ] Apply the `currency` filter everywhere on the detail page. Add account and customer
+- [x] Apply the `currency` filter everywhere on the detail page. Add account and customer
       names.
-- [ ] Decision deadline: show when the default disposition will fire ("Auto-return at
+- [x] Decision deadline: show when the default disposition will fire ("Auto-return at
       4:00 PM ET — 2h 13m left"), using `customer_disposition_setting` / the sweep job's
       logic.
-- [ ] **U3 safe forms:** outcome `<select>` starts on "— Choose —" and is `required`.
+- [x] **U3 safe forms:** outcome `<select>` starts on "— Choose —" and is `required`.
       Show only the reason input that matches the chosen outcome (small JS, with a
       server-side check already in `decision_service`). When dual control is off, and for
       a user with `exception:decide`, show only Decide (no stacked Recommend form).
       Add an optional confirmation for "Pay" when the ML score is high risk.
-- [ ] **U4 queue:** default the filter to Open + Pending approval. Sort oldest first / by
+- [x] **U4 queue:** default the filter to Open + Pending approval. Sort oldest first / by
       deadline. Add Account, Customer, and Date columns. Human-readable exception type labels
       (`exception_type_label` filter: `amount_mismatch` → "Amount mismatch"). Hide the ML
       column when no model is active.
-- [ ] Approvals follow-ups (from the step 9 review): store `recommended_ach_return_reason_id`
+- [x] Approvals follow-ups (from the step 9 review): store `recommended_ach_return_reason_id`
       as a real FK (migration) instead of text matching; add a pending count badge on the
       "Approvals" nav item.
-- [ ] Tests: form requires an explicit outcome; the evidence panel renders issued and paid
+- [x] Tests: form requires an explicit outcome; the evidence panel renders issued and paid
       values; the default queue filter excludes decided items.
 
 ## Phase 7 — Layout and polish (1 PR, about 1–2 days) — U5, U6, U7, U8
@@ -526,6 +543,6 @@ Files: `templates/exceptions/detail.html`, `templates/exceptions/list.html`,
 | 3 | Sessions | M | Biggest daily-use pain; completes S2 |
 | 4 | SSRF, uploads, demo | M | Public demo is live exposure |
 | 5 | ML model choice per bank | M–L | Done 2026-09-23 |
-| 6 | Exception review UX | M–L | Core workflow quality |
+| 6 | Exception review UX | M–L | Done 2026-09-23 |
 | 7 | Layout polish | S | Mechanical |
 | 8 | Docs/ops | S | Before any real multi-instance deployment |

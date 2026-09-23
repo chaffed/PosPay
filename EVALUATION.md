@@ -237,7 +237,7 @@ Checked status codes, console errors, horizontal overflow, and unlabeled inputs,
 reviewed the screenshots by eye. Every page returned 200 with no JS console errors,
 except the one 403 in U8.
 
-**U2 — High — The exception decision screen lacks the evidence a reviewer needs.** This is
+**U2 — FIXED 2026-09-23 (Phase 6) — High — The exception decision screen lacks the evidence a reviewer needs.** This is
 the core screen of positive pay (`exceptions/detail.html`):
 - For a check `amount_mismatch` it shows only the presented amount (`939.00`). The
   issued amount, payee, issue date, and account aren't shown side by side, so the
@@ -252,7 +252,7 @@ the core screen of positive pay (`exceptions/detail.html`):
 Recommended: an "Issued vs Presented" comparison table with the mismatched fields
 highlighted, plus a check image viewer.
 
-**U3 — High — Decision forms default to "Pay".** Both the Recommend and Decide forms
+**U3 — FIXED 2026-09-23 (Phase 6) — High — Decision forms default to "Pay".** Both the Recommend and Decide forms
 preselect `Pay` with an optional reason, so one accidental click pays a possibly
 fraudulent item. Use an empty "— choose —" option that must be selected, and consider a
 confirmation step for Pay on items with fraud signals. For an admin who holds both
@@ -261,7 +261,7 @@ dual control is off, show only Decide. The ACH form has two reason inputs ("Retu
 reason" dropdown + "Reason code (used only for Pay)"). Show whichever one matches the
 chosen outcome.
 
-**U4 — Medium — The exceptions queue defaults to all statuses.** In the demo, 4 open items
+**U4 — FIXED 2026-09-23 (Phase 6) — Medium — The exceptions queue defaults to all statuses.** In the demo, 4 open items
 were mixed in with 29 already-decided ones. Default to `Open` (and pending approval),
 sort oldest-first or by deadline, and add Account/Customer and Date columns. Show exception
 types as readable labels ("Amount mismatch"), not raw codes (`amount_mismatch`,

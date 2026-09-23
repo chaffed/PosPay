@@ -61,10 +61,10 @@ def test_exception_detail_shows_allow_list_link_for_ach_only(client, db_session,
     _login(client, tenant.slug, users["admin"].email)
 
     ach_page = client.get(f"/ui/exceptions/{ach_exception.id}")
-    assert "Add originator to ACH allow list" in ach_page.text
+    assert f"/ui/ach/authorizations/new?from_exception={ach_exception.id}" in ach_page.text
 
     check_page = client.get(f"/ui/exceptions/{check_exception.id}")
-    assert "Add originator to ACH allow list" not in check_page.text
+    assert "/ui/ach/authorizations/new?from_exception=" not in check_page.text
 
 
 def test_new_authorization_form_prefills_from_ach_exception(client, db_session, tenant_factory):
