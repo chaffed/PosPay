@@ -440,3 +440,19 @@ table.evidence tr.mismatch td, table.evidence tr.mismatch th { background: var(-
 .check-images img { max-width: min(100%, 420px); height: auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
 [hidden] { display: none !important; }
 .nav-count { margin-left: auto; min-width: 1.4rem; padding: 0 0.4rem; border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.75rem; font-weight: 700; text-align: center; line-height: 1.4rem; }
+
+/* Phone-width layout (FIX_PLAN.md Phase 7, U5). app.js wraps every table in .table-scroll,
+   so a wide table scrolls within its card; nothing else may make the page wider than the
+   screen. */
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll > table { margin-top: 0.5rem; }
+.card, .page > * { min-width: 0; max-width: 100%; }
+pre, code { overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  /* The root cause of the sideways scrolling: .page's `margin: 0 auto` stops a flex item
+     from stretching to the column's width, so it grew to fit its widest table instead of
+     the screen. Pin it to the screen width so .table-scroll can do its job. */
+  .page { width: 100%; margin: 0; box-sizing: border-box; }
+  .actions, .toolbar { flex-wrap: wrap; }
+  .actions > *, .toolbar > .actions { max-width: 100%; }
+}

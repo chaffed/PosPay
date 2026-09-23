@@ -1,4 +1,15 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // Wide tables scroll sideways inside their own card on narrow screens, instead of
+  // widening the whole page (which made every list page scroll horizontally on a phone).
+  // Done here once for every table rather than in each of the templates.
+  document.querySelectorAll("table").forEach((table) => {
+    if (table.parentElement && table.parentElement.classList.contains("table-scroll")) return;
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-scroll";
+    table.parentNode.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+
   document.querySelectorAll("[data-confirm]").forEach((el) => {
     el.addEventListener("submit", (event) => {
       if (!window.confirm(el.dataset.confirm)) {
