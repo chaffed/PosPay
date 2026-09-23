@@ -132,6 +132,7 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         postal_code=branding.postal_code,
         banner_message=branding.banner_message,
         customer_banner_message=customer_banner_message,
+        must_change_password=user.must_change_password,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting
@@ -159,7 +160,15 @@ def get_current_context(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
     db: Session = Depends(get_db),
 ) -> TenantContext:
-    return _header_context(credentials, db, expected_type="access")
+    ctx = _header_context(credentials, db, expected_type="access")
+    if ctx.must_change_password:
+        # The API has no change-password endpoint, so a user holding an admin-issued
+        # temporary password must finish the change on the web first — until then the
+        # temporary password grants nothing beyond that one page.
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Password change required: sign in to the web app to set a new password"
+        )
+    return ctx
 
 
 def get_mfa_pending_context(

@@ -6,9 +6,11 @@
 just validated: `effective_policy` combines the two with max()/OR, so the result can never
 be weaker than the tenant's own policy regardless of what's stored on the customer row.
 
-The one and only enforcement point is services/user_service.py::create_user_with_membership
-— there is no self-service password change/reset flow anywhere in this app, so a password
-is only ever checked against this policy once, at the moment it's first set."""
+Enforced wherever a password is set: services/user_service.py::create_user_with_membership
+(first set, against that one membership's policy) and change_own_password (against
+`strictest` of every policy the user is subject to — one User's single password is shared
+by all their memberships, so it must satisfy the tightest of them). Admin-issued temporary
+passwords (admin_reset_password) are generated to satisfy it too."""
 
 from dataclasses import dataclass
 
@@ -35,6 +37,21 @@ def effective_policy(tenant: Tenant, customer: Customer | None) -> PasswordPolic
         require_lowercase=tenant.password_require_lowercase or bool(customer and customer.password_require_lowercase),
         require_number=tenant.password_require_number or bool(customer and customer.password_require_number),
         require_symbol=tenant.password_require_symbol or bool(customer and customer.password_require_symbol),
+    )
+
+
+def strictest(policies: list[PasswordPolicy]) -> PasswordPolicy | None:
+    """Combines several policies (one per membership) the same max()/OR way
+    effective_policy combines a tenant's and a customer's — the result satisfies every
+    input. None for an empty list (a user with no active memberships)."""
+    if not policies:
+        return None
+    return PasswordPolicy(
+        min_length=max(p.min_length for p in policies),
+        require_uppercase=any(p.require_uppercase for p in policies),
+        require_lowercase=any(p.require_lowercase for p in policies),
+        require_number=any(p.require_number for p in policies),
+        require_symbol=any(p.require_symbol for p in policies),
     )
 
 

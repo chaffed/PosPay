@@ -19,6 +19,10 @@ class NotificationType(str, enum.Enum):
     # services/auto_disposition_service.py finalized an exception with no human decider —
     # see domain/decision.py::DecisionSource.
     EXCEPTION_AUTO_DECIDED = "exception_auto_decided"
+    # services/user_service.py — the user changed their own password, or an admin reset it.
+    # Always emailed (see notification_service._ALWAYS_EMAIL_TYPES): an unexpected one is
+    # the first sign an account was taken over.
+    PASSWORD_CHANGED = "password_changed"
 
 
 class NotificationChannel(str, enum.Enum):

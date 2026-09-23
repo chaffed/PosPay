@@ -20,8 +20,9 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.notification import NotificationType
 from pospay.domain.user import User
 from pospay.schemas.webauthn import RegistrationVerifyRequest
-from pospay.services import notification_service
-from pospay.web.deps import get_web_context, render_template
+from pospay.auth.password_policy import describe
+from pospay.services import audit_log_service, notification_service, user_service
+from pospay.web.deps import PASSWORD_CHANGE_PATH, get_web_context, render_template
 from pospay.web.security import verify_csrf, verify_csrf_header
 
 router = APIRouter(prefix="/ui/security", tags=["web-security-settings"])
@@ -30,7 +31,9 @@ router = APIRouter(prefix="/ui/security", tags=["web-security-settings"])
 # _ALWAYS_EMAIL_TYPES) -- excluded here entirely rather than rendered as a disabled,
 # always-checked control, since there's nothing for the user to meaningfully see or do
 # with it.
-_PREFERENCE_TYPES = [t for t in NotificationType if t != NotificationType.ACCOUNT_LOCKED]
+_PREFERENCE_TYPES = [
+    t for t in NotificationType if t not in (NotificationType.ACCOUNT_LOCKED, NotificationType.PASSWORD_CHANGED)
+]
 
 _NOTIFICATION_TYPE_LABELS = {
     NotificationType.EXCEPTION_CREATED: "New exception ready for review",
@@ -48,6 +51,62 @@ def security_settings(
 ) -> HTMLResponse:
     credentials = list_credentials(db, ctx.tenant_id, ctx.user_id)
     return render_template(request, "security/webauthn.html", ctx=ctx, credentials=credentials)
+
+
+def _render_password_form(
+    request: Request, db: Session, ctx: TenantContext, *, error: str | None = None, required: bool = False
+) -> HTMLResponse:
+    policy = user_service.password_policy_for_user(db, ctx.user_id)
+    return render_template(
+        request,
+        "security/password.html",
+        ctx=ctx,
+        error=error,
+        required=required or ctx.must_change_password,
+        policy_hint=describe(policy) if policy else None,
+        status_code=400 if error else 200,
+    )
+
+
+@router.get("/password")
+def change_password_form(
+    request: Request, db: Session = Depends(get_db), ctx: TenantContext = Depends(get_web_context)
+) -> HTMLResponse:
+    return _render_password_form(request, db, ctx)
+
+
+@router.post("/password")
+def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_web_context),
+    _csrf: None = Depends(verify_csrf),
+) -> Response:
+    if new_password != confirm_password:
+        return _render_password_form(request, db, ctx, error="The new passwords don't match.")
+    try:
+        user_service.change_own_password(
+            db, ctx.tenant_id, ctx.user_id, current_password=current_password, new_password=new_password
+        )
+    except user_service.PasswordChangeError as exc:
+        db.commit()  # persist a wrong-current-password strike toward the lockout
+        return _render_password_form(request, db, ctx, error=str(exc))
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="user.password_change",
+        summary="Changed own password" + (" (required after an administrator reset)" if ctx.must_change_password else ""),
+        resource_type="user",
+        resource_id=ctx.user_id,
+    )
+    db.commit()
+    destination = "/ui/" if ctx.must_change_password else PASSWORD_CHANGE_PATH
+    return RedirectResponse(f"{destination}?flash=" + quote("Your password has been changed."), status_code=303)
 
 
 @router.get("/notifications")

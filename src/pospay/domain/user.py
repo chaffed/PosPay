@@ -34,6 +34,13 @@ class User(Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Set when an admin resets this user's password to a one-time temporary value
+    # (services/user_service.py::admin_reset_password); cleared once the user sets their
+    # own (change_own_password). While set, auth/deps.py surfaces it on TenantContext and
+    # every web route except the change-password page redirects there (web/deps.py), and
+    # the JSON API refuses the session outright.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Set by the user themselves on /ui/security/notifications — nullable since SMS
     # notifications are opt-in and most users will never set one. No format validation
     # beyond what services/notification_service.py's SMS provider itself rejects; kept

@@ -1,18 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pospay.auth.password_policy import effective_policy, validate_password
-from pospay.auth.security import hash_password
+from pospay.auth.password_policy import PasswordPolicy, effective_policy, strictest, validate_password
+from pospay.auth.security import hash_password, verify_password
 from pospay.bulk_import.fields import RowFieldError, optional_str, require_str
 from pospay.bulk_import.results import UserBulkRowResult
+from pospay.config import get_settings
 from pospay.domain.tenant import Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
@@ -311,6 +313,124 @@ def unlock_user(session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID
     session.flush()
     notification_service.notify_account_unlocked(session, user)
     return user
+
+
+class PasswordChangeError(ValueError):
+    """A password change/reset was refused. The message is safe to show the user as-is
+    (routers re-render the form with error=str(exc), this app's usual convention)."""
+
+
+def password_policy_for_user(session: Session, user_id: uuid.UUID) -> PasswordPolicy | None:
+    """The strictest policy across every active membership this identity holds — a User
+    has ONE password shared by all of them, so it must satisfy the tightest one, not just
+    the policy of whichever organization they happen to be signed into right now. Reuses
+    list_memberships_for_user's deliberate cross-tenant lookup (same Postgres RLS caveat
+    documented there: another tenant's customer-level additions may not be visible, in
+    which case that tenant's own baseline still applies)."""
+    policies = []
+    for row in list_memberships_for_user(session, user_id):
+        customer = (
+            customer_service.get_customer(session, row.membership.tenant_id, row.membership.customer_id)
+            if row.membership.customer_id
+            else None
+        )
+        policies.append(effective_policy(row.tenant, customer))
+    return strictest(policies)
+
+
+def change_own_password(
+    session: Session, tenant_id: uuid.UUID, user_id: uuid.UUID, *, current_password: str, new_password: str
+) -> User:
+    """Self-service change (web/routers/security_settings.py). Verifies the current
+    password first — so a hijacked but still-open session can't silently take over the
+    account permanently — and counts a wrong one toward the same lockout as a failed login
+    (auth/login_service.py), so this form can't be used to brute-force it either. The
+    caller commits (even on PasswordChangeError, so an incremented counter persists)."""
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is not None and tenant.is_demo:
+        # Shared public credentials: one visitor changing the password would lock every
+        # other visitor out until the demo resets.
+        raise PasswordChangeError("Passwords can't be changed in the demo organization.")
+
+    user = session.get(User, user_id)
+    if not verify_password(current_password, user.hashed_password):
+        settings = get_settings()
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= settings.login_max_failed_attempts:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.login_lockout_minutes)
+            notification_service.notify_account_locked(session, user)
+        session.flush()
+        raise PasswordChangeError("Your current password is incorrect.")
+    if new_password == current_password:
+        raise PasswordChangeError("Your new password must be different from your current one.")
+
+    policy = password_policy_for_user(session, user_id)
+    if policy is not None:
+        try:
+            validate_password(new_password, policy)
+        except ValueError as exc:
+            raise PasswordChangeError(str(exc)) from None
+
+    user.hashed_password = hash_password(new_password)
+    user.must_change_password = False
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    session.flush()
+    notification_service.notify_password_changed(session, user, reset_by_admin=False)
+    return user
+
+
+def _generate_temporary_password(policy: PasswordPolicy | None) -> str:
+    """Random, and always satisfies `policy` (one character from every class, then
+    filled out to at least 16 or the policy's own minimum). Ambiguous look-alike
+    characters (0/O, 1/l/I) are left out since an admin reads this aloud or retypes it."""
+    lower, upper, digits, symbols = "abcdefghijkmnpqrstuvwxyz", "ABCDEFGHJKLMNPQRSTUVWXYZ", "23456789", "!@#$%*-_+?"
+    length = max(16, policy.min_length if policy else 0)
+    chars = [secrets.choice(lower), secrets.choice(upper), secrets.choice(digits), secrets.choice(symbols)]
+    alphabet = lower + upper + digits + symbols
+    chars += [secrets.choice(alphabet) for _ in range(length - len(chars))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
+def admin_reset_password(
+    session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID, *, actor_user_id: uuid.UUID
+) -> tuple[User, str]:
+    """Replaces the user's password with a one-time temporary one (returned, for the admin
+    to hand over — never stored in plain text or logged) and forces a change at next
+    sign-in. Resolved via a membership in the caller's own tenant, like unlock_user.
+
+    Refused when the user also holds an active membership in any OTHER organization: a
+    User's password is global, so otherwise one bank's admin could take over that
+    person's access at another bank. They must change it themselves (decided
+    2026-09-22, FIX_PLAN.md Phase 2). Also refused for the admin's own account (use the
+    self-service page) and in the demo organization."""
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is not None and tenant.is_demo:
+        raise PasswordChangeError("Passwords can't be reset in the demo organization.")
+    membership = TenantMembershipRepository(session, tenant_id).get(membership_id)
+    if membership is None:
+        raise PasswordChangeError("User not found.")
+    user = session.get(User, membership.user_id)
+    if user is None:
+        raise PasswordChangeError("User not found.")
+    if user.id == actor_user_id:
+        raise PasswordChangeError("To change your own password, use Security → Change password.")
+    other_orgs = [row for row in list_memberships_for_user(session, user.id) if row.membership.tenant_id != tenant_id]
+    if other_orgs:
+        raise PasswordChangeError(
+            f"{user.email} also belongs to other organizations, so their password can't be reset from here. "
+            "They must change it themselves from Security → Change password."
+        )
+
+    temporary_password = _generate_temporary_password(password_policy_for_user(session, user.id))
+    user.hashed_password = hash_password(temporary_password)
+    user.must_change_password = True
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    session.flush()
+    notification_service.notify_password_changed(session, user, reset_by_admin=True)
+    return user, temporary_password
 
 
 def update_membership(

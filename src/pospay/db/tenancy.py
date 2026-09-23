@@ -72,3 +72,9 @@ class TenantContext:
     # banner carousels: tenant message first, then the customer's.
     banner_message: str | None = None
     customer_banner_message: str | None = None
+
+    # Mirrors User.must_change_password (an admin reset this user's password to a
+    # temporary one). web/deps.py::get_web_context redirects every page but the
+    # change-password form while it's set; auth/deps.py::get_current_context refuses API
+    # use outright.
+    must_change_password: bool = False

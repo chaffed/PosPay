@@ -186,6 +186,11 @@ button.danger, .button.danger { background: var(--danger); }
 .flash { padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
 .flash-ok { background: var(--badge-ok-bg); color: var(--badge-ok-fg); }
 .flash-error { background: var(--badge-danger-bg); color: var(--badge-danger-fg); }
+.flash-warn { background: var(--badge-warn-bg); color: var(--badge-warn-fg); }
+/* Used by several templates for secondary/help text but previously never defined. */
+.hint, .text-muted { color: var(--text-muted); font-size: 0.85rem; }
+label + .hint { margin: -0.5rem 0 0.9rem; }
+.temporary-password { font-size: 1.15rem; padding: 0.4rem 0.6rem; background: var(--badge-bg, rgba(127,127,127,0.12)); border-radius: 6px; letter-spacing: 0.05em; user-select: all; margin-right: 0.5rem; }
 
 /* templates/partials/_banner.html -- tenant/customer Markdown login+banner messages
 (services/tenant_service.py::TenantBranding, db/tenancy.py::TenantContext). Deliberately

@@ -11,6 +11,22 @@ document.addEventListener("DOMContentLoaded", () => {
   // back", so a rejected form's typed values are still there) — wired up here rather
   // than as a javascript: href, which the strict script-src CSP blocks. Its real href is
   // the no-JS / no-history fallback.
+  // A button with data-copy-target="<element id>" copies that element's text (e.g. the
+  // one-time temporary password on users/reset_password_result.html) and briefly
+  // confirms. Clipboard access can be refused (permissions, non-HTTPS origin), in which
+  // case the text is still selectable by hand.
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = document.getElementById(button.dataset.copyTarget);
+      if (!target || !navigator.clipboard) return;
+      navigator.clipboard.writeText(target.textContent.trim()).then(() => {
+        const original = button.textContent;
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = original; }, 2000);
+      }).catch(() => {});
+    });
+  });
+
   document.querySelectorAll("[data-history-back]").forEach((el) => {
     el.addEventListener("click", (event) => {
       if (window.history.length > 1) {

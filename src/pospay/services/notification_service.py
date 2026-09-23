@@ -27,11 +27,11 @@ from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.web.templates import templates
 
-# ACCOUNT_LOCKED's email is not skippable via preference -- a locked-out user needs to
-# know regardless of what they've configured, same "security mail isn't optional"
-# reasoning most apps apply to account-security notices. Every other type (and SMS for
-# every type, including this one) stays fully preference-controlled.
-_ALWAYS_EMAIL_TYPES = frozenset({NotificationType.ACCOUNT_LOCKED})
+# ACCOUNT_LOCKED's and PASSWORD_CHANGED's emails are not skippable via preference -- the
+# user needs to know regardless of what they've configured, same "security mail isn't
+# optional" reasoning most apps apply to account-security notices. Every other type (and
+# SMS for every type, including these) stays fully preference-controlled.
+_ALWAYS_EMAIL_TYPES = frozenset({NotificationType.ACCOUNT_LOCKED, NotificationType.PASSWORD_CHANGED})
 
 _EMAIL_SUBJECTS: dict[NotificationType, str] = {
     NotificationType.EXCEPTION_CREATED: "New exception ready for review",
@@ -39,6 +39,7 @@ _EMAIL_SUBJECTS: dict[NotificationType, str] = {
     NotificationType.ACCOUNT_LOCKED: "Your PosPay account has been locked",
     NotificationType.ACCOUNT_UNLOCKED: "Your PosPay account has been unlocked",
     NotificationType.EXCEPTION_AUTO_DECIDED: "An exception was auto-decided",
+    NotificationType.PASSWORD_CHANGED: "Your PosPay password was changed",
 }
 
 
@@ -248,6 +249,18 @@ def notify_account_unlocked(session: Session, user: User) -> None:
         recipient=user,
         notification_type=NotificationType.ACCOUNT_UNLOCKED,
         template_context={},
+        resource_type="user",
+        resource_id=user.id,
+    )
+
+
+def notify_password_changed(session: Session, user: User, *, reset_by_admin: bool) -> None:
+    _queue(
+        session,
+        tenant_id=None,
+        recipient=user,
+        notification_type=NotificationType.PASSWORD_CHANGED,
+        template_context={"reset_by_admin": reset_by_admin},
         resource_type="user",
         resource_id=user.id,
     )

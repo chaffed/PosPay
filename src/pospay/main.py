@@ -14,7 +14,14 @@ from fastapi.staticfiles import StaticFiles
 from pospay.api.v1.router import api_router
 from pospay.config import assert_production_safe, get_settings
 from pospay.web.client_ip import get_client_ip
-from pospay.web.deps import WebAuthRequired, WebForbidden, WebNotFound, render_template
+from pospay.web.deps import (
+    PASSWORD_CHANGE_PATH,
+    WebAuthRequired,
+    WebForbidden,
+    WebNotFound,
+    WebPasswordChangeRequired,
+    render_template,
+)
 from pospay.web.rate_limit import limiter
 from pospay.web.router import web_router
 from pospay.web.security_headers import apply_security_headers, new_csp_nonce
@@ -136,6 +143,10 @@ def create_app() -> FastAPI:
         next_path = safe_next_path(exc.next_path)
         url = "/ui/login" if next_path == "/ui/" else f"/ui/login?next={quote(next_path)}"
         return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
+
+    @app.exception_handler(WebPasswordChangeRequired)
+    def _handle_web_password_change_required(request: Request, exc: WebPasswordChangeRequired) -> RedirectResponse:
+        return RedirectResponse(f"{PASSWORD_CHANGE_PATH}?required=1", status_code=status.HTTP_303_SEE_OTHER)
 
     @app.exception_handler(WebForbidden)
     def _handle_web_forbidden(request: Request, exc: WebForbidden):

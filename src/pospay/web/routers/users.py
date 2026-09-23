@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -289,6 +290,42 @@ def unlock_user(
     if unlocked is None:
         return RedirectResponse("/ui/users?error=User+not+found.", status_code=303)
     return RedirectResponse("/ui/users?flash=Account+unlocked.", status_code=303)
+
+
+@router.post("/{membership_id}/reset-password")
+def reset_password(
+    request: Request,
+    membership_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> Response:
+    """Issues a one-time temporary password — see services/user_service.py::
+    admin_reset_password for who can and can't be reset from here. Rendered directly as
+    this POST's response (never a redirect) so the temporary password never appears in a
+    URL, browser history, or a re-fetchable page; no-store keeps it out of the cache."""
+    try:
+        user, temporary_password = user_service.admin_reset_password(
+            db, ctx.tenant_id, membership_id, actor_user_id=ctx.user_id
+        )
+    except user_service.PasswordChangeError as exc:
+        return RedirectResponse("/ui/users?error=" + quote(str(exc)), status_code=303)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="user.password_reset",
+        summary=f"Reset password for {user.email} (temporary password issued; change required at next sign-in)",
+        resource_type="user",
+        resource_id=user.id,
+    )
+    db.commit()
+    response = render_template(
+        request, "users/reset_password_result.html", ctx=ctx, email=user.email, temporary_password=temporary_password
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.get("/bulk")

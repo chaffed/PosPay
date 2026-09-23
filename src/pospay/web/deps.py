@@ -19,6 +19,10 @@ from pospay.web.security import (
 from pospay.web.templates import templates
 
 
+# The one page a must_change_password session may reach (web/routers/security_settings.py).
+PASSWORD_CHANGE_PATH = "/ui/security/password"
+
+
 class WebAuthRequired(Exception):
     """Raised instead of a JSON 401 anywhere in /ui/* — a browser needs a redirect to the
     login page, not a JSON error body. Caught by an exception handler registered in
@@ -34,6 +38,12 @@ class WebForbidden(Exception):
     error page (not a JSON 403) by an exception handler in main.py."""
 
 
+class WebPasswordChangeRequired(Exception):
+    """Raised by get_web_context for a session whose user must replace an admin-issued
+    temporary password — main.py's handler redirects to the change-password page, the one
+    /ui/* page such a session may use (logout needs no context, so it still works too)."""
+
+
 class WebNotFound(Exception):
     """Raised when a /ui/* route's resource id doesn't resolve to a row this tenant owns
     (either truly missing, or belonging to another tenant — same outward response either
@@ -45,11 +55,14 @@ def get_web_context(request: Request, db: Session = Depends(get_db)) -> TenantCo
     if not token:
         raise WebAuthRequired(next_path=request.url.path)
     try:
-        return decode_and_build_context(token, db, expected_type="access")
+        ctx = decode_and_build_context(token, db, expected_type="access")
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, WrongTokenType, AccessRevoked):
         # Phase 1: any failure (including plain expiry, or an access/membership that was
         # deactivated since the token was issued) sends the user back to login.
         raise WebAuthRequired(next_path=request.url.path) from None
+    if ctx.must_change_password and request.url.path != PASSWORD_CHANGE_PATH:
+        raise WebPasswordChangeRequired()
+    return ctx
 
 
 def get_mfa_pending_web_context(request: Request, db: Session = Depends(get_db)) -> TenantContext:
