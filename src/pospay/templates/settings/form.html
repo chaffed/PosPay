@@ -55,6 +55,15 @@
   </div>
 
   <div class="card">
+    <div class="toolbar">
+      <h2>Fraud scoring model</h2>
+      <a href="/ui/settings/fraud-model" class="button secondary">{{ icon("tune") }}Manage</a>
+    </div>
+    <p>Choose between the shared model, which learns from every participating bank, and a
+      bank-only model trained only on your own decisions, and review how your data is used.</p>
+  </div>
+
+  <div class="card">
     <h2>Timeouts</h2>
     <form method="post" action="/ui/settings/session-timeout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

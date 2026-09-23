@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from pospay.domain.account import Account
 from pospay.domain.customer import Customer
+from pospay.domain.tenant import MlModelSource, Tenant
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.wizard_step_ack import WizardStepAck
 
@@ -60,6 +61,16 @@ def _bank_has_customer(session: Session, tenant_id: uuid.UUID, _customer_id: uui
     return session.execute(stmt).first() is not None
 
 
+def _bank_has_decided_on_fraud_model(session: Session, tenant_id: uuid.UUID, _customer_id: uuid.UUID | None) -> bool:
+    """Every bank starts on the shared model, which pools its decisions with other banks',
+    so this counts as done once someone has acknowledged that (or the bank has chosen a
+    bank-only model instead)."""
+    tenant = session.get(Tenant, tenant_id)
+    return tenant is not None and (
+        tenant.ml_shared_consent_at is not None or tenant.ml_model_source == MlModelSource.PRIVATE
+    )
+
+
 def _customer_has_accounts(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID | None) -> bool:
     stmt = select(Account.id).where(Account.tenant_id == tenant_id, Account.customer_id == customer_id).limit(1)
     return session.execute(stmt).first() is not None
@@ -92,6 +103,14 @@ BANK_STEPS: list[WizardStep] = [
         description="Maker/checker: when enabled, a different person must make the final pay/return decision than the one who recommended it.",
         link_text="Go to Settings",
         link_url="/ui/settings",
+    ),
+    WizardStep(
+        key="fraud_model",
+        title="Review how fraud scoring uses your data",
+        description="New organizations start on the shared fraud-scoring model, which learns from every participating bank's decisions. Review and acknowledge how your data is used, or plan to switch to a bank-only model later.",
+        link_text="Go to Fraud scoring model",
+        link_url="/ui/settings/fraud-model",
+        auto_check=_bank_has_decided_on_fraud_model,
     ),
     WizardStep(
         key="security_groups",

@@ -41,6 +41,8 @@ _LOCKED_PATTERNS = [
     # Organization branding and session timeouts, shown to / applied to every visitor.
     r"/ui/settings",
     r"/ui/settings/session-timeout",
+    # Which fraud-scoring model the organization uses.
+    r"/ui/settings/fraud-model/.*",
     # Heavy background work.
     r"/ui/settings/data-export/start",
     rf"/ui/customers/{_UUID}/data-export/start",

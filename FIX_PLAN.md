@@ -304,8 +304,13 @@ Files: new `web/demo_guard.py` dependency, routers listed below
   `GET /api/v1/admin/ml/models` listed every bank's models, and the admin page's training-data
   counts were totalled across all banks; both are now limited to the viewer's bank. Four older admin
   API tests were rewritten for a bank-only bank; 10 new tests.
-- NEXT: 5.6 Settings card (choice, consent, lock date), onboarding consent, demo lock; then
-  5.7 docs + a full run.
+- 5.6 DONE (bank UI): new Settings → Fraud scoring model page (`web/routers/tenant_ml.py`),
+  with the current choice (who/when), a plain-language comparison, the disclosure (flagged while it's
+  still placeholder text), acknowledge / switch-to-bank-only (confirm checkbox, or the lock date) /
+  switch-back (consent checkbox), all audit-logged. A link card on Settings. A new bank setup
+  checklist step, "Review how fraud scoring uses your data", auto-completes on acknowledgement or a
+  switch. Locked in the demo. 7 new web tests.
+- NEXT: 5.7 docs (README, admin ML docs, API.md, SECURITY_REVIEW) + full run + live check.
 
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps

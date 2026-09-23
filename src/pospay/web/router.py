@@ -30,6 +30,7 @@ from pospay.web.routers.security_settings import router as security_settings_rou
 from pospay.web.routers.session import router as session_router
 from pospay.web.routers.sso_settings import router as sso_settings_router
 from pospay.web.routers.stop_payments import router as stop_payments_router
+from pospay.web.routers.tenant_ml import router as tenant_ml_router
 from pospay.web.routers.tenant_settings import router as tenant_settings_router
 from pospay.web.routers.tenant_switch import router as tenant_switch_router
 from pospay.web.routers.theme import router as theme_router
@@ -44,6 +45,7 @@ web_router.include_router(session_router)
 web_router.include_router(dashboard_router)
 web_router.include_router(security_settings_router)
 web_router.include_router(tenant_switch_router)
+web_router.include_router(tenant_ml_router)
 web_router.include_router(tenant_settings_router)
 web_router.include_router(accounts_router)
 web_router.include_router(customers_router)
