@@ -433,6 +433,17 @@ data migration is needed.
 
 ## Phase 6 — Exception review UX (1–2 PRs, about 3 days) — U2, U3, U4
 
+**Status: IN PROGRESS (started 2026-09-23, branch `phase-6-exception-review`).** Progress log
+(newest last; each entry committed):
+- **Found at the start (High, UX):** `ml_score` is the model's probability the item should
+  be **paid** (`ml/model.py`, and auto-disposition pays at ≥ 0.5), but the queue's help text
+  calls it the "likelihood of return", and the detail page shows a bare "0.953". A reviewer
+  could read that the opposite way round. Fix: show it as fraud risk (High/Medium/Low) with the
+  estimated chance it should be returned (1 − score), everywhere it appears.
+- Plan: 6.1 evidence service + labels/filters → 6.2 detail page (evidence, image, deadline,
+  safe forms) → 6.3 queue (defaults, columns, labels) → 6.4 approvals follow-ups (FK +
+  badge) → tests/docs.
+
 Files: `templates/exceptions/detail.html`, `templates/exceptions/list.html`,
 `web/routers/exceptions.py`, `web/templates.py` (label filter)
 - [ ] **U2 evidence panel:** a check exception shows an "Issued vs Presented" table (check #,
