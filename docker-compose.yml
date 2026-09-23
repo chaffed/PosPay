@@ -12,7 +12,9 @@ services:
       POSTGRES_PASSWORD: pospay
       POSTGRES_DB: pospay
     ports:
-      - "5432:5432"
+      # Loopback only: the dev password below is public, so never expose this database
+      # to the rest of the network. The app container reaches it over the compose network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pospay_postgres_data:/var/lib/postgresql/data
     healthcheck:

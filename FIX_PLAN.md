@@ -175,6 +175,7 @@ Files: `web/security.py`, `web/deps.py`, new `web/routers/session.py`, `auth/sec
 **Status: IN PROGRESS (started 2026-09-23, branch `phase-4-hardening`).** Progress log. The
 newest entry is last. Each entry is committed, so resume from the last one:
 - 4d started first (smallest). Then 4a → 4b → 4c.
+- 4d DONE: compose Postgres bound to loopback.
 
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
@@ -215,7 +216,7 @@ Files: new `web/demo_guard.py` dependency, routers listed below
       demo tenant.
 
 ### 4d. S11
-- [ ] `docker-compose.yml`: `"127.0.0.1:5432:5432"`.
+- [x] `docker-compose.yml`: `"127.0.0.1:5432:5432"`.
 
 ## Phase 5 — ML model choice per bank (2 PRs, about 4–5 days) — S6
 
