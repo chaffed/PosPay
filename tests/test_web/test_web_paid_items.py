@@ -104,8 +104,9 @@ def test_bulk_upload_csv_creates_paid_items_and_shows_results(client, tenant_fac
     assert "No account found" in resp.text
 
     items_page = client.get("/ui/paid-items")
-    assert "6001" in items_page.text
-    assert "6002" not in items_page.text
+    # Link text, not a bare substring: random UUIDs on the page can contain the digits.
+    assert ">6001</a>" in items_page.text
+    assert ">6002</a>" not in items_page.text
 
 
 def test_bulk_upload_with_checkbox_creates_missing_account(client, tenant_factory):

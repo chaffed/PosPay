@@ -44,8 +44,9 @@ def test_bulk_upload_csv_creates_items_and_shows_results(client, tenant_factory)
     assert "No account found" in resp.text  # error message for row 3
 
     items_page = client.get("/ui/issued-items")
-    assert "9001" in items_page.text
-    assert "9002" not in items_page.text
+    # Link text, not a bare substring: random UUIDs on the page can contain the digits.
+    assert ">9001</a>" in items_page.text
+    assert ">9002</a>" not in items_page.text
 
 
 def test_bulk_upload_xlsx_creates_items(client, tenant_factory):

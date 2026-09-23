@@ -147,9 +147,11 @@ def test_bulk_upload_zip_creates_paid_items_and_splits_multipage_tiff(client, db
     assert "was not found in the zip" in resp.text
 
     paid_items_page = client.get("/ui/paid-items")
-    assert "7001" in paid_items_page.text
-    assert "7002" in paid_items_page.text
-    assert "7003" not in paid_items_page.text
+    # Match the check-number link text, not a bare substring: the page's UUIDs, nonces and
+    # tokens are random and contain "7003" now and then.
+    assert ">7001</a>" in paid_items_page.text
+    assert ">7002</a>" in paid_items_page.text
+    assert ">7003</a>" not in paid_items_page.text
 
     check_images_page = client.get("/ui/check-images")
     assert check_images_page.status_code == 200
