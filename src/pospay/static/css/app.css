@@ -456,3 +456,6 @@ pre, code { overflow-wrap: anywhere; }
   .actions, .toolbar { flex-wrap: wrap; }
   .actions > *, .toolbar > .actions { max-width: 100%; }
 }
+.stat-card .stat-action { margin-top: 0.4rem; font-size: 0.8rem; color: var(--accent); font-weight: 600; }
+.stat-card .stat-value-text { font-size: 1.3rem; line-height: 2.2rem; }
+.stat-card-alert { border-color: var(--badge-warn-fg); background: var(--badge-warn-bg); }

@@ -1,22 +1,53 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.domain.exception_item import ExceptionStatus
+from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.issued_item import IssuedItemStatus
 from pospay.domain.stop_payment import StopPaymentStatus
 from pospay.repositories.exception_repo import ExceptionRepository
 from pospay.repositories.issued_item_repo import IssuedItemRepository
 from pospay.repositories.stop_payment_repo import StopPaymentRepository
-from pospay.services import security_group_service, wizard_service
+from pospay.services import exception_service, security_group_service, wizard_service
 from pospay.web.deps import get_web_context, render_template
 
 router = APIRouter(prefix="/ui", tags=["web-dashboard"])
+
+
+def _age(since: datetime) -> str:
+    if since.tzinfo is None:  # SQLite drops tzinfo; stored values are UTC
+        since = since.replace(tzinfo=timezone.utc)
+    hours = int((datetime.now(timezone.utc) - since).total_seconds() // 3600)
+    if hours < 1:
+        return "under an hour"
+    if hours < 48:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return f"{hours // 24} days"
+
+
+def _attention_summary(db: Session, ctx: TenantContext) -> dict:
+    """What the exception work queue looks like right now, in the viewer's scope: how many
+    items need a person, how many are due within a day (or overdue), and how long the
+    oldest has been waiting."""
+    waiting = ExceptionRepository(db, ctx.tenant_id, ctx.customer_id).query().where(
+        ExceptionItem.status.in_(exception_service.NEEDS_ATTENTION)
+    ).subquery()
+    count, oldest = db.execute(select(func.count(), func.min(waiting.c.created_at)).select_from(waiting)).one()
+    due_soon = db.execute(
+        select(func.count()).select_from(waiting).where(
+            waiting.c.decision_deadline.is_not(None),
+            waiting.c.decision_deadline <= datetime.now(timezone.utc) + timedelta(hours=24),
+        )
+    ).scalar_one()
+    return {"count": count, "due_soon": due_soon, "oldest_age": _age(oldest) if oldest else None}
 
 
 @router.get("/")
@@ -36,9 +67,9 @@ def dashboard(request: Request, db: Session = Depends(get_db), ctx: TenantContex
     # Each count is gated on the same read permission its own list page requires, so a
     # role that can't see a resource at all doesn't get a stat card teasing its count
     # either — mirrors the "Admin" quick-link's existing can(ctx, ...) gating below.
-    open_exceptions_count = None
+    attention = None
     if "exception:read" in ctx.permissions:
-        open_exceptions_count = ExceptionRepository(db, ctx.tenant_id, ctx.customer_id).count(status=ExceptionStatus.OPEN)
+        attention = _attention_summary(db, ctx)
     outstanding_issued_items_count = None
     if "issued_item:read" in ctx.permissions:
         outstanding_issued_items_count = IssuedItemRepository(db, ctx.tenant_id, ctx.customer_id).count(
@@ -53,7 +84,8 @@ def dashboard(request: Request, db: Session = Depends(get_db), ctx: TenantContex
     return render_template(
         request, "dashboard.html", ctx=ctx, show_getting_started=show_getting_started,
         security_group_name=group.name if group else None,
-        open_exceptions_count=open_exceptions_count,
+        attention=attention,
+        awaiting_my_approval=ctx.pending_approval_count if "exception:decide" in ctx.permissions else None,
         outstanding_issued_items_count=outstanding_issued_items_count,
         active_stop_payments_count=active_stop_payments_count,
     )

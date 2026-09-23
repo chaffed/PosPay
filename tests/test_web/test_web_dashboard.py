@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -48,8 +49,28 @@ def test_dashboard_shows_stat_cards_with_correct_counts(client, db_session, tena
     resp = client.get("/ui/")
 
     assert resp.status_code == 200
-    assert "Open exceptions" in resp.text
-    assert "Outstanding issued items" in resp.text
-    assert "Active stop payments" in resp.text
-    assert '/ui/exceptions?status=open' in resp.text
+
+    def card(label):
+        match = re.search(r'<div class="stat-value[^"]*">([^<]*)</div>\s*<div class="stat-label">' + label, resp.text)
+        assert match, label
+        return match.group(1)
+
+    assert card("Exceptions need attention") == "1"
+    assert card("Awaiting my approval") == "0"
+    assert card("Due within 24 hours or overdue") == "0"
+    assert card("Oldest item waiting") == "under an hour"
+    assert card("Outstanding issued checks") == "1"  # presented for the wrong amount, so still outstanding
+    assert card("Active stop payments") == "1"
+    assert 'href="/ui/exceptions/approvals"' in resp.text
     assert '/ui/issued-items?status=outstanding' in resp.text
+    assert "quick-links" not in resp.text  # the old link list duplicated the sidebar
+
+
+def test_dashboard_hides_the_approval_card_from_people_who_cannot_approve(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="dashboard-viewer")
+    _login(client, tenant.slug, users["viewer"].email)
+
+    page = client.get("/ui/").text
+
+    assert "Exceptions need attention" in page
+    assert "Awaiting my approval" not in page
