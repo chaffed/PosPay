@@ -58,16 +58,19 @@
     <h2>Timeouts</h2>
     <form method="post" action="/ui/settings/session-timeout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label>Access token timeout (minutes)
+      <p class="hint">Blank uses the platform default.</p>
+      <label>Idle sign-out after (minutes)
         <input type="number" name="access_token_expire_minutes" min="1" step="1"
                value="{{ access_token_expire_minutes if access_token_expire_minutes is not none else '' }}"
                placeholder="Default: {{ default_access_token_expire_minutes }}">
       </label>
-      <label>Refresh token timeout (minutes)
+      <p class="hint">Users are warned 5 minutes before being signed out for inactivity.</p>
+      <label>Maximum session length (minutes)
         <input type="number" name="refresh_token_expire_minutes" min="1" step="1"
                value="{{ refresh_token_expire_minutes if refresh_token_expire_minutes is not none else '' }}"
                placeholder="Default: {{ default_refresh_token_expire_minutes }}">
       </label>
+      <p class="hint">After this long, users must sign in again even if they've been active.</p>
       <button type="submit">{{ icon("save") }}Save</button>
     </form>
     <form method="post" action="/ui/settings/data-export-timeout">

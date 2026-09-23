@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Chaffed
 
 import uuid
+from datetime import datetime, timezone
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -17,6 +18,7 @@ from pospay.domain.customer import Customer
 from pospay.domain.security_group import SecurityGroup
 from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
+from pospay.services import session_service
 from pospay.services.tenant_service import get_tenant_branding_by_id
 
 _bearer_scheme = HTTPBearer(auto_error=True)
@@ -64,6 +66,10 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise AccessRevoked("User account is no longer active")
+    # Logged out (this session's sid revoked) or signed out everywhere (token_version
+    # bumped) since this token was minted — see services/session_service.py.
+    if not session_service.claims_are_current(db, payload, user):
+        raise AccessRevoked("Session was signed out")
 
     # customer_id is part of the lookup (not just user_id/tenant_id) because one user can
     # now hold several memberships in the same tenant — one per customer, or a tenant-wide
@@ -133,6 +139,9 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
         banner_message=branding.banner_message,
         customer_banner_message=customer_banner_message,
         must_change_password=user.must_change_password,
+        session_id=uuid.UUID(payload["sid"]) if payload.get("sid") else None,
+        access_expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        session_expires_at=datetime.fromtimestamp(payload["sxp"], tz=timezone.utc) if payload.get("sxp") else None,
     )
 
     # Defense-in-depth for Postgres: mirrors the tenant_id into a session-local setting

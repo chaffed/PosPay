@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Chaffed
 
 import uuid
+from datetime import datetime
 from dataclasses import dataclass
 
 
@@ -78,3 +79,12 @@ class TenantContext:
     # change-password form while it's set; auth/deps.py::get_current_context refuses API
     # use outright.
     must_change_password: bool = False
+
+    # The login session this request belongs to (auth/security.py::create_session_tokens):
+    # `session_id` is what logout revokes; the two expiry times drive base.html's
+    # keep-alive / idle-warning script and are what an organization switch or password
+    # change carries forward when it re-mints tokens. None for tokens minted before
+    # session claims existed.
+    session_id: uuid.UUID | None = None
+    access_expires_at: datetime | None = None
+    session_expires_at: datetime | None = None

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pospay.config import get_settings
 from pospay.domain.tenant import Tenant
 from pospay.services import message_content
 from pospay.web.branding_storage import save_tenant_asset
@@ -209,9 +210,23 @@ def set_session_timeouts(
     app-wide default) — see auth/security.py::create_token, which every login/refresh/
     switch-tenant/WebAuthn-verify call site threads this through to. Raises
     InvalidTenantSettingsInput if either value is given but isn't a positive integer."""
-    for label, value in (("access", access_token_expire_minutes), ("refresh", refresh_token_expire_minutes)):
+    for label, value in (
+        ("Idle sign-out", access_token_expire_minutes),
+        ("Maximum session length", refresh_token_expire_minutes),
+    ):
         if value is not None and value <= 0:
-            raise InvalidTenantSettingsInput(f"{label} token timeout must be a positive number of minutes")
+            raise InvalidTenantSettingsInput(f"{label} must be a positive number of minutes")
+    # The access token's lifetime is the idle timeout and the refresh token's is the
+    # maximum session length (auth/security.py::create_session_tokens caps one at the
+    # other), so an idle timeout longer than the maximum would silently never apply.
+    settings = get_settings()
+    effective_idle = access_token_expire_minutes or settings.jwt_access_token_expire_minutes
+    effective_max = refresh_token_expire_minutes or settings.jwt_refresh_token_expire_minutes
+    if effective_idle > effective_max:
+        raise InvalidTenantSettingsInput(
+            f"Idle sign-out ({effective_idle} minutes) can't be longer than the maximum session length "
+            f"({effective_max} minutes)."
+        )
 
     tenant = session.get(Tenant, tenant_id)
     if tenant is None:

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+from urllib.parse import urlsplit
+
 import jwt
 from fastapi import Depends, Request
 from fastapi.responses import HTMLResponse
@@ -29,8 +31,12 @@ class WebAuthRequired(Exception):
     main.py that returns a RedirectResponse. `next_path` round-trips through the login
     form so a successful login can send the user back where they were headed."""
 
-    def __init__(self, next_path: str | None = None):
+    def __init__(self, next_path: str | None = None, *, try_resume: bool = False):
         self.next_path = next_path
+        # True when the access token merely expired (its signature was fine): main.py's
+        # handler then goes through /ui/auth/resume, which silently continues the session
+        # if its refresh token is still good, instead of straight to the login form.
+        self.try_resume = try_resume
 
 
 class WebForbidden(Exception):
@@ -50,16 +56,31 @@ class WebNotFound(Exception):
     way, so this never leaks which). Rendered as an HTML 404 page in main.py."""
 
 
+def _return_path(request: Request) -> str | None:
+    """Where to send the user once they're signed in again. For a GET, the page itself
+    (query string included, so filters survive). For a form POST, the page the form was
+    on, taken from a same-origin Referer: re-requesting the POST's own URL as a GET after
+    sign-in would just fail, and what they'd typed is gone either way."""
+    if request.method == "GET":
+        return request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    referer = urlsplit(request.headers.get("referer", ""))
+    if referer.netloc and referer.netloc == request.url.netloc:
+        return referer.path + (f"?{referer.query}" if referer.query else "")
+    return None
+
+
 def get_web_context(request: Request, db: Session = Depends(get_db)) -> TenantContext:
     token = request.cookies.get(ACCESS_COOKIE_NAME)
     if not token:
-        raise WebAuthRequired(next_path=request.url.path)
+        raise WebAuthRequired(next_path=_return_path(request))
     try:
         ctx = decode_and_build_context(token, db, expected_type="access")
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, WrongTokenType, AccessRevoked):
-        # Phase 1: any failure (including plain expiry, or an access/membership that was
-        # deactivated since the token was issued) sends the user back to login.
-        raise WebAuthRequired(next_path=request.url.path) from None
+    except jwt.ExpiredSignatureError:
+        raise WebAuthRequired(next_path=_return_path(request), try_resume=True) from None
+    except (jwt.InvalidTokenError, WrongTokenType, AccessRevoked):
+        # Garbled, logged out, signed out everywhere, or an access/membership deactivated
+        # since the token was issued: back to login.
+        raise WebAuthRequired(next_path=_return_path(request)) from None
     if ctx.must_change_password and request.url.path != PASSWORD_CHANGE_PATH:
         raise WebPasswordChangeRequired()
     return ctx

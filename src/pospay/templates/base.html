@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version('css/app.css') }}">
   {% if ctx and ctx.has_favicon %}<link rel="icon" href="/ui/branding/{{ ctx.tenant_slug }}/favicon">{% endif %}
   {% if ctx and ctx.accent_color %}<style>:root{ --accent: {{ ctx.accent_color }}; }</style>{% endif %}
+  {% if ctx and ctx.access_expires_at %}
+  {# Read by static/js/session.js: when this session's idle timeout and maximum length
+     run out (Unix seconds), so it can keep an active user signed in and warn an idle one. #}
+  <meta name="pospay-access-expires" content="{{ ctx.access_expires_at.timestamp() | int }}">
+  {% if ctx.session_expires_at %}<meta name="pospay-session-expires" content="{{ ctx.session_expires_at.timestamp() | int }}">{% endif %}
+  {% endif %}
   {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -126,6 +132,17 @@
     </div>
   </div>
 
+  {% if ctx and ctx.access_expires_at %}
+  <dialog id="session-dialog" class="session-dialog" aria-labelledby="session-dialog-title" aria-describedby="session-dialog-message">
+    <h2 id="session-dialog-title" data-session-title>Are you still there?</h2>
+    <p id="session-dialog-message" data-session-message>You'll be signed out in <strong data-session-countdown>5:00</strong> because you haven't been active.</p>
+    <div class="actions">
+      <button type="button" data-session-stay>Stay signed in</button>
+      <button type="button" class="secondary" data-session-signout>Sign out now</button>
+    </div>
+  </dialog>
+  <script src="/static/js/session.js?v={{ asset_version('js/session.js') }}"></script>
+  {% endif %}
   <script src="/static/js/app.js?v={{ asset_version('js/app.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>

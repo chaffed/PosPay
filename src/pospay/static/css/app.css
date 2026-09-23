@@ -336,6 +336,18 @@ underneath page-controls, clipped by it. */
 }
 .help-dialog .help-close:hover { color: var(--text); }
 
+/* static/js/session.js's idle / maximum-length warning — same look as .help-dialog. */
+.session-dialog {
+  max-width: 440px; width: calc(100% - 2rem);
+  border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  color: var(--text); background: var(--bg);
+}
+.session-dialog::backdrop { background: rgba(17, 24, 39, 0.5); }
+.session-dialog h2 { margin-top: 0; font-size: 1.15rem; }
+.session-dialog .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+.session-dialog [data-session-countdown] { font-variant-numeric: tabular-nums; }
+
 @media (max-width: 720px) {
   .page-controls { top: 1rem; right: 1rem; }
 }

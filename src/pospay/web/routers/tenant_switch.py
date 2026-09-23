@@ -8,13 +8,14 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from pospay.auth.security import create_token
+from pospay.auth.security import create_session_tokens, create_token
 from pospay.auth.webauthn_service import user_has_webauthn_credentials
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
-from pospay.services import user_service
+from pospay.domain.user import User
+from pospay.services import session_service, user_service
 from pospay.web.deps import get_web_context, render_template
-from pospay.web.security import set_access_cookie, set_mfa_cookie, set_refresh_cookie, verify_csrf
+from pospay.web.security import set_mfa_cookie, set_session_cookies, verify_csrf
 
 router = APIRouter(prefix="/ui/switch-tenant", tags=["web-tenant-switch"])
 
@@ -60,6 +61,8 @@ def switch_tenant(
     if target is None:
         return RedirectResponse("/ui/switch-tenant?error=Not+a+member+of+that+organization.", status_code=303)
 
+    user = db.get(User, ctx.user_id)
+
     if target.membership.require_webauthn:
         mfa_token = create_token(
             user_id=ctx.user_id,
@@ -67,6 +70,7 @@ def switch_tenant(
             security_group_id=target.membership.security_group_id,
             customer_id=target.membership.customer_id,
             token_type="mfa_pending",
+            token_version=user.token_version,
         )
         has_key = user_has_webauthn_credentials(db, target.tenant.id, ctx.user_id)
         next_step = "webauthn" if has_key else "webauthn/setup"
@@ -74,25 +78,21 @@ def switch_tenant(
         set_mfa_cookie(response, mfa_token)
         return response
 
-    access_token = create_token(
+    # The switch replaces this browser's cookies, so the session they belonged to is
+    # ended rather than left valid for anyone holding a copy of them. (Not done on the
+    # WebAuthn branch above: abandoning that challenge shouldn't sign the user out.)
+    if ctx.session_id is not None:
+        session_service.revoke_session(db, session_id=ctx.session_id, user_id=ctx.user_id)
+        db.commit()
+    tokens = create_session_tokens(
         user_id=ctx.user_id,
         tenant_id=target.tenant.id,
         security_group_id=target.membership.security_group_id,
         customer_id=target.membership.customer_id,
-        token_type="access",
-        access_token_expire_minutes=target.tenant.access_token_expire_minutes,
-        refresh_token_expire_minutes=target.tenant.refresh_token_expire_minutes,
-    )
-    refresh_token = create_token(
-        user_id=ctx.user_id,
-        tenant_id=target.tenant.id,
-        security_group_id=target.membership.security_group_id,
-        customer_id=target.membership.customer_id,
-        token_type="refresh",
+        token_version=user.token_version,
         access_token_expire_minutes=target.tenant.access_token_expire_minutes,
         refresh_token_expire_minutes=target.tenant.refresh_token_expire_minutes,
     )
     response = RedirectResponse("/ui/", status_code=303)
-    set_access_cookie(response, access_token)
-    set_refresh_cookie(response, refresh_token)
+    set_session_cookies(response, tokens)
     return response

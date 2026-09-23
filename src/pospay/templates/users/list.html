@@ -51,6 +51,11 @@
           </form>
           {% endif %}
           {% if row.membership.is_active and row.user.id != ctx.user_id %}
+          <form method="post" action="/ui/users/{{ row.membership.id }}/sign-out" class="inline-form"
+                data-confirm="Sign {{ row.user.email }} out everywhere? Every session they have open, on any device and in any organization, will end. They can sign in again.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">Sign out everywhere</button>
+          </form>
           <form method="post" action="/ui/users/{{ row.membership.id }}/reset-password" class="inline-form"
                 data-confirm="Reset the password for {{ row.user.email }}? Their current password will stop working and you'll be shown a one-time temporary password to give them.">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

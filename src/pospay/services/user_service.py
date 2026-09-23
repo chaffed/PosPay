@@ -20,7 +20,7 @@ from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
-from pospay.services import customer_service, notification_service, security_group_service
+from pospay.services import customer_service, notification_service, security_group_service, session_service
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +315,26 @@ def unlock_user(session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID
     return user
 
 
+def admin_sign_out_everywhere(
+    session: Session, tenant_id: uuid.UUID, membership_id: uuid.UUID, *, actor_user_id: uuid.UUID
+) -> User | None:
+    """Ends every session the user has (services/session_service.py::revoke_all_sessions).
+    Resolved via a membership in the caller's own tenant, like unlock_user. Unlike a
+    password reset, this is allowed for users who also belong to other organizations: it
+    grants the admin nothing, and the user can simply sign in again. It does sign them out
+    of those organizations too, since sessions belong to the person, not the organization.
+    Returns None if the membership isn't this tenant's, or is the admin's own (use
+    Security → Sign out other devices for that)."""
+    membership = TenantMembershipRepository(session, tenant_id).get(membership_id)
+    if membership is None or membership.user_id == actor_user_id:
+        return None
+    user = session.get(User, membership.user_id)
+    if user is None:
+        return None
+    session_service.revoke_all_sessions(session, user)
+    return user
+
+
 class PasswordChangeError(ValueError):
     """A password change/reset was refused. The message is safe to show the user as-is
     (routers re-render the form with error=str(exc), this app's usual convention)."""
@@ -375,7 +395,10 @@ def change_own_password(
     user.must_change_password = False
     user.failed_login_attempts = 0
     user.locked_until = None
-    session.flush()
+    # Every other session (other devices, and anyone holding a stolen cookie) ends now.
+    # The caller re-issues tokens for the session making this change, so the user
+    # isn't signed out of the page they're on.
+    session_service.revoke_all_sessions(session, user)
     notification_service.notify_password_changed(session, user, reset_by_admin=False)
     return user
 
@@ -428,7 +451,7 @@ def admin_reset_password(
     user.must_change_password = True
     user.failed_login_attempts = 0
     user.locked_until = None
-    session.flush()
+    session_service.revoke_all_sessions(session, user)
     notification_service.notify_password_changed(session, user, reset_by_admin=True)
     return user, temporary_password
 

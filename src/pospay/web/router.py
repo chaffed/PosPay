@@ -27,6 +27,7 @@ from pospay.web.routers.license import router as license_router
 from pospay.web.routers.paid_items import router as paid_items_router
 from pospay.web.routers.security_groups import router as security_groups_router
 from pospay.web.routers.security_settings import router as security_settings_router
+from pospay.web.routers.session import router as session_router
 from pospay.web.routers.sso_settings import router as sso_settings_router
 from pospay.web.routers.stop_payments import router as stop_payments_router
 from pospay.web.routers.tenant_settings import router as tenant_settings_router
@@ -39,6 +40,7 @@ from pospay.web.routers.wsud import router as wsud_router
 web_router = APIRouter()
 web_router.include_router(branding_router)
 web_router.include_router(auth_router)
+web_router.include_router(session_router)
 web_router.include_router(dashboard_router)
 web_router.include_router(security_settings_router)
 web_router.include_router(tenant_switch_router)

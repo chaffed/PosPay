@@ -2,9 +2,11 @@
 # Copyright (C) 2026 Chaffed
 
 import secrets
+from datetime import datetime, timezone
 
 from fastapi import Form, HTTPException, Request, Response, status
 
+from pospay.auth.security import SessionTokens
 from pospay.config import get_settings
 
 ACCESS_COOKIE_NAME = "access_token"
@@ -39,29 +41,31 @@ def _secure_cookies() -> bool:
     return is_https_deployment()
 
 
-def set_access_cookie(response: Response, token: str) -> None:
-    settings = get_settings()
+def set_session_cookies(response: Response, tokens: SessionTokens) -> None:
+    """Both cookies live until the SESSION's end (its maximum length), not the access
+    token's: an access token past its own (idle) expiry is still sent, so
+    web/deps.py::get_web_context can tell "expired, try a refresh" apart from "never
+    signed in" and route through /ui/auth/resume instead of straight to login. The
+    signed `exp` inside each token is what actually governs validity, and it honors the
+    tenant's own timeouts (auth/security.py::create_session_tokens)."""
+    max_age = max(0, int((tokens.session_expires_at - datetime.now(timezone.utc)).total_seconds()))
     response.set_cookie(
         ACCESS_COOKIE_NAME,
-        token,
+        tokens.access_token,
         httponly=True,
         secure=_secure_cookies(),
         samesite="lax",
         path="/",
-        max_age=settings.jwt_access_token_expire_minutes * 60,
+        max_age=max_age,
     )
-
-
-def set_refresh_cookie(response: Response, token: str) -> None:
-    settings = get_settings()
     response.set_cookie(
         REFRESH_COOKIE_NAME,
-        token,
+        tokens.refresh_token,
         httponly=True,
         secure=_secure_cookies(),
         samesite="strict",
         path=REFRESH_COOKIE_PATH,
-        max_age=settings.jwt_refresh_token_expire_minutes * 60,
+        max_age=max_age,
     )
 
 
@@ -137,6 +141,9 @@ def read_or_generate_csrf_token(request: Request) -> str:
 def set_csrf_cookie_if_new(request: Request, response: Response, token: str) -> None:
     if request.cookies.get(CSRF_COOKIE_NAME) == token:
         return  # already set to this value, nothing to do
+    # A browser-session cookie (no max_age). It used to expire with the access token,
+    # which meant a form left open past that (a long exception review) failed CSRF on
+    # submit even though the session itself was still fine.
     response.set_cookie(
         CSRF_COOKIE_NAME,
         token,
@@ -144,7 +151,6 @@ def set_csrf_cookie_if_new(request: Request, response: Response, token: str) -> 
         secure=_secure_cookies(),
         samesite="lax",
         path="/",
-        max_age=get_settings().jwt_access_token_expire_minutes * 60,
     )
 
 

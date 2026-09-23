@@ -46,6 +46,17 @@
   <p>No security keys registered yet.</p>
   {% endif %}
 </div>
+
+<div class="card">
+  <h2>Signed in somewhere else?</h2>
+  <p>If you left PosPay signed in on another computer, or think someone else may be using
+    your account, sign out everywhere except here. Changing your password does this too.</p>
+  <form method="post" action="/ui/security/sign-out-others"
+        data-confirm="Sign out of PosPay on every other device and browser? You'll stay signed in here.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary">Sign out other devices</button>
+  </form>
+</div>
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/webauthn.js"></script>

@@ -69,6 +69,14 @@ def apply_security_headers(request: Request, response: Response) -> None:
         "camera=(), microphone=(), geolocation=(), "
         "publickey-credentials-get=(self), publickey-credentials-create=(self)"
     )
+    # Signed-in pages and API responses carry account numbers, amounts, and names:
+    # never let the browser (or a shared proxy) keep a copy — otherwise Back after logout,
+    # or the next person at a shared workstation, can still see them. Responses that chose
+    # their own caching (e.g. the public tenant logo at /ui/branding) are left alone, as is
+    # /static.
+    path = request.url.path
+    if (path.startswith("/ui") or path.startswith("/api")) and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = "no-store"
     if is_https_deployment():
         # Only meaningful (and only sent) over an actually-HTTPS deployment — see
         # is_https_deployment()'s own docstring for why this isn't unconditional.

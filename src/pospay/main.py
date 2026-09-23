@@ -141,6 +141,8 @@ def create_app() -> FastAPI:
         from pospay.web.security import safe_next_path
 
         next_path = safe_next_path(exc.next_path)
+        if exc.try_resume:
+            return RedirectResponse(f"/ui/auth/resume?next={quote(next_path)}", status_code=status.HTTP_303_SEE_OTHER)
         url = "/ui/login" if next_path == "/ui/" else f"/ui/login?next={quote(next_path)}"
         return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 

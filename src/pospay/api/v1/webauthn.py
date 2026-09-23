@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from pospay.auth.deps import get_current_context, get_mfa_pending_context
-from pospay.auth.security import create_token
+from pospay.auth.security import create_session_tokens
 from pospay.auth.webauthn_service import (
     WebauthnError,
     begin_authentication,
@@ -109,24 +109,19 @@ def login_verify(
     except WebauthnError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
 
-    tokens = TokenResponse(
-        access_token=create_token(
-            user_id=user.id,
-            tenant_id=ctx.tenant_id,
-            security_group_id=ctx.security_group_id,
-            token_type="access",
-            access_token_expire_minutes=ctx.access_token_expire_minutes,
-            refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
-        ),
-        refresh_token=create_token(
-            user_id=user.id,
-            tenant_id=ctx.tenant_id,
-            security_group_id=ctx.security_group_id,
-            token_type="refresh",
-            access_token_expire_minutes=ctx.access_token_expire_minutes,
-            refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
-        ),
+    # customer_id is carried from the mfa_pending token: it was previously omitted here,
+    # so a customer-scoped user completing WebAuthn over the API got a token for the
+    # wrong (tenant-wide) membership, or none at all.
+    session_tokens = create_session_tokens(
+        user_id=user.id,
+        tenant_id=ctx.tenant_id,
+        security_group_id=ctx.security_group_id,
+        customer_id=ctx.customer_id,
+        token_version=user.token_version,
+        access_token_expire_minutes=ctx.access_token_expire_minutes,
+        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
     )
+    tokens = TokenResponse(access_token=session_tokens.access_token, refresh_token=session_tokens.refresh_token)
     user_service.record_login(db, user.id)
     db.commit()
     return tokens

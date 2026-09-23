@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 
 from pospay.auth.login_service import PasswordLoginOutcome, authenticate_password
 from pospay.auth.oidc_service import OidcError, build_authorization_url, exchange_code_for_claims
-from pospay.auth.security import create_sso_state_token, create_token, decode_sso_state_token
+from pospay.auth.security import (
+    create_session_tokens,
+    create_sso_state_token,
+    create_token,
+    decode_sso_state_token,
+    decode_token,
+)
 from pospay.auth.webauthn_service import (
     WebauthnError,
     begin_authentication,
@@ -27,17 +33,24 @@ from pospay.db.tenancy import TenantContext
 from pospay.domain.tenant import Tenant
 from pospay.domain.user import User
 from pospay.schemas.webauthn import AuthenticationVerifyRequest, RegistrationVerifyRequest
-from pospay.services import audit_log_service, customer_service, demo_tenant_service, sso_service, user_service
+from pospay.services import (
+    audit_log_service,
+    customer_service,
+    demo_tenant_service,
+    session_service,
+    sso_service,
+    user_service,
+)
 from pospay.services.tenant_service import get_tenant_branding_by_slug
 from pospay.web.deps import WebNotFound, get_mfa_pending_web_context, render_template
 from pospay.web.security import (
+    ACCESS_COOKIE_NAME,
     clear_auth_cookies,
     clear_mfa_cookie,
     clear_sso_state_cookie,
     safe_next_path,
-    set_access_cookie,
     set_mfa_cookie,
-    set_refresh_cookie,
+    set_session_cookies,
     set_sso_state_cookie,
     verify_csrf,
     verify_csrf_header,
@@ -116,46 +129,64 @@ def login_submit(
             security_group_id=membership.security_group_id,
             customer_id=membership.customer_id,
             token_type="mfa_pending",
+            token_version=user.token_version,
         )
         next_step = "webauthn/setup" if identity.needs_webauthn_enrollment else "webauthn"
         response = RedirectResponse(f"/ui/login/{next_step}?next={quote(next_path)}", status_code=303)
         set_mfa_cookie(response, mfa_token)
         return response
 
-    access_token = create_token(
+    tokens = create_session_tokens(
         user_id=user.id,
         tenant_id=tenant.id,
         security_group_id=membership.security_group_id,
         customer_id=membership.customer_id,
-        token_type="access",
-        access_token_expire_minutes=tenant.access_token_expire_minutes,
-        refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
-    )
-    refresh_token = create_token(
-        user_id=user.id,
-        tenant_id=tenant.id,
-        security_group_id=membership.security_group_id,
-        customer_id=membership.customer_id,
-        token_type="refresh",
+        token_version=user.token_version,
         access_token_expire_minutes=tenant.access_token_expire_minutes,
         refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
     )
     user_service.record_login(db, user.id)
     db.commit()
     response = RedirectResponse(next_path, status_code=303)
-    set_access_cookie(response, access_token)
-    set_refresh_cookie(response, refresh_token)
+    set_session_cookies(response, tokens)
     return response
 
 
 @router.post("/logout")
-def logout(_csrf: None = Depends(verify_csrf)) -> RedirectResponse:
+def logout(request: Request, db: Session = Depends(get_db), _csrf: None = Depends(verify_csrf)) -> RedirectResponse:
     # Deliberately does not require get_web_context — a user with an already-expired or
     # garbled token must still be able to clear cookies and get back to a working login
-    # page, not get stuck in a redirect loop.
+    # page, not get stuck in a redirect loop. When the cookie does hold a genuine token,
+    # its session is revoked server-side (services/session_service.py), so a copy of
+    # these cookies taken before logout stops working too — clearing cookies alone only
+    # affects this browser.
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+    if token:
+        try:
+            claims = decode_token(token, verify_exp=False)
+        except jwt.InvalidTokenError:
+            claims = {}
+        if claims.get("sid") and claims.get("sub"):
+            session_service.revoke_session(db, session_id=uuid.UUID(claims["sid"]), user_id=uuid.UUID(claims["sub"]))
+            db.commit()
     response = RedirectResponse("/ui/login", status_code=303)
     clear_auth_cookies(response)
     return response
+
+
+def _session_tokens_from_mfa(ctx: TenantContext, user: User):
+    """The tail shared by both WebAuthn completion routes: a new login session scoped
+    exactly as the mfa_pending token was (ctx.security_group_id is already the
+    membership's current group — auth/deps.py)."""
+    return create_session_tokens(
+        user_id=user.id,
+        tenant_id=ctx.tenant_id,
+        security_group_id=ctx.security_group_id,
+        customer_id=ctx.customer_id,
+        token_version=user.token_version,
+        access_token_expire_minutes=ctx.access_token_expire_minutes,
+        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
+    )
 
 
 # --- WebAuthn second factor (login-time) ---
@@ -204,26 +235,7 @@ def login_webauthn_verify(
 
     next_path = safe_next_path(next)
     response = JSONResponse({"redirect": next_path})
-    access_token = create_token(
-        user_id=user.id,
-        tenant_id=ctx.tenant_id,
-        security_group_id=ctx.security_group_id,
-        customer_id=ctx.customer_id,
-        token_type="access",
-        access_token_expire_minutes=ctx.access_token_expire_minutes,
-        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
-    )
-    refresh_token = create_token(
-        user_id=user.id,
-        tenant_id=ctx.tenant_id,
-        security_group_id=ctx.security_group_id,
-        customer_id=ctx.customer_id,
-        token_type="refresh",
-        access_token_expire_minutes=ctx.access_token_expire_minutes,
-        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
-    )
-    set_access_cookie(response, access_token)
-    set_refresh_cookie(response, refresh_token)
+    set_session_cookies(response, _session_tokens_from_mfa(ctx, user))
     clear_mfa_cookie(response)
     return response
 
@@ -275,26 +287,7 @@ def login_webauthn_setup_verify(
 
     next_path = safe_next_path(next)
     response = JSONResponse({"redirect": next_path})
-    access_token = create_token(
-        user_id=user.id,
-        tenant_id=ctx.tenant_id,
-        security_group_id=ctx.security_group_id,
-        customer_id=ctx.customer_id,
-        token_type="access",
-        access_token_expire_minutes=ctx.access_token_expire_minutes,
-        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
-    )
-    refresh_token = create_token(
-        user_id=user.id,
-        tenant_id=ctx.tenant_id,
-        security_group_id=ctx.security_group_id,
-        customer_id=ctx.customer_id,
-        token_type="refresh",
-        access_token_expire_minutes=ctx.access_token_expire_minutes,
-        refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
-    )
-    set_access_cookie(response, access_token)
-    set_refresh_cookie(response, refresh_token)
+    set_session_cookies(response, _session_tokens_from_mfa(ctx, user))
     clear_mfa_cookie(response)
     return response
 
@@ -424,27 +417,17 @@ def sso_callback(
 
     next_path = safe_next_path(state_claims.get("next_path"))
     login_tenant = db.get(Tenant, tenant_id)
-    access_token = create_token(
+    tokens = create_session_tokens(
         user_id=user.id,
         tenant_id=tenant_id,
         security_group_id=membership.security_group_id,
         customer_id=membership.customer_id,
-        token_type="access",
-        access_token_expire_minutes=login_tenant.access_token_expire_minutes,
-        refresh_token_expire_minutes=login_tenant.refresh_token_expire_minutes,
-    )
-    refresh_token = create_token(
-        user_id=user.id,
-        tenant_id=tenant_id,
-        security_group_id=membership.security_group_id,
-        customer_id=membership.customer_id,
-        token_type="refresh",
+        token_version=user.token_version,
         access_token_expire_minutes=login_tenant.access_token_expire_minutes,
         refresh_token_expire_minutes=login_tenant.refresh_token_expire_minutes,
     )
     response = RedirectResponse(next_path, status_code=303)
-    set_access_cookie(response, access_token)
-    set_refresh_cookie(response, refresh_token)
+    set_session_cookies(response, tokens)
     clear_sso_state_cookie(response)
     return response
 

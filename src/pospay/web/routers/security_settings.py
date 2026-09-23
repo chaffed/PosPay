@@ -21,9 +21,10 @@ from pospay.domain.notification import NotificationType
 from pospay.domain.user import User
 from pospay.schemas.webauthn import RegistrationVerifyRequest
 from pospay.auth.password_policy import describe
-from pospay.services import audit_log_service, notification_service, user_service
+from pospay.auth.security import create_session_tokens
+from pospay.services import audit_log_service, notification_service, session_service, user_service
 from pospay.web.deps import PASSWORD_CHANGE_PATH, get_web_context, render_template
-from pospay.web.security import verify_csrf, verify_csrf_header
+from pospay.web.security import set_session_cookies, verify_csrf, verify_csrf_header
 
 router = APIRouter(prefix="/ui/security", tags=["web-security-settings"])
 
@@ -106,7 +107,58 @@ def change_password(
     )
     db.commit()
     destination = "/ui/" if ctx.must_change_password else PASSWORD_CHANGE_PATH
-    return RedirectResponse(f"{destination}?flash=" + quote("Your password has been changed."), status_code=303)
+    response = RedirectResponse(f"{destination}?flash=" + quote("Your password has been changed."), status_code=303)
+    # change_own_password signed out every session (token_version bumped), this one
+    # included — re-issue tokens for it so the user stays on the page they're on.
+    _reissue_current_session(response, ctx, db.get(User, ctx.user_id))
+    return response
+
+
+@router.post("/sign-out-others")
+def sign_out_other_sessions(
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_web_context),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    """Ends every other session this person has (other devices, other browsers), keeping
+    this one — the same "sign out everywhere, then re-issue this session" sequence as a
+    password change."""
+    user = db.get(User, ctx.user_id)
+    session_service.revoke_all_sessions(db, user)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="user.sign_out_other_sessions",
+        summary="Signed out of all other sessions",
+        resource_type="user",
+        resource_id=ctx.user_id,
+    )
+    db.commit()
+    response = RedirectResponse("/ui/security?flash=" + quote("You've been signed out on all other devices."), status_code=303)
+    _reissue_current_session(response, ctx, user)
+    return response
+
+
+def _reissue_current_session(response: Response, ctx: TenantContext, user: User) -> None:
+    """After a sign-out-everywhere (token_version bump) the current session's tokens are
+    dead too; this re-issues them — same session id and maximum length — so the person
+    who asked stays signed in."""
+    set_session_cookies(
+        response,
+        create_session_tokens(
+            user_id=ctx.user_id,
+            tenant_id=ctx.tenant_id,
+            security_group_id=ctx.security_group_id,
+            customer_id=ctx.customer_id,
+            token_version=user.token_version,
+            access_token_expire_minutes=ctx.access_token_expire_minutes,
+            refresh_token_expire_minutes=ctx.refresh_token_expire_minutes,
+            session_id=ctx.session_id,
+            session_expires_at=ctx.session_expires_at,
+        ),
+    )
 
 
 @router.get("/notifications")

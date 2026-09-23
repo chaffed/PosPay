@@ -41,6 +41,12 @@ class User(Base):
     # the JSON API refuses the session outright.
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Stamped into every token as the `tv` claim (auth/security.py). Incrementing it
+    # (services/session_service.py::revoke_all_sessions — on a password change or reset,
+    # or an admin's "Sign out everywhere") invalidates every token this user holds on
+    # every device, since auth/deps.py rejects a token whose tv doesn't match.
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     # Set by the user themselves on /ui/security/notifications — nullable since SMS
     # notifications are opt-in and most users will never set one. No format validation
     # beyond what services/notification_service.py's SMS provider itself rejects; kept

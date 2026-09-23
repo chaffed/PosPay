@@ -292,6 +292,32 @@ def unlock_user(
     return RedirectResponse("/ui/users?flash=Account+unlocked.", status_code=303)
 
 
+@router.post("/{membership_id}/sign-out")
+def sign_out_everywhere(
+    membership_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(require_web_permission("user:manage")),
+    _csrf: None = Depends(verify_csrf),
+) -> RedirectResponse:
+    """For a lost/stolen device or a suspected compromised session — see
+    services/user_service.py::admin_sign_out_everywhere."""
+    user = user_service.admin_sign_out_everywhere(db, ctx.tenant_id, membership_id, actor_user_id=ctx.user_id)
+    if user is None:
+        return RedirectResponse("/ui/users?error=User+not+found.", status_code=303)
+    audit_log_service.record_action(
+        db,
+        ctx.tenant_id,
+        actor_user_id=ctx.user_id,
+        channel="web",
+        action="user.sign_out_everywhere",
+        summary=f"Signed {user.email} out of all sessions",
+        resource_type="user",
+        resource_id=user.id,
+    )
+    db.commit()
+    return RedirectResponse("/ui/users?flash=" + quote(f"{user.email} has been signed out everywhere."), status_code=303)
+
+
 @router.post("/{membership_id}/reset-password")
 def reset_password(
     request: Request,
