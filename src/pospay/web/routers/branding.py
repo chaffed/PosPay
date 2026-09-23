@@ -8,12 +8,21 @@ from sqlalchemy.orm import Session
 
 from pospay.db.session import get_db
 from pospay.domain.tenant import Tenant
+from pospay.services.tenant_service import SERVABLE_IMAGE_CONTENT_TYPES
 from pospay.web.branding_storage import read_tenant_asset
 from pospay.web.deps import WebNotFound
 
 router = APIRouter(prefix="/ui/branding", tags=["web-branding"])
 
 _CACHE_CONTROL = "public, max-age=300"
+# These are public, admin-uploaded files served from the app's own origin: tell the
+# browser never to run anything in them or treat them as anything but the image type
+# stated, even if one is opened directly rather than through an <img> tag.
+_ASSET_HEADERS = {
+    "Cache-Control": _CACHE_CONTROL,
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 def _get_active_tenant(db: Session, tenant_slug: str) -> Tenant | None:
@@ -28,16 +37,16 @@ def tenant_logo(tenant_slug: str, db: Session = Depends(get_db)) -> Response:
     before any session exists; the authenticated app shell uses this exact same route via
     ctx.tenant_slug, so there's only one branding-serving code path, not two."""
     tenant = _get_active_tenant(db, tenant_slug)
-    if tenant is None or not tenant.logo_path:
+    if tenant is None or not tenant.logo_path or tenant.logo_content_type not in SERVABLE_IMAGE_CONTENT_TYPES:
         raise WebNotFound()
     data = read_tenant_asset(tenant.logo_path)
-    return Response(content=data, media_type=tenant.logo_content_type, headers={"Cache-Control": _CACHE_CONTROL})
+    return Response(content=data, media_type=tenant.logo_content_type, headers=_ASSET_HEADERS)
 
 
 @router.get("/{tenant_slug}/favicon")
 def tenant_favicon(tenant_slug: str, db: Session = Depends(get_db)) -> Response:
     tenant = _get_active_tenant(db, tenant_slug)
-    if tenant is None or not tenant.favicon_path:
+    if tenant is None or not tenant.favicon_path or tenant.favicon_content_type not in SERVABLE_IMAGE_CONTENT_TYPES:
         raise WebNotFound()
     data = read_tenant_asset(tenant.favicon_path)
-    return Response(content=data, media_type=tenant.favicon_content_type, headers={"Cache-Control": _CACHE_CONTROL})
+    return Response(content=data, media_type=tenant.favicon_content_type, headers=_ASSET_HEADERS)

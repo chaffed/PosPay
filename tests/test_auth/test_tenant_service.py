@@ -14,6 +14,7 @@ from pospay.services.tenant_service import (
     update_tenant_branding,
     update_tenant_contact_info,
 )
+from tests import image_helpers
 
 
 def test_update_tenant_branding_name_and_color(db_session, tenant_factory):
@@ -35,8 +36,8 @@ def test_update_tenant_branding_uploads_logo_and_favicon(db_session, tenant_fact
         tenant.id,
         name=tenant.name,
         accent_color=None,
-        logo=("image/png", b"fake-png-bytes"),
-        favicon=("image/x-icon", b"fake-ico-bytes"),
+        logo=("image/png", image_helpers.PNG),
+        favicon=("image/x-icon", image_helpers.ICO),
     )
     db_session.commit()
 
@@ -47,7 +48,7 @@ def test_update_tenant_branding_uploads_logo_and_favicon(db_session, tenant_fact
 
 def test_update_tenant_branding_without_new_files_keeps_existing(db_session, tenant_factory):
     tenant, _account, _users = tenant_factory.make(slug="tenant-branding-keep")
-    update_tenant_branding(db_session, tenant.id, name=tenant.name, accent_color=None, logo=("image/png", b"original"))
+    update_tenant_branding(db_session, tenant.id, name=tenant.name, accent_color=None, logo=("image/png", image_helpers.PNG))
     db_session.commit()
 
     # re-save just the color, no new logo file supplied

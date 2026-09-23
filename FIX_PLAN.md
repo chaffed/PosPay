@@ -184,6 +184,12 @@ newest entry is last. Each entry is committed, so resume from the last one:
   refused in production. OAuth `state` is bound in the signed cookie and checked on
   callback (S3). Login page errors are generic, with details in the server log. SSO tests now
   echo the real state. 90 SSO/auth tests pass.
+- 4b DONE: logo/favicon type detected from the bytes with Pillow (PNG/JPEG/ICO only, no SVG);
+  the declared Content-Type is ignored. Branding responses get `CSP: default-src 'none';
+  sandbox` + nosniff (the security-headers middleware now keeps a route's own CSP).
+  Legacy SVG logos stop being served. Bulk-upload downloads are always
+  application/octet-stream. Old tests used fake image bytes and now use real tiny images
+  (`tests/image_helpers.py`). 76 related tests pass.
 
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
@@ -200,14 +206,14 @@ Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
 
 ### 4b. S8 — Uploaded content served safely
 Files: `services/tenant_service.py`, `web/routers/branding.py`, `web/routers/bulk_uploads.py`
-- [ ] Remove `image/svg+xml` from allowed logo types (or sanitize the SVG server-side; removal
+- [x] Remove `image/svg+xml` from allowed logo types (or sanitize the SVG server-side; removal
       is simpler). Sniff the real type with Pillow at upload time, the same approach as
       `check_images.py::_image_media_type`, and store the *sniffed* type.
-- [ ] Branding responses: add `X-Content-Type-Options: nosniff` (already global) and
+- [x] Branding responses: add `X-Content-Type-Options: nosniff` (already global) and
       `Content-Security-Policy: default-src 'none'; sandbox`.
-- [ ] Bulk-upload download: always `application/octet-stream` plus attachment.
-- [ ] Migration/data fix: existing SVG logos → clear them (the admin re-uploads) or keep
-      them and serve as an attachment.
+- [x] Bulk-upload download: always `application/octet-stream` plus attachment.
+- [x] Existing SVG logos: handled at serve time, with no migration and nothing deleted. A stored logo whose
+      type isn't PNG/JPEG/ICO is treated as "no logo" (404, not shown) until re-uploaded.
 
 ### 4c. S10 — Demo guardrails
 Files: new `web/demo_guard.py` dependency, routers listed below

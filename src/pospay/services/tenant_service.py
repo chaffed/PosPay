@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import io
 import re
 import uuid
 from dataclasses import dataclass
 
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,13 +16,15 @@ from pospay.services import message_content
 from pospay.web.branding_storage import save_tenant_asset
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-_ALLOWED_IMAGE_CONTENT_TYPES = {
-    "image/png",
-    "image/jpeg",
-    "image/svg+xml",
-    "image/x-icon",
-    "image/vnd.microsoft.icon",
-}
+# Keyed by what Pillow detects from the file's own bytes, never by the browser-declared
+# Content-Type (which the uploader controls). SVG is deliberately not accepted: it's a
+# document that can carry script, and logos are served publicly from this app's own origin
+# (web/routers/branding.py), which would make an SVG logo a stored-XSS vector.
+_ALLOWED_IMAGE_FORMATS = {"PNG": "image/png", "JPEG": "image/jpeg", "ICO": "image/x-icon"}
+# What web/routers/branding.py will serve. A logo stored before SVG was refused (or with
+# an unrecognized type) counts as "no logo" until an admin uploads a new one; the file
+# itself is left on disk, untouched.
+SERVABLE_IMAGE_CONTENT_TYPES = frozenset(_ALLOWED_IMAGE_FORMATS.values()) | {"image/vnd.microsoft.icon"}
 
 
 class InvalidTenantSettingsInput(ValueError):
@@ -71,8 +75,8 @@ def _branding_from_tenant(tenant: Tenant) -> TenantBranding:
         slug=tenant.slug,
         name=tenant.name,
         accent_color=tenant.accent_color,
-        has_logo=bool(tenant.logo_path),
-        has_favicon=bool(tenant.favicon_path),
+        has_logo=bool(tenant.logo_path) and tenant.logo_content_type in SERVABLE_IMAGE_CONTENT_TYPES,
+        has_favicon=bool(tenant.favicon_path) and tenant.favicon_content_type in SERVABLE_IMAGE_CONTENT_TYPES,
         password_login_enabled=tenant.password_login_enabled,
         access_token_expire_minutes=tenant.access_token_expire_minutes,
         refresh_token_expire_minutes=tenant.refresh_token_expire_minutes,
@@ -145,9 +149,18 @@ def _validate_accent_color(accent_color: str | None) -> str | None:
     return accent_color
 
 
-def _validate_image(content_type: str) -> None:
-    if content_type not in _ALLOWED_IMAGE_CONTENT_TYPES:
-        raise InvalidTenantSettingsInput(f"Unsupported image type {content_type!r} — use PNG, JPEG, SVG, or ICO")
+def _detect_image_type(data: bytes) -> str:
+    """The real content type of an uploaded logo/favicon, from its bytes. Raises
+    InvalidTenantSettingsInput for anything that isn't a PNG, JPEG, or ICO image."""
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            detected = image.format
+            image.verify()
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError, ValueError):
+        detected = None
+    if detected not in _ALLOWED_IMAGE_FORMATS:
+        raise InvalidTenantSettingsInput("Upload a PNG, JPEG, or ICO image. SVG and other formats aren't accepted.")
+    return _ALLOWED_IMAGE_FORMATS[detected]
 
 
 def update_tenant_branding(
@@ -172,14 +185,14 @@ def update_tenant_branding(
     tenant.accent_color = _validate_accent_color(accent_color)
 
     if logo is not None:
-        content_type, data = logo
-        _validate_image(content_type)
+        _declared_type, data = logo
+        content_type = _detect_image_type(data)
         tenant.logo_path = save_tenant_asset(tenant_id, "logo", content_type, data)
         tenant.logo_content_type = content_type
 
     if favicon is not None:
-        content_type, data = favicon
-        _validate_image(content_type)
+        _declared_type, data = favicon
+        content_type = _detect_image_type(data)
         tenant.favicon_path = save_tenant_asset(tenant_id, "favicon", content_type, data)
         tenant.favicon_content_type = content_type
 

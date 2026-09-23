@@ -102,8 +102,11 @@ def bulk_upload_download(
     record = _get_authorized_record(db, ctx, upload_id)
     data = read_uploaded_file(record.storage_path)
     encoded_name = quote(record.original_filename)
+    # Always a generic binary download, never the Content-Type the uploader's browser
+    # declared: that value is attacker-controlled, and echoing e.g. text/javascript back
+    # from this origin would let a <script src> elsewhere on the site load it.
     return Response(
         content=data,
-        media_type=record.content_type or "application/octet-stream",
+        media_type="application/octet-stream",
         headers={"Content-Disposition": f"attachment; filename=\"upload\"; filename*=UTF-8''{encoded_name}"},
     )

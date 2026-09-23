@@ -59,7 +59,10 @@ def apply_security_headers(request: Request, response: Response) -> None:
     # that assignment ever ran (shouldn't happen given main.py's middleware order, but a
     # missing nonce must never silently produce a CSP with no 'nonce-' clause at all).
     nonce = getattr(request.state, "csp_nonce", None) or new_csp_nonce()
-    response.headers["Content-Security-Policy"] = _build_csp(nonce)
+    # A route that set a stricter policy of its own (the sandboxed branding images in
+    # web/routers/branding.py) keeps it; every other response gets the page policy.
+    if "content-security-policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = _build_csp(nonce)
     response.headers["X-Content-Type-Options"] = "nosniff"
     # Belt-and-suspenders with frame-ancestors above — X-Frame-Options is the older
     # header every browser still honors, CSP's frame-ancestors is what modern ones prefer.

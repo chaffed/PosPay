@@ -3,6 +3,7 @@
 
 from pospay.auth.security import decode_token
 from pospay.config import get_settings
+from tests import image_helpers
 from tests.conftest import TenantFactory
 
 
@@ -114,8 +115,8 @@ def test_upload_and_serve_logo_and_favicon(client, tenant_factory):
         "/ui/settings",
         data={"csrf_token": csrf, "name": tenant.name, "accent_color": ""},
         files={
-            "logo": ("logo.png", b"fake-png-bytes", "image/png"),
-            "favicon": ("favicon.ico", b"fake-ico-bytes", "image/x-icon"),
+            "logo": ("logo.png", image_helpers.PNG, "image/png"),
+            "favicon": ("favicon.ico", image_helpers.ICO, "image/x-icon"),
         },
         follow_redirects=False,
     )
@@ -123,12 +124,12 @@ def test_upload_and_serve_logo_and_favicon(client, tenant_factory):
 
     logo_resp = client.get(f"/ui/branding/{tenant.slug}/logo")
     assert logo_resp.status_code == 200
-    assert logo_resp.content == b"fake-png-bytes"
+    assert logo_resp.content == image_helpers.PNG
     assert logo_resp.headers["content-type"] == "image/png"
 
     favicon_resp = client.get(f"/ui/branding/{tenant.slug}/favicon")
     assert favicon_resp.status_code == 200
-    assert favicon_resp.content == b"fake-ico-bytes"
+    assert favicon_resp.content == image_helpers.ICO
 
     nav_page = client.get("/ui/")
     assert f'/ui/branding/{tenant.slug}/logo' in nav_page.text
@@ -165,7 +166,7 @@ def test_rejects_disallowed_image_type_without_500(client, tenant_factory):
         files={"logo": ("evil.pdf", b"not-an-image", "application/pdf")},
     )
     assert resp.status_code == 422
-    assert "Unsupported image type" in resp.text
+    assert "Upload a PNG, JPEG, or ICO image" in resp.text
 
 
 def test_session_timeout_override_reflected_in_issued_token(client, tenant_factory):
@@ -269,7 +270,7 @@ def test_branded_login_page_shows_name_and_logo(client, db_session, tenant_facto
     client.post(
         "/ui/settings",
         data={"csrf_token": csrf, "name": "Branded Login Co", "accent_color": ""},
-        files={"logo": ("logo.png", b"fake-png-bytes", "image/png")},
+        files={"logo": ("logo.png", image_helpers.PNG, "image/png")},
     )
     client.post("/ui/logout", data={"csrf_token": csrf})
 
@@ -409,3 +410,66 @@ def test_no_banner_markup_when_no_messages_set(client, tenant_factory):
 
     resp = client.get("/ui/")
     assert "banner-carousel" not in resp.text
+
+
+def test_svg_logo_is_rejected(client, tenant_factory):
+    """SVG can carry script, and logos are served publicly from this origin."""
+    tenant, _account, users = tenant_factory.make(slug="web-settings-svg")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(
+        "/ui/settings",
+        data={"csrf_token": csrf, "name": tenant.name, "accent_color": ""},
+        files={"logo": ("logo.svg", image_helpers.SVG, "image/svg+xml")},
+    )
+
+    assert resp.status_code == 422
+    assert client.get(f"/ui/branding/{tenant.slug}/logo").status_code == 404
+
+
+def test_logo_type_comes_from_the_file_not_the_browser(client, tenant_factory):
+    """Script disguised with an image Content-Type is refused; a real JPEG declared as
+    something else is stored and served as what it actually is."""
+    tenant, _account, users = tenant_factory.make(slug="web-settings-sniff")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+
+    disguised = client.post(
+        "/ui/settings", data={"csrf_token": csrf, "name": tenant.name, "accent_color": ""},
+        files={"logo": ("logo.png", b"<html><script>alert(1)</script></html>", "image/png")},
+    )
+    assert disguised.status_code == 422
+
+    client.post(
+        "/ui/settings", data={"csrf_token": csrf, "name": tenant.name, "accent_color": ""},
+        files={"logo": ("logo.bin", image_helpers.JPEG, "application/octet-stream")},
+    )
+    served = client.get(f"/ui/branding/{tenant.slug}/logo")
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "image/jpeg"
+
+
+def test_branding_images_are_sandboxed(client, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-settings-sandbox")
+    csrf = _login(client, tenant.slug, users["admin"].email)
+    client.post(
+        "/ui/settings", data={"csrf_token": csrf, "name": tenant.name, "accent_color": ""},
+        files={"logo": ("logo.png", image_helpers.PNG, "image/png")},
+    )
+
+    resp = client.get(f"/ui/branding/{tenant.slug}/logo")
+
+    assert resp.headers["content-security-policy"] == "default-src 'none'; sandbox"
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert "public" in resp.headers["cache-control"]
+
+
+def test_previously_uploaded_svg_logo_is_no_longer_served(client, db_session, tenant_factory, tmp_path):
+    tenant, _account, _users = tenant_factory.make(slug="web-settings-legacy-svg")
+    legacy = tmp_path / "logo.svg"
+    legacy.write_bytes(image_helpers.SVG)
+    tenant.logo_path = str(legacy)
+    tenant.logo_content_type = "image/svg+xml"
+    db_session.commit()
+
+    assert client.get(f"/ui/branding/{tenant.slug}/logo").status_code == 404
+    assert f"/ui/branding/{tenant.slug}/logo" not in client.get(f"/ui/login/{tenant.slug}").text

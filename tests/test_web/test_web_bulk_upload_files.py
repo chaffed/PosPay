@@ -204,3 +204,30 @@ def test_bulk_upload_file_not_visible_across_customers(client, db_session, tenan
 
     _login(client, tenant.slug, users["admin"].email)
     assert client.get(detail_link, follow_redirects=False).status_code == 200
+
+
+def test_bulk_upload_download_never_echoes_the_uploaded_content_type(client, db_session, tenant_factory):
+    """The declared type is attacker-controlled; echoing e.g. text/javascript from this
+    origin would make the file loadable by a <script src>."""
+    import uuid as _uuid
+
+    from pospay.domain.bulk_upload_file import BulkUploadFile, BulkUploadKind
+    from pospay.bulk_import.file_storage import save_uploaded_file
+
+    tenant, _account, users = tenant_factory.make(slug="bulk-download-type")
+    upload_id = _uuid.uuid4()
+    path = save_uploaded_file(tenant.id, upload_id, "evil.js", b"alert(document.cookie)")
+    record = BulkUploadFile(
+        id=upload_id, tenant_id=tenant.id, kind=list(BulkUploadKind)[0], original_filename="evil.js",
+        content_type="text/javascript", storage_path=path, sha256_hex="0" * 64, size_bytes=22,
+        signature_hex="x", uploaded_by_user_id=users["admin"].id,
+    )
+    db_session.add(record)
+    db_session.commit()
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.get(f"/ui/bulk-uploads/{upload_id}/download")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/octet-stream"
+    assert resp.headers["content-disposition"].startswith("attachment")
