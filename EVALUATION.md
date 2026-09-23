@@ -44,7 +44,7 @@ Severity: Critical / High / Medium / Low / Info.
 
 ### Security
 
-**S0 — Critical (verified by repro) — A customer-scoped user with `data_export:run` can
+**S0 — FIXED 2026-09-22 (Phase 1).** Critical (verified by repro) — A customer-scoped user with `data_export:run` can
 export the whole bank's data or any other customer's data.**
 `data_export:run` is not in `CUSTOMER_SCOPE_MASKED_PERMISSIONS`
 (`auth/permissions.py` L62), and none of the routes in `web/routers/data_export.py` look
@@ -58,7 +58,7 @@ exists precisely to survive a misconfigured group, so this defeats it. Fix: add
 export their own data) force `customer_id = ctx.customer_id` for scoped sessions and
 403 the bank-wide routes when `ctx.customer_id is not None`. Add a regression test.
 
-**S1 — High (verified by repro) — Changing a user's security group doesn't take effect until their access token expires.**
+**S1 — FIXED 2026-09-22 (Phase 1).** High (verified by repro) — Changing a user's security group doesn't take effect until their access token expires.**
 `auth/deps.py::decode_and_build_context` loads permissions from the token's
 `security_group_id` claim (`db.get(SecurityGroup, security_group_id)`) and never compares
 it to `membership.security_group_id`. Demoting an Admin to Viewer leaves them with Admin
@@ -165,7 +165,7 @@ token lifetime (30 min default) even while the user is active; and the access co
 `max_age` uses the *global* setting, so a tenant's longer session-timeout override is
 silently capped by the cookie expiring first (only shortening works).
 
-**F2 — No database-constraint error handling anywhere.** There is no `IntegrityError`
+**F2 — FIXED 2026-09-22 (Phase 1).** No database-constraint error handling anywhere. There is no `IntegrityError`
 handling in the codebase. Unique constraints exist (e.g. `uq_account_tenant_number`,
 `uq_account_tenant_external_id`), so entering a duplicate account number / external id
 in the UI produces a generic 500 instead of a form error. **Verified live:** duplicate account number → bare "Internal Server Error" text page; `customer_id=not-a-uuid` → 500 (`ValueError`). Add a global handler that renders `error.html` for unhandled `/ui/*` exceptions, plus per-form validation.
@@ -191,7 +191,7 @@ worker, so it's fine today, but adding `--workers N` or a second Fly machine wil
 retrain/dropbox-import/notification/disposition jobs N times (duplicate notifications
 and imports). Document it or add a leader lock.
 
-**F7 — High — No way to change or reset a password.** Nothing in the codebase ever
+**F7 — High — No way to change or reset a password.** — **FIXED 2026-09-22 (FIX_PLAN Phase 2).** Nothing in the codebase ever
 updates `User.hashed_password` after the user is created. Users can't change their own
 password, and admins can't reset one. The admin docs (`docs/admin/authentication.html`)
 say there's no self-service reset and send users to an admin, but an admin can only

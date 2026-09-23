@@ -71,25 +71,40 @@ Files: `main.py`, `web/routers/accounts.py`, `services/account_service.py`, `tem
 
 ## Phase 2 — Password lifecycle (1 PR, about 1–2 days) — F7
 
+Done 2026-09-22 on branch `phase-2-password-lifecycle` (`bccdd9c`, `500194c`). Full suite: 986 passed, 1 skipped. Not pushed.
+Decisions made along the way (per the standing "go with the recommendation" rule):
+- The temporary password is **shown once to the admin** (not emailed), on a no-store page,
+  with a Copy button. Emailing a working password is weaker, and SMTP is optional anyway.
+- Self-service change and reset are **also blocked in the demo organization** now, not
+  in Phase 4, because otherwise this phase would have given public demo visitors a new way
+  to lock each other out.
+- A wrong *current* password on the change form counts toward the login lockout.
+- No JSON API endpoint for changing a password. The API refuses sessions that must change
+  their password and points them to the web app.
+- Admins can't reset their own password from Users; they use Security like everyone else.
+
 Files: `services/user_service.py`, `web/routers/security_settings.py` (self-service),
 `web/routers/users.py` (admin), `api/v1/users.py`, templates, `auth/password_policy.py`
-- [ ] `user_service.change_password(session, user_id, current, new, policy)`: verify the
+- [x] `user_service.change_password(session, user_id, current, new, policy)`: verify the
       current password, enforce the tenant/customer password policy (the existing
       `auth/password_policy.py`), rehash, reset `failed_login_attempts`/`locked_until`.
-- [ ] Self-service page under `/ui/security` ("Change password") with CSRF and audit log
+- [x] Self-service page under `/ui/security` ("Change password") with CSRF and audit log
       `user.password_change`; send a notification email ("your password was changed").
-- [ ] Admin reset (`user:manage`): sets a temporary password shown once (or emailed if SMTP
+- [x] Admin reset (`user:manage`): sets a temporary password shown once (or emailed if SMTP
       is configured) and sets a new `User.must_change_password` flag (migration). Login
       redirects flagged users to the change-password page before anything else.
-- [ ] Hide/disable for SSO-only scopes (password login disabled) — nothing to change.
-- [ ] Cross-tenant caution: `User` is global (one account can have memberships in several
+- [x] Hide/disable for SSO-only scopes (password login disabled) — nothing to change.
+- [x] Cross-tenant caution: `User` is global (one account can have memberships in several
       tenants). Only allow an admin reset when the user has no *active* memberships in other
       tenants, or restrict it to platform staff. Otherwise one bank's admin could take over
       a Bookkeeper's access at another bank. **Decided (2026-09-22): block it.** Show
       "This user belongs to other organizations; they must change their own password."
       Add a test for it.
-- [ ] Update `docs/admin/authentication.html`.
-- [ ] Bumps `token_version` (Phase 3). If Phase 3 isn't in yet, add a TODO test.
+- [x] Update `docs/admin/authentication.html`.
+- [ ] Bumps `token_version` — **moved to Phase 3** (it's listed there). Meanwhile: after an admin
+      reset, the user's existing sessions are already quarantined, because every request checks
+      `must_change_password`. After a *self-service* change, the user's other open sessions stay
+      valid until Phase 3 lands.
 
 ## Phase 3 — Sessions: refresh, revocation, expiry UX (1 PR, about 2–3 days) — F1, U1, S2, S4
 

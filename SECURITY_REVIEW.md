@@ -250,5 +250,13 @@ error page (or JSON under `/api`) without exception details, and uniqueness conf
 become a 409. The new-account form validates `customer_id` against the tenant's own
 customers (previously any UUID was accepted).
 
+**FIXED — no way to change or reset a password.** Users can now change their own
+password (current password required; a wrong one counts toward lockout; the new one must
+meet the strictest policy across all their memberships), and admins can issue a one-time
+temporary password that forces a change at next sign-in (other pages redirect, API
+refused). Resets are refused for users who belong to other organizations, for the admin's
+own account, and in the demo organization. Every change is audit-logged, and the user
+always gets an email about it.
+
 Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5), no server-side
 token revocation (Phase 3), OIDC issuer SSRF (Phase 4), SVG logos (Phase 4).
