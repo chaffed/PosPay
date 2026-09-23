@@ -8,49 +8,54 @@ from sqlalchemy.orm import Session
 from pospay.domain.customer_ml_setting import MlScoringMode
 from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.ml_model import MlModel
+from pospay.domain.tenant import MlModelSource, Tenant
 from pospay.ml.model import ScoringModel
 from pospay.ml.registry import ArtifactStore, get_active_model_row
 from pospay.networks.registry import get_adapter
 from pospay.repositories.customer_ml_setting_repo import CustomerMlSettingRepository
 
-# In-process cache: (network_code, customer_id) -> (active_model_id, loaded_model).
-# customer_id is None for the global model's own cache slot, so it never collides with
-# any customer's. Invalidated automatically whenever the DB's active model id for that
+# In-process cache: model slot (network_code, tenant_id, customer_id) -> (active_model_id,
+# loaded_model). Invalidated automatically whenever the DB's active model id for that
 # slot changes (e.g. after a retrain promotes a new version) — no explicit cache-bust
 # call needed elsewhere.
-_MODEL_CACHE: dict[tuple[str, uuid.UUID | None], tuple[uuid.UUID, ScoringModel]] = {}
+_MODEL_CACHE: dict[tuple[str, uuid.UUID | None, uuid.UUID | None], tuple[uuid.UUID, ScoringModel]] = {}
+
+
+def _bank_level_model(session: Session, tenant_id: uuid.UUID, network_code: str) -> MlModel | None:
+    """The model a bank's own choice points at (Tenant.ml_model_source): its bank-only
+    model, or the shared network model. A bank-only bank never falls back to the shared
+    model — its model is seeded from a copy of the shared one when it switches
+    (services/tenant_ml_service.py), so the only way it has none is if there was no shared
+    model to copy either, and then there's simply no score yet."""
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is not None and tenant.ml_model_source == MlModelSource.PRIVATE:
+        return get_active_model_row(session, network_code, tenant_id=tenant_id)
+    return get_active_model_row(session, network_code)
 
 
 def _resolve_scoring_source(
     session: Session, tenant_id: uuid.UUID, network_code: str, customer_id: uuid.UUID | None
 ) -> MlModel | None:
-    """Picks which MlModel row (global vs this customer's own) an exception should be
-    scored with. A bank-wide exception (customer_id is None) always uses the global
-    model — customer-specific models only ever apply to a customer-scoped exception.
+    """Picks which MlModel row scores an exception:
 
-    Absence of a CustomerMlSetting row means AUTO (see that model's docstring): use the
-    customer's own active model once one exists, otherwise fall back to global. This is
-    the actual auto-switch — the moment a retrain promotes a customer's first model to
-    ACTIVE, the very next exception scored for them picks it up with no separate
-    "switch" action needed. GLOBAL pins to the global model regardless; CUSTOMER pins to
-    the customer model but still falls back to global if none is active yet (same
-    graceful cold-start degradation as everywhere else in this module — never an error)."""
-    global_model = get_active_model_row(session, network_code)
-    if customer_id is None:
-        return global_model
+    1. a customer-scoped exception uses its customer's own active model, per the
+       customer's mode (below);
+    2. otherwise the bank's choice: its bank-only model or the shared model
+       (_bank_level_model).
 
-    settings = CustomerMlSettingRepository(session, tenant_id).list(customer_id=customer_id, network_code=network_code)
-    mode = settings[0].mode if settings else MlScoringMode.AUTO
-
-    if mode == MlScoringMode.GLOBAL:
-        return global_model
-
-    customer_model = get_active_model_row(session, network_code, customer_id)
-    if mode == MlScoringMode.CUSTOMER:
-        return customer_model or global_model
-
-    # AUTO
-    return customer_model or global_model
+    Customer mode — no CustomerMlSetting row means AUTO: use the customer's own model
+    once one is active (the auto-switch: the moment a retrain promotes a customer's first
+    model, the next exception picks it up), else the bank's model. CUSTOMER prefers the
+    customer's model the same way. GLOBAL (labelled "Bank's model" in the UI) always uses
+    the bank's model, ignoring the customer's own. Never an error: no model means no score."""
+    if customer_id is not None:
+        settings = CustomerMlSettingRepository(session, tenant_id).list(customer_id=customer_id, network_code=network_code)
+        mode = settings[0].mode if settings else MlScoringMode.AUTO
+        if mode != MlScoringMode.GLOBAL:
+            customer_model = get_active_model_row(session, network_code, customer_id)
+            if customer_model is not None:
+                return customer_model
+    return _bank_level_model(session, tenant_id, network_code)
 
 
 def _load_model(session: Session, tenant_id: uuid.UUID, network_code: str, customer_id: uuid.UUID | None) -> tuple[ScoringModel, str] | None:
@@ -58,7 +63,7 @@ def _load_model(session: Session, tenant_id: uuid.UUID, network_code: str, custo
     if model_row is None:
         return None
 
-    cache_key = (network_code, model_row.customer_id)
+    cache_key = (network_code, model_row.tenant_id, model_row.customer_id)
     cached = _MODEL_CACHE.get(cache_key)
     if cached is not None and cached[0] == model_row.id:
         return cached[1], model_row.version
@@ -69,7 +74,7 @@ def _load_model(session: Session, tenant_id: uuid.UUID, network_code: str, custo
 
 
 def score_exception(session: Session, exception_item: ExceptionItem) -> float | None:
-    """Scores an exception with whichever model (global or its customer's own — see
+    """Scores an exception with whichever model (customer, bank-only, or shared — see
     _resolve_scoring_source) currently applies, if one exists yet. Returns None (leaving
     exception_item.ml_score unset) during cold start — matching rules/exceptions work
     fully without ML; a null score means 'not enough data yet to score this', never a

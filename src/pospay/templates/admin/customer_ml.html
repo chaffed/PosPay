@@ -3,13 +3,19 @@
 {% block title %}ML scoring — {{ customer.name }} — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About per-customer ML scoring{% endblock %}
 {% block help_body %}
-<p>Each network can score this customer's exceptions with either the bank-wide global
-  model or a model trained only on this customer's own decision history. "Auto" (the
-  default) uses this customer's own model automatically once one has been trained and
-  activated, and falls back to the global model until then — no action needed. "Always
-  global" and "Always this customer" override that: pin scoring to one source
-  regardless of what's available. Retraining and activating below work exactly like the
-  bank-wide models on the main ML Models page, just scoped to this one customer.</p>
+<p>Each network can score this customer's exceptions with either the bank's model or a
+  model trained only on this customer's own decision history. The bank's model is whichever
+  the bank chose in Settings: the shared network model or the bank's own model.</p>
+<ul>
+  <li><strong>Auto</strong> (the default) uses this customer's own model as soon as one
+    has been trained and activated, and the bank's model until then. No action is needed.</li>
+  <li><strong>Bank's model</strong> always uses the bank's model, even if this customer has
+    its own.</li>
+  <li><strong>This customer's model</strong> prefers this customer's own model, and uses
+    the bank's model only while it has none.</li>
+</ul>
+<p>"Scoring with now" shows which model is actually in use. Retraining and activating below
+  apply only to this customer's own model.</p>
 <p>Default disposition decides what happens to an exception if no one responds within
   its response window: "None" (default) leaves it open indefinitely; "Always pay"/
   "Always return" apply a fixed outcome; "ML-determined" re-scores the exception at the
@@ -25,7 +31,7 @@
     <a href="/ui/customers/{{ customer.id }}">Back to customer</a>
   </div>
   <table data-sortable>
-    <thead><tr><th>Network</th><th>Mode</th><th>Active model</th><th>Global model</th><th></th></tr></thead>
+    <thead><tr><th>Network</th><th>Mode</th><th>This customer's model</th><th>Bank's model</th><th>Scoring with now</th><th></th></tr></thead>
     <tbody>
       {% for row in summary %}
       <tr>
@@ -36,7 +42,7 @@
             <input type="hidden" name="network_code" value="{{ row.network_code }}">
             <select name="mode" data-auto-submit="request">
               {% for m in modes %}
-              <option value="{{ m.value }}" {{ "selected" if m == row.mode else "" }}>{{ m.value | capitalize }}</option>
+              <option value="{{ m.value }}" {{ "selected" if m == row.mode else "" }}>{{ {"auto": "Auto", "global": "Bank's model", "customer": "This customer's model"}.get(m.value, m.value) }}</option>
               {% endfor %}
             </select>
           </form>
@@ -50,10 +56,18 @@
           {% endif %}
         </td>
         <td>
-          {% if row.active_global_model %}
-          {{ row.active_global_model.version }}
+          {% if row.active_bank_level_model %}
+          {{ row.active_bank_level_model.version }}
+          <span class="badge">{{ "bank-only" if row.active_bank_level_model.tenant_id else "shared" }}</span>
           {% else %}
           <span>none trained yet</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if row.effective_model %}
+          {{ "This customer's model" if row.effective_model.customer_id else "Bank's model" }}
+          {% else %}
+          <span>No model yet: exceptions aren't scored</span>
           {% endif %}
         </td>
         <td>

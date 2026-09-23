@@ -17,7 +17,6 @@ def build_ach_features(session: Session, exception_item: ExceptionItem) -> dict[
     exception_types = exception_item.exception_types.split(",") if exception_item.exception_types else []
 
     return {
-        "tenant_id": str(exception_item.tenant_id),
         "amount": float(txn.amount) if txn else 0.0,
         "sec_code": txn.sec_code if txn else "",
         "has_receiver_id": bool(txn.receiver_id) if txn else False,

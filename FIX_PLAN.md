@@ -275,6 +275,16 @@ Files: new `web/demo_guard.py` dependency, routers listed below
   settings: `ml_new_bank_private_switch_lock_days`, `ml_bank_model_min_decisions`,
   `ml_shared_pool_disclosure_text`. Migration `a9c4e2f1d7b5` with a backfill test. An older
   migration test that read today's ORM after a partial upgrade now upgrades to head.
+- 5.2 DONE (scoping): model slots in `ml/registry.py` (shared / bank / customer, with
+  ownership-checked activation). `ml/train.py`: the shared model trains only on SHARED banks
+  (and only platform-approved fraud examples); a bank model trains on its own bank; fair
+  champion/challenger on the same recent holdout for every slot, plus the 200-decision floor
+  for bank models; the reason is stored in `metrics_json["evaluation"]`. `ml/predict.py`
+  precedence: customer model → bank's choice (a bank-only bank never falls back to shared).
+  The `tenant_id` feature was removed (the shared model needs a retrain). `retrain_job` walks the
+  shared model, then each bank-only bank, then customers. The customer ML page is relabeled
+  ("Bank's model", plus a new "Scoring with now" column). 11 new tests; an older test now
+  approves its fraud example before training the shared model.
 
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps

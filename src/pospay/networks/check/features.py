@@ -49,7 +49,6 @@ def build_check_features(session: Session, exception_item: ExceptionItem) -> dic
         payee_similarity_score = 0.0
 
     return {
-        "tenant_id": str(exception_item.tenant_id),
         "amount_delta_abs": amount_delta_abs,
         "amount_delta_pct": amount_delta_pct,
         "days_since_issue": days_since_issue,

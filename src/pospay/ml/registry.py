@@ -33,13 +33,29 @@ class ArtifactStore:
         return joblib.load(path)
 
 
-def get_active_model_row(session: Session, network_code: str, customer_id: uuid.UUID | None = None) -> MlModel | None:
-    stmt = select(MlModel).where(
-        MlModel.network_code == network_code,
-        MlModel.customer_id == customer_id,
-        MlModel.status == MlModelStatus.ACTIVE,
-    )
-    return session.execute(stmt).scalars().first()
+def _slot_filter(stmt, *, tenant_id: uuid.UUID | None, customer_id: uuid.UUID | None):
+    """A model "slot" — at most one ACTIVE model each (see domain/ml_model.py):
+    customer_id given → that customer's model (customer ids are globally unique, so its
+    bank doesn't need matching too); otherwise tenant_id given → that bank's bank-only
+    model; neither → the shared network model."""
+    if customer_id is not None:
+        return stmt.where(MlModel.customer_id == customer_id)
+    return stmt.where(MlModel.customer_id.is_(None), MlModel.tenant_id == tenant_id)
+
+
+def get_active_model_row(
+    session: Session, network_code: str, customer_id: uuid.UUID | None = None, *, tenant_id: uuid.UUID | None = None
+) -> MlModel | None:
+    stmt = select(MlModel).where(MlModel.network_code == network_code, MlModel.status == MlModelStatus.ACTIVE)
+    return session.execute(_slot_filter(stmt, tenant_id=tenant_id, customer_id=customer_id)).scalars().first()
+
+
+def list_slot_models(
+    session: Session, network_code: str, *, tenant_id: uuid.UUID | None = None, customer_id: uuid.UUID | None = None
+) -> list[MlModel]:
+    """Every model (any status) in one slot, newest first — the history an admin page shows."""
+    stmt = select(MlModel).where(MlModel.network_code == network_code).order_by(MlModel.created_at.desc())
+    return list(session.execute(_slot_filter(stmt, tenant_id=tenant_id, customer_id=customer_id)).scalars().all())
 
 
 def create_model_row(
@@ -53,10 +69,12 @@ def create_model_row(
     metrics_json: dict[str, Any],
     status: MlModelStatus,
     customer_id: uuid.UUID | None = None,
+    tenant_id: uuid.UUID | None = None,
 ) -> MlModel:
     row = MlModel(
         network_code=network_code,
         customer_id=customer_id,
+        tenant_id=tenant_id,
         version=version,
         algorithm=algorithm,
         artifact_path=artifact_path,
@@ -70,7 +88,18 @@ def create_model_row(
     return row
 
 
-def activate_model(session: Session, model_id: uuid.UUID, *, expected_customer_id: uuid.UUID | None) -> MlModel:
+def activate_model(
+    session: Session,
+    model_id: uuid.UUID,
+    *,
+    expected_customer_id: uuid.UUID | None,
+    expected_tenant_id: uuid.UUID | None = None,
+) -> MlModel:
+    """`expected_customer_id` (required) and `expected_tenant_id` name the slot the caller
+    means to activate a model in; a model from any other slot is rejected with the same
+    "not found" as an unknown id, so this never reveals that it exists. In particular a
+    bank can only activate its own bank-only models, and only a caller passing neither
+    (the platform operator) can activate a shared-model row."""
     model = session.get(MlModel, model_id)
     if model is None:
         raise ValueError(f"No ml_model with id={model_id}")
@@ -79,11 +108,12 @@ def activate_model(session: Session, model_id: uuid.UUID, *, expected_customer_i
         # scope it wasn't trained for — keyword-only, no default, so every caller states
         # which scope it expects rather than silently skipping the check.
         raise ValueError(f"No ml_model with id={model_id}")
+    if expected_customer_id is None and model.tenant_id != expected_tenant_id:
+        raise ValueError(f"No ml_model with id={model_id}")
 
-    # Only retires the previous active row for this SAME (network_code, customer_id)
-    # scope — a customer's own model and the global model are independent "slots" and
-    # must never retire each other.
-    previous_active = get_active_model_row(session, model.network_code, model.customer_id)
+    # Only retires the previous active row in this SAME slot — shared, bank, and customer
+    # models are independent and must never retire each other.
+    previous_active = get_active_model_row(session, model.network_code, model.customer_id, tenant_id=model.tenant_id)
     if previous_active is not None and previous_active.id != model.id:
         previous_active.status = MlModelStatus.RETIRED
 

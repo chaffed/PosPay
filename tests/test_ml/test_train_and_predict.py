@@ -152,6 +152,11 @@ def test_retracted_backfilled_decision_excluded_from_training(db_session, tenant
         new_item=CheckFraudRawInput(account_id=account.id, check_number="9599", presented_amount=Decimal("500.00"), presented_date=date(2026, 1, 15)),
         reason_code="known fraud",
     )
+    # A fraud-training example only feeds the SHARED model once the platform operator
+    # has approved it (ml/train.py::_load_labeled_decisions).
+    from datetime import datetime, timezone
+
+    backfilled.shared_training_approved_at = datetime.now(timezone.utc)
     db_session.commit()
 
     train_result = train_model(db_session, "check")

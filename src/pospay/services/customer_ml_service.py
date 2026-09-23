@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from pospay.domain.customer_ml_setting import CustomerMlSetting, MlScoringMode
 from pospay.domain.ml_model import MlModel
+from pospay.ml.predict import _bank_level_model, _resolve_scoring_source
 from pospay.ml.registry import get_active_model_row
 from pospay.networks.registry import registered_codes
 from pospay.repositories.customer_ml_setting_repo import CustomerMlSettingRepository
@@ -22,7 +23,11 @@ class CustomerNetworkMlSummary:
     network_code: str
     mode: MlScoringMode
     active_customer_model: MlModel | None
-    active_global_model: MlModel | None
+    # What the customer falls back to (or, in GLOBAL mode, always uses): its bank's
+    # choice — the bank-only model or the shared model (ml/predict.py::_bank_level_model).
+    active_bank_level_model: MlModel | None
+    # The model that actually scores this customer's exceptions right now, if any.
+    effective_model: MlModel | None
 
 
 def get_mode(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID, network_code: str) -> MlScoringMode:
@@ -64,7 +69,8 @@ def get_ml_summary(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUI
             network_code=network_code,
             mode=get_mode(session, tenant_id, customer_id, network_code),
             active_customer_model=get_active_model_row(session, network_code, customer_id),
-            active_global_model=get_active_model_row(session, network_code),
+            active_bank_level_model=_bank_level_model(session, tenant_id, network_code),
+            effective_model=_resolve_scoring_source(session, tenant_id, network_code, customer_id),
         )
         for network_code in registered_codes()
     ]

@@ -12,10 +12,11 @@ from pospay.config import get_settings
 from pospay.db.session import get_session_factory
 from pospay.domain.decision import Decision
 from pospay.domain.exception_item import ExceptionItem, ExceptionStatus
-from pospay.domain.ml_model import MlModel, MlModelStatus
+from pospay.domain.ml_model import MlModelStatus
 from pospay.domain.notification import Notification, NotificationChannel, NotificationStatus
-from pospay.ml.registry import create_model_row
-from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
+from pospay.domain.tenant import MlModelSource, Tenant
+from pospay.ml.registry import create_model_row, list_slot_models
+from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, _load_labeled_decisions, train_model
 from pospay.networks.registry import registered_codes
 from pospay.notifications.email.factory import get_email_provider
 from pospay.notifications.sms.factory import get_sms_provider
@@ -25,24 +26,20 @@ from pospay.services.dropbox_import_service import scan_and_import_all_tenants
 logger = logging.getLogger(__name__)
 
 
-def _count_labeled_decisions(session: Session, network_code: str) -> int:
-    stmt = (
-        select(Decision.id)
-        .join(ExceptionItem, Decision.exception_item_id == ExceptionItem.id)
-        .where(ExceptionItem.network_code == network_code, Decision.features_json.is_not(None))
-    )
-    return len(session.execute(stmt).all())
+def _count_labeled_decisions(session: Session, network_code: str, *, tenant_id: uuid.UUID | None = None) -> int:
+    """How many decisions the shared model (tenant_id None) or one bank-only model would
+    train on — the exact same rules as training itself (ml/train.py::
+    _load_labeled_decisions), so e.g. a bank-only bank's decisions never trigger a
+    shared-model retrain."""
+    return len(_load_labeled_decisions(session, network_code, tenant_id=tenant_id))
 
 
-def _most_recently_trained_count(session: Session, network_code: str, customer_id: uuid.UUID | None = None) -> int:
-    stmt = (
-        select(MlModel.trained_from_decision_count)
-        .where(MlModel.network_code == network_code, MlModel.customer_id == customer_id)
-        .order_by(MlModel.created_at.desc())
-        .limit(1)
-    )
-    row = session.execute(stmt).first()
-    return row[0] if row else 0
+def _most_recently_trained_count(
+    session: Session, network_code: str, customer_id: uuid.UUID | None = None, *, tenant_id: uuid.UUID | None = None
+) -> int:
+    models = [m for m in list_slot_models(session, network_code, tenant_id=tenant_id, customer_id=customer_id)
+              if m.status != MlModelStatus.FAILED]
+    return models[0].trained_from_decision_count if models else 0
 
 
 def _customers_with_labeled_decisions(session: Session, network_code: str) -> dict[uuid.UUID, int]:
@@ -64,7 +61,14 @@ def _customers_with_labeled_decisions(session: Session, network_code: str) -> di
     return dict(session.execute(stmt).all())
 
 
-def _train_and_log(session: Session, network_code: str, *, customer_id: uuid.UUID | None = None, label: str = "global") -> None:
+def _train_and_log(
+    session: Session,
+    network_code: str,
+    *,
+    customer_id: uuid.UUID | None = None,
+    tenant_id: uuid.UUID | None = None,
+    label: str = "shared",
+) -> None:
     """Runs train_model for one (network_code, customer_id) pair as part of the
     unattended scheduled job, and never lets a single network/customer's failure abort
     the rest of the run — unlike the on-demand web/API routes (where a human is watching
@@ -74,7 +78,7 @@ def _train_and_log(session: Session, network_code: str, *, customer_id: uuid.UUI
     is recorded as a FAILED MlModel row so it's visible on the admin models page, not
     just a server log line nobody looks at."""
     try:
-        result = train_model(session, network_code, customer_id=customer_id)
+        result = train_model(session, network_code, customer_id=customer_id, tenant_id=tenant_id)
         logger.info("Retrained %s (%s): promoted=%s metrics=%s", network_code, label, result.promoted, result.metrics)
     except InsufficientTrainingData as exc:
         logger.info("Skipping retrain for %s (%s): %s", network_code, label, exc)
@@ -87,6 +91,7 @@ def _train_and_log(session: Session, network_code: str, *, customer_id: uuid.UUI
             session,
             network_code=network_code,
             customer_id=customer_id,
+            tenant_id=tenant_id,
             version=f"failed_{datetime.now(timezone.utc):%Y%m%dT%H%M%S}",
             algorithm="logistic_regression",
             artifact_path="",
@@ -98,9 +103,10 @@ def _train_and_log(session: Session, network_code: str, *, customer_id: uuid.UUI
 
 
 def retrain_job() -> None:
-    """Iterates every registered network and retrains the global model only if enough
-    NEW labeled decisions have accumulated since its last training run — avoids
-    thrashing on tiny batches. Then does the same per customer: any customer with enough
+    """Iterates every registered network and retrains each model slot only if enough NEW
+    labeled decisions have accumulated since its last training run — avoids thrashing on
+    tiny batches. In order: the shared model (decisions from banks on the shared model),
+    then each bank-only bank's own model, then per customer: any customer with enough
     new labeled decisions of their own gets their own model trained too, which is what
     actually builds a customer's first model and (via ml/predict.py's AUTO mode) puts it
     into use with no separate action required. Designed to be triggered by an in-process
@@ -110,20 +116,21 @@ def retrain_job() -> None:
     settings = get_settings()
     session = get_session_factory()()
     try:
+        private_bank_ids = session.execute(
+            select(Tenant.id).where(Tenant.ml_model_source == MlModelSource.PRIVATE, Tenant.is_active)
+        ).scalars().all()
         for network_code in registered_codes():
-            total = _count_labeled_decisions(session, network_code)
-            already_trained_on = _most_recently_trained_count(session, network_code)
-            new_decisions = total - already_trained_on
-
-            if new_decisions < settings.ml_min_new_decisions_for_retrain:
-                logger.info(
-                    "Skipping global retrain for %s: %d new decisions, need %d",
-                    network_code,
-                    new_decisions,
-                    settings.ml_min_new_decisions_for_retrain,
-                )
-            else:
-                _train_and_log(session, network_code)
+            for bank_id in [None, *private_bank_ids]:
+                label = "shared" if bank_id is None else f"bank tenant_id={bank_id}"
+                total = _count_labeled_decisions(session, network_code, tenant_id=bank_id)
+                new_decisions = total - _most_recently_trained_count(session, network_code, tenant_id=bank_id)
+                if new_decisions < settings.ml_min_new_decisions_for_retrain:
+                    logger.info(
+                        "Skipping %s retrain for %s: %d new decisions, need %d",
+                        label, network_code, new_decisions, settings.ml_min_new_decisions_for_retrain,
+                    )
+                    continue
+                _train_and_log(session, network_code, tenant_id=bank_id, label=label)
 
             for customer_id, customer_total in _customers_with_labeled_decisions(session, network_code).items():
                 customer_already_trained_on = _most_recently_trained_count(session, network_code, customer_id)

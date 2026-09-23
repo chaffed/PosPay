@@ -58,6 +58,8 @@ def _format_metrics(metrics: dict | None) -> str:
         return "—"
     parts = []
     for key, value in metrics.items():
+        if isinstance(value, dict):
+            continue  # e.g. ml/train.py's "evaluation" details, shown separately
         if key in ("precision", "recall") and isinstance(value, (int, float)):
             parts.append(f"{key.capitalize()}: {value * 100:.0f}%")
         elif isinstance(value, (int, float)):
