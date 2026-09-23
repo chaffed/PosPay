@@ -80,8 +80,15 @@ def decode_and_build_context(token: str, db: Session, *, expected_type: str) -> 
     if membership is None or not membership.is_active:
         raise AccessRevoked("Membership in this organization is no longer active")
 
+    # The membership's CURRENT group, not the token's security_group_id claim — otherwise
+    # reassigning a user to a less-privileged group (e.g. Admin -> Viewer) would leave the
+    # old group's permissions active until this token expired. The claim is only a hint
+    # of what the group was at mint time; everything downstream (including routes that
+    # re-mint tokens from ctx.security_group_id, e.g. the WebAuthn login tail) sees the
+    # current one.
+    security_group_id = membership.security_group_id
     group = db.get(SecurityGroup, security_group_id)
-    if group is None:
+    if group is None or group.tenant_id != tenant_id:
         raise AccessRevoked("Security group no longer exists")
 
     branding = get_tenant_branding_by_id(db, tenant_id)

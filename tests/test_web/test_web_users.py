@@ -509,3 +509,37 @@ def test_access_grant_require_webauthn_checkbox_survives_needs_confirmation(clie
     granted = user_service.get_access_for_email(db_session, tenant_b.id, users_a["preparer"].email)
     assert len(granted) == 1
     assert granted[0].membership.require_webauthn is True
+
+
+def _demote_to_viewer(db_session, tenant, user):
+    from pospay.domain.tenant_membership import TenantMembership
+
+    viewer = next(g for g in security_group_service.list_security_groups(db_session, tenant.id) if g.name.lower() == "viewer")
+    membership = db_session.query(TenantMembership).filter_by(user_id=user.id, tenant_id=tenant.id).one()
+    user_service.update_membership(db_session, tenant.id, membership.id, security_group_id=viewer.id, customer_id=None)
+    db_session.commit()
+
+
+def test_security_group_reassignment_takes_effect_on_next_web_request(client, db_session, tenant_factory):
+    """Demoting a logged-in user must not leave their old group's permissions active until
+    their access token expires — permissions are resolved from the membership's CURRENT
+    group, not the security_group_id the token was minted with."""
+    tenant, _account, users = tenant_factory.make(slug="web-demote-immediate")
+    _login(client, tenant.slug, users["admin"].email)
+    assert client.get("/ui/users", follow_redirects=False).status_code == 200
+
+    _demote_to_viewer(db_session, tenant, users["admin"])
+
+    assert client.get("/ui/users", follow_redirects=False).status_code == 403
+
+
+def test_security_group_reassignment_takes_effect_on_next_api_request(client, db_session, tenant_factory):
+    from tests.conftest import login_headers
+
+    tenant, _account, users = tenant_factory.make(slug="api-demote-immediate")
+    headers = login_headers(client, tenant.slug, users["admin"].email)
+    assert client.get("/api/v1/users", headers=headers).status_code == 200
+
+    _demote_to_viewer(db_session, tenant, users["admin"])
+
+    assert client.get("/api/v1/users", headers=headers).status_code == 403
