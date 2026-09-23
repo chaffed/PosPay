@@ -45,9 +45,10 @@ class WebForbidden(Exception):
     error page (not a JSON 403) by an exception handler in main.py. `message`, when
     given, replaces the generic "You don't have permission" text (e.g. the demo lock)."""
 
-    def __init__(self, message: str | None = None):
+    def __init__(self, message: str | None = None, *, title: str | None = None):
         super().__init__(message)
         self.message = message
+        self.title = title
 
 
 class WebPasswordChangeRequired(Exception):
@@ -90,7 +91,7 @@ def get_web_context(request: Request, db: Session = Depends(get_db)) -> TenantCo
     if ctx.must_change_password and request.url.path != PASSWORD_CHANGE_PATH:
         raise WebPasswordChangeRequired()
     if ctx.is_demo and is_locked_in_demo(request.method, request.url.path):
-        raise WebForbidden(DEMO_LOCKED_MESSAGE)
+        raise WebForbidden(DEMO_LOCKED_MESSAGE, title="Turned off in the demo")
     return ctx
 
 

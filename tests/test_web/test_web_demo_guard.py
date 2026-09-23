@@ -78,6 +78,7 @@ def test_locked_actions_are_refused_in_the_demo(client, demo, path):
 
     assert resp.status_code == 403
     assert "turned off in the public demo" in resp.text.replace("&#39;", "'")
+    assert "Turned off in the demo" in resp.text  # not the generic "no access" heading
 
 
 def test_everyday_actions_still_work_in_the_demo(client, demo):

@@ -305,6 +305,9 @@ top-right corner) below. A .toolbar with no .card ancestor -- e.g. the doc index
 h1 + "Download PDF" row -- has no such clearance and would otherwise render right
 underneath page-controls, clipped by it. */
 .page > .toolbar { margin-top: 2.75rem; }
+/* Same clearance for notices rendered at the very top of .page (flash messages, the
+public-demo notice, the tenant banner), which otherwise ran underneath page-controls. */
+.page > :is(.flash, .banner-carousel):first-child { margin-top: 2.75rem; }
 
 .page-controls {
   position: absolute; top: 1.5rem; right: 1.5rem; display: flex; gap: 0.5rem; align-items: center;
