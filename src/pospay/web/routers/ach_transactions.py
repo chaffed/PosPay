@@ -23,6 +23,7 @@ from pospay.repositories.ach_transaction_repo import AchTransactionRepository
 from pospay.services import account_service, audit_log_service, bulk_upload_file_service, bulk_upload_reversal_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.pagination import paginate
+from pospay.web.form_errors import friendly_error
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach/transactions", tags=["web-ach-transactions"])
@@ -94,7 +95,7 @@ def create_transaction(
         db.rollback()
         accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
-            request, "ach/transaction_form.html", ctx=ctx, accounts=accounts, error=f"Could not submit transaction: {exc}", status_code=422
+            request, "ach/transaction_form.html", ctx=ctx, accounts=accounts, error=friendly_error(exc, action="Could not submit transaction", duplicate="A transaction with that trace number already exists."), status_code=422
         )
     audit_log_service.record_action(
         db,

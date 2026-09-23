@@ -16,6 +16,7 @@ from pospay.repositories.stop_payment_repo import StopPaymentRepository
 from pospay.services import account_service, audit_log_service, stop_payment_service
 from pospay.web.deps import render_template, require_web_permission
 from pospay.web.pagination import paginate
+from pospay.web.form_errors import friendly_error
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/stop-payments", tags=["web-stop-payments"])
@@ -92,7 +93,7 @@ def create_stop_payment(
             "stop_payments/form.html",
             ctx=ctx,
             accounts=accounts,
-            error=f"Could not create stop payment: {exc}",
+            error=friendly_error(exc, action="Could not create stop payment"),
             status_code=422,
         )
     audit_log_service.record_action(

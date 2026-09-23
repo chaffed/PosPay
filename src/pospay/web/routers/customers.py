@@ -14,6 +14,7 @@ from pospay.repositories.customer_repo import CustomerRepository
 from pospay.services import account_service, audit_log_service, customer_ml_service, customer_service, sso_service
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.pagination import paginate
+from pospay.web.form_errors import friendly_error
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/customers", tags=["web-customers"])
@@ -103,7 +104,7 @@ def create_customer(
     except Exception as exc:  # noqa: BLE001 — surface a DB constraint violation (e.g. duplicate customer number) to the form
         db.rollback()
         return render_template(
-            request, "customers/form.html", ctx=ctx, customer=None, error=f"Could not create customer: {exc}", status_code=422
+            request, "customers/form.html", ctx=ctx, customer=None, error=friendly_error(exc, action="Could not create customer", duplicate="A customer with that customer number already exists."), status_code=422
         )
 
     audit_log_service.record_action(
@@ -196,7 +197,7 @@ def update_customer(
     except Exception as exc:  # noqa: BLE001 — surface a DB constraint violation (e.g. duplicate customer number) to the form
         db.rollback()
         return render_template(
-            request, "customers/form.html", ctx=ctx, customer=existing, error=f"Could not update customer: {exc}", status_code=422
+            request, "customers/form.html", ctx=ctx, customer=existing, error=friendly_error(exc, action="Could not update customer", duplicate="Another customer already has that customer number."), status_code=422
         )
 
     audit_log_service.record_action(

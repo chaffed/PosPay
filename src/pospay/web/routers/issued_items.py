@@ -23,6 +23,7 @@ from pospay.services import (
 )
 from pospay.web.deps import WebNotFound, render_template, require_web_permission
 from pospay.web.pagination import paginate
+from pospay.web.form_errors import friendly_error
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/issued-items", tags=["web-issued-items"])
@@ -118,7 +119,7 @@ def create_issued_item(
             "issued_items/form.html",
             ctx=ctx,
             accounts=accounts,
-            error=f"Could not create issued item: {exc}",
+            error=friendly_error(exc, action="Could not create issued item", duplicate="An issued check with that number already exists on this account."),
             status_code=422,
         )
 

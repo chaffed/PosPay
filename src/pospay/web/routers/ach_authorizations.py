@@ -17,6 +17,7 @@ from pospay.repositories.ach_authorization_repo import AchAuthorizationRepositor
 from pospay.services import account_service, ach_authorization_service, audit_log_service, exception_service
 from pospay.web.deps import render_template, require_web_permission
 from pospay.web.pagination import paginate
+from pospay.web.form_errors import friendly_error
 from pospay.web.security import verify_csrf
 
 router = APIRouter(prefix="/ui/ach/authorizations", tags=["web-ach-authorizations"])
@@ -133,7 +134,7 @@ def create_authorization(
         accounts = account_service.list_accounts(db, ctx.tenant_id, customer_id=ctx.customer_id)
         return render_template(
             request, "ach/authorization_form.html", ctx=ctx, accounts=accounts, prefill=prefill,
-            from_exception_id=from_exception_id or None, error=f"Could not create authorization: {exc}", status_code=422,
+            from_exception_id=from_exception_id or None, error=friendly_error(exc, action="Could not create authorization"), status_code=422,
         )
     summary = f"Authorized ACH originator {rule.originator_name} ({rule.originator_id})"
     if from_exception_id:
