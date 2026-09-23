@@ -5,10 +5,10 @@ Prior review: `SECURITY_REVIEW.md` (2026-07-28) — findings there are not repea
 still open or regressed.
 
 **Status (2026-09-23): every finding below has been fixed, documented, or deliberately
-left as a roadmap item (F3), in FIX_PLAN.md Phases 1–8.** What's still open:
+left as a roadmap item (F3), in FIX_PLAN.md Phases 1–8. Phase 9 closed the last item from SECURITY_REVIEW.md (model
+files are now verified before loading). All shipped in 1.5.0.** What's still open:
 - no real processor X9.37 file to verify field positions (F4);
-- Postgres-only code (RLS, the scheduler lock) has never run against a live Postgres here;
-- from SECURITY_REVIEW.md, joblib model files are loaded without a signature check (Low).
+- Postgres-only code (RLS, the scheduler lock) has never run against a live Postgres here.
 
 ## Progress checklist
 

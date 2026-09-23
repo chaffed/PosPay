@@ -18,7 +18,7 @@
 
 Callers audit-log each change (web/routers/tenant_ml.py)."""
 
-import shutil
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -32,8 +32,10 @@ from pospay.domain.decision import Decision
 from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.ml_model import MlModel, MlModelStatus
 from pospay.domain.tenant import MlModelSource, Tenant
-from pospay.ml.registry import ArtifactStore, activate_model, create_model_row, get_active_model_row
+from pospay.ml.registry import ArtifactIntegrityError, ArtifactStore, activate_model, create_model_row, get_active_model_row
 from pospay.networks.registry import registered_codes
+
+logger = logging.getLogger(__name__)
 
 
 class SwitchNotAllowed(ValueError):
@@ -63,7 +65,8 @@ def _seed_bank_model(session: Session, tenant: Tenant, shared: MlModel) -> MlMod
     store = ArtifactStore()
     version = f"seed-from-shared-{shared.version}"[:64]
     destination = store.base_dir / f"{shared.network_code}_bank_{tenant.id}_{uuid.uuid4().hex[:8]}_{version}.joblib"
-    shutil.copyfile(shared.artifact_path, destination)
+    # Verified copy: a tampered shared file must not be re-fingerprinted as the bank's own.
+    artifact_sha256 = store.copy_model(shared, destination)
     shared_metrics = {k: v for k, v in (shared.metrics_json or {}).items() if not isinstance(v, dict)}
     row = create_model_row(
         session,
@@ -72,6 +75,7 @@ def _seed_bank_model(session: Session, tenant: Tenant, shared: MlModel) -> MlMod
         version=version,
         algorithm=shared.algorithm,
         artifact_path=str(destination),
+        artifact_sha256=artifact_sha256,
         trained_from_decision_count=shared.trained_from_decision_count,
         metrics_json={
             **shared_metrics,
@@ -106,7 +110,12 @@ def switch_to_bank_only(session: Session, tenant_id: uuid.UUID, *, actor_user_id
     for network_code in registered_codes():
         shared = get_active_model_row(session, network_code)
         if shared is not None and shared.artifact_path and Path(shared.artifact_path).exists():
-            seeded.append(_seed_bank_model(session, tenant, shared))
+            try:
+                seeded.append(_seed_bank_model(session, tenant, shared))
+            except ArtifactIntegrityError:
+                # Same outcome as having no shared model to copy: this network stays
+                # unscored for the bank until it trains its own.
+                logger.exception("Not seeding %s for bank %s: the shared model file failed its integrity check", network_code, tenant.id)
     tenant.ml_model_source = MlModelSource.PRIVATE
     tenant.ml_source_changed_at = datetime.now(timezone.utc)
     tenant.ml_source_changed_by_user_id = actor_user_id

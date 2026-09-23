@@ -108,7 +108,8 @@ def test_the_seeded_copy_scores_exactly_like_the_shared_model(db_session, tenant
     store = ArtifactStore()
     features = [{"amount_mismatch": 1, "presented_amount": 999.0}, {"amount_mismatch": 0, "presented_amount": 100.0}]
 
-    assert list(store.load(seeded.artifact_path).predict_proba(features)) == list(store.load(shared.artifact_path).predict_proba(features))
+    assert list(store.load_model(seeded).predict_proba(features)) == list(store.load_model(shared).predict_proba(features))
+    assert seeded.artifact_sha256 == shared.artifact_sha256
 
 
 def test_switching_with_no_shared_model_leaves_the_bank_unscored_until_it_trains(db_session, tenant_factory):

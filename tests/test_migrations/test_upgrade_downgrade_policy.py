@@ -262,3 +262,31 @@ def test_ml_model_choice_migration_backfills_model_owners_and_keeps_banks_on_sha
     assert owners[shared_model_id] is None
     assert tenant == ("SHARED", None)
     assert scopes == '["usage"]'
+
+
+def test_artifact_sha256_migration_pins_existing_files_and_leaves_missing_ones_null(scratch_db, tmp_path):
+    """c3e8f1a5d9b2: a model whose file exists gets that file's SHA-256; one whose file is
+    gone stays NULL, which ml/registry.py refuses to load."""
+    import hashlib
+
+    command.upgrade(_alembic_config(), "b7d3e9a2c4f1")
+    present = tmp_path / "present.joblib"
+    present.write_bytes(b"model bytes")
+    present_id, missing_id = uuid.uuid4().hex, uuid.uuid4().hex
+    conn = _connect(scratch_db)
+    for model_id, path in ((present_id, str(present)), (missing_id, str(tmp_path / "missing.joblib"))):
+        conn.execute(
+            "INSERT INTO ml_model (id, network_code, version, algorithm, artifact_path, trained_from_decision_count, status) "
+            "VALUES (?, 'check', 'v1', 'logistic_regression', ?, 10, 'ACTIVE')",
+            (model_id, path),
+        )
+    conn.commit()
+    conn.close()
+
+    command.upgrade(_alembic_config(), "head")
+
+    conn = _connect(scratch_db)
+    digests = dict(conn.execute("SELECT id, artifact_sha256 FROM ml_model").fetchall())
+    conn.close()
+    assert digests[present_id] == hashlib.sha256(b"model bytes").hexdigest()
+    assert digests[missing_id] is None

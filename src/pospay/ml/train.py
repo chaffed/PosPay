@@ -142,7 +142,7 @@ def _promotion_decision(
         return False, evaluation
 
     try:
-        champion_metrics = _evaluate(ArtifactStore().load(champion.artifact_path), X_holdout, y_holdout)
+        champion_metrics = _evaluate(ArtifactStore().load_model(champion), X_holdout, y_holdout)
     except Exception:  # noqa: BLE001 -- a missing/unloadable old artifact shouldn't block training
         champion_metrics = {}
     challenger_auc, champion_auc = challenger_metrics.get("auc"), champion_metrics.get("auc")
@@ -243,7 +243,7 @@ def train_model(
         artifact_key = f"{network_code}_bank_{slot_tenant_id}_{version}"
     else:
         artifact_key = f"{network_code}_{version}"
-    artifact_path = ArtifactStore().save(model, key=artifact_key)
+    artifact_path, artifact_sha256 = ArtifactStore().save(model, key=artifact_key)
 
     model_row = create_model_row(
         session,
@@ -253,6 +253,7 @@ def train_model(
         version=version,
         algorithm="logistic_regression",
         artifact_path=artifact_path,
+        artifact_sha256=artifact_sha256,
         trained_from_decision_count=len(decisions),
         metrics_json={**metrics, "evaluation": evaluation},
         status=MlModelStatus.TRAINING,

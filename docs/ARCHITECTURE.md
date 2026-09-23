@@ -292,8 +292,10 @@ and the challenger is promoted only if it does at least as well
 at least `ml_bank_model_min_decisions`, so it can't beat the seeded copy by luck on a tiny
 sample. There's a per-slot cooldown so on-demand retraining can't be used to burn compute.
 
-Artifacts are joblib files under `ml_artifact_dir` (`ml/registry.py::ArtifactStore`); only
-the path is in the database. `ml/predict.py` caches loaded models per slot and reloads
+Artifacts are joblib (pickle) files under `ml_artifact_dir` (`ml/registry.py::ArtifactStore`).
+The database holds each file's path and its SHA-256 (`ml_model.artifact_sha256`), and a
+file is unpickled only if it still matches, because unpickling a swapped file would run
+code. A model that fails the check simply doesn't score, and the failure is logged. `ml/predict.py` caches loaded models per slot and reloads
 automatically when the slot's active model id changes.
 
 ## OCR
@@ -410,9 +412,6 @@ means for deployment.
   issuer's history, check-number gaps) were planned but aren't built. The check model
   uses per-item and OCR features only (`networks/check/features.py`).
 - **Cloud OCR providers** are stubs (see [OCR](#ocr)).
-- **Model artifacts** are loaded with joblib (pickle) from `ml_artifact_dir` with no
-  signature check. Anyone who can write to that directory can run code in the app, so keep
-  it writable only by the app (see SECURITY_REVIEW.md).
 - **X9.37 field positions** follow the published layouts but haven't been checked against
   a real processor's file (`bulk_import/x937.py`).
 - **Postgres-specific features** (RLS, the scheduler lock) are covered by unit tests but

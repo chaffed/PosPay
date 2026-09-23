@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -10,9 +11,11 @@ from pospay.domain.exception_item import ExceptionItem
 from pospay.domain.ml_model import MlModel
 from pospay.domain.tenant import MlModelSource, Tenant
 from pospay.ml.model import ScoringModel
-from pospay.ml.registry import ArtifactStore, get_active_model_row
+from pospay.ml.registry import ArtifactIntegrityError, ArtifactStore, get_active_model_row
 from pospay.networks.registry import get_adapter
 from pospay.repositories.customer_ml_setting_repo import CustomerMlSettingRepository
+
+logger = logging.getLogger(__name__)
 
 # In-process cache: model slot (network_code, tenant_id, customer_id) -> (active_model_id,
 # loaded_model). Invalidated automatically whenever the DB's active model id for that
@@ -68,7 +71,13 @@ def _load_model(session: Session, tenant_id: uuid.UUID, network_code: str, custo
     if cached is not None and cached[0] == model_row.id:
         return cached[1], model_row.version
 
-    model = ArtifactStore().load(model_row.artifact_path)
+    try:
+        model = ArtifactStore().load_model(model_row)
+    except ArtifactIntegrityError:
+        # Never let a bad model file block ingestion: the item just goes unscored, the
+        # same as before any model existed, and this is logged for the operator.
+        logger.exception("Not scoring with ml_model %s: its artifact failed the integrity check", model_row.id)
+        return None
     _MODEL_CACHE[cache_key] = (model_row.id, model)
     return model, model_row.version
 

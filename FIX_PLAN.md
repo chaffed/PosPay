@@ -579,6 +579,23 @@ last; each entry committed):
 - [x] **F3:** keep the Textract/Azure providers as roadmap items. No change is needed
       (startup already guards against them).
 
+## Phase 9 — Verify model files before loading (added 2026-09-23) — SECURITY_REVIEW Low
+
+**Status: COMPLETE (2026-09-23, branch `phase-9-artifact-integrity`, merged to `main`,
+released as 1.5.0).** This wasn't in the original plan. It's the one item still open from
+SECURITY_REVIEW.md, and it matters more now that the README recommends a shared volume for
+model files.
+
+- [x] `ml_model.artifact_sha256` (migration `c3e8f1a5d9b2` pins existing files; a row whose
+      file is missing stays NULL and won't load until retrained).
+- [x] `ArtifactStore.save` hashes the exact bytes it writes; `load_model` hashes and
+      unpickles the same in-memory bytes, and refuses a mismatch or a missing hash.
+- [x] Scoring skips a bad model (logged, item unscored); switching to bank-only never
+      copies a bad shared model; the operator's feature-importance call returns 409.
+- [x] Tests: `tests/test_ml/test_artifact_integrity.py` plus a migration test.
+- Decision: a SHA-256 recorded in the database rather than an HMAC key. The database already
+  decides which file loads, so a key would add management without adding protection.
+
 ---
 
 ## Decisions

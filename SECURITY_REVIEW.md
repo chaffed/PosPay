@@ -157,7 +157,7 @@ disclosed for the rest of the parser) — there's no real sample cash-letter fil
 repo to verify byte-for-byte against, so if a real file from your processor gets rejected
 on a mismatch that looks wrong, check those positions first.
 
-**Low — `joblib.load` (pickle) deserializes model artifacts with no signature check** —
+**Low — FIXED in 1.5.0 (see the end of this document) — `joblib.load` (pickle) deserializes model artifacts with no signature check** —
 not attacker-reachable today since the path comes from the DB, but no defense-in-depth if
 that ever changes.
 
@@ -294,6 +294,13 @@ which organizations exist. When a bank leaves, the shared model is rebuilt witho
 Also fixed: the admin model-list API returned every bank's models, and the admin page's
 training counts covered all banks.
 
-Still open from the original review: the Low-severity note that model artifacts are loaded
-with `joblib` (pickle) without a signature check. (Not attacker-reachable today: artifact
-paths come from the database, never from a request.)
+**FIXED 2026-09-23 (FIX_PLAN Phase 9, release 1.5.0):** the last open item from the
+original review, model artifacts loaded with `joblib` (pickle) without a signature check.
+Each file's SHA-256 is now recorded on its `ml_model` row when it's written
+(`artifact_sha256`). `ml/registry.py::ArtifactStore.load_model` hashes the file and
+unpickles those same in-memory bytes only if they match, and refuses a row with no
+recorded hash. The database was already the trust root (it chooses which file to load), so
+this needs no new key. Someone who can write to the artifact directory or a shared volume,
+but not the database, can no longer get code run. A failed check leaves exceptions
+unscored and is logged. It never blocks ingestion. The upgrade migration pins existing
+files.

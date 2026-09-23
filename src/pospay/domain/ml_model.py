@@ -41,6 +41,9 @@ class MlModel(Base):
     version: Mapped[str] = mapped_column(String(64), nullable=False)
     algorithm: Mapped[str] = mapped_column(String(64), nullable=False)
     artifact_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # SHA-256 of the artifact file, recorded when it's written. ml/registry.py checks the
+    # file against it before unpickling, and refuses a row with none (see ArtifactStore).
+    artifact_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     trained_from_decision_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     metrics_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)

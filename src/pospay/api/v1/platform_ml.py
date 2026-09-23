@@ -25,7 +25,7 @@ from pospay.domain.exception_item import ExceptionItem, ExceptionItemSource
 from pospay.domain.ml_model import MlModel
 from pospay.domain.platform_api_key import PlatformApiKey
 from pospay.domain.tenant import MlModelSource, Tenant
-from pospay.ml.registry import ArtifactStore, activate_model, list_slot_models
+from pospay.ml.registry import ArtifactIntegrityError, ArtifactStore, activate_model, list_slot_models
 from pospay.ml.train import InsufficientTrainingData, RetrainCooldownActive, train_model
 from pospay.networks.registry import registered_codes
 from pospay.schemas.ml_model import MlModelRead, PendingFraudExampleRead, RetrainResponse, SwitchLockClearedRead
@@ -83,7 +83,10 @@ def shared_model_feature_importance(
     model = _shared_model_or_404(db, model_id)
     if not model.artifact_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This model has no trained artifact")
-    return ArtifactStore().load(model.artifact_path).feature_importance()
+    try:
+        return ArtifactStore().load_model(model).feature_importance()
+    except ArtifactIntegrityError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
 
 @router.get("/ml/fraud-examples/pending", response_model=list[PendingFraudExampleRead])
