@@ -8,6 +8,10 @@ and its own trained ML model, without touching any real customer's data.</p>
 
 <h2>How resets work</h2>
 <ul>
+  <li><strong>Hourly reset</strong> — the demo resets on a fixed schedule (every hour by
+  default), so whatever one visitor changed doesn't stay in place for the next. Anyone
+  signed in at that moment is sent back to the sign-in page. A reset also restores the
+  organization's own settings, such as banner and login messages, colors, and password rules.</li>
   <li><strong>Automatic reset</strong> — if the demo tenant sits idle past its configured
   session window, the very next login to it wipes any changes a previous demo made and
   reseeds it fresh, before that login is even processed. Prospects always see a clean demo.</li>
@@ -18,4 +22,19 @@ and its own trained ML model, without touching any real customer's data.</p>
 
 <p>This action is scoped tightly to the actual flagged demo tenant — it can't be triggered
 against a real customer's organization.</p>
+
+<h2>What's locked in the demo</h2>
+<p>Everyone signs into the demo with the same shared credentials, so a few actions that
+would let one visitor lock out or disrupt the others are turned off. Trying one shows a
+message explaining why:</p>
+<ul>
+  <li>Single sign-on settings and security groups</li>
+  <li>Editing, deactivating, unlocking, resetting, or signing out existing users, and
+    granting access to people from other organizations</li>
+  <li>The shared account's password, security keys, and "sign out other devices"</li>
+  <li>Branding (name and logo) and session timeouts</li>
+  <li>Data exports, and ML model retraining or activation</li>
+</ul>
+<p>Everything else works normally: issued items, paid items, exceptions and decisions, ACH,
+customers, messages, and adding new users.</p>
 {% endblock %}

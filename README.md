@@ -553,6 +553,17 @@ path without a browser. `webauthn_rp_id`/`webauthn_origin` default to `localhost
 `http://localhost:8000` — set both to your real domain before deploying, or every
 registered credential will fail verification against the wrong origin.
 
+**SSO (OIDC) issuer addresses** must be public `https://` URLs. PosPay refuses to save an
+issuer that's `http://`, `localhost`, or a private/internal IP address, and every time it
+contacts an identity provider (discovery, signing keys, token exchange) it re-checks what the
+hostname resolves to and won't connect to a non-public address (`auth/outbound_http.py`).
+Otherwise anyone able to edit an SSO connection could make the server send requests into its
+own network. To test against a local identity provider (e.g. Keycloak on
+`http://localhost:8080`), set `POSPAY_OIDC_ALLOW_PRIVATE_HOSTS=true`. This is for local use
+only, and a production deployment refuses to start with it on. The server also doesn't use
+proxy environment variables for these requests, so it needs direct outbound HTTPS to the
+identity provider.
+
 For the full set of `/api/v1/*` endpoints (issued items, stop payments, paid items,
 check images, ACH, exceptions/decisions, admin, users), the permission each one requires,
 and request/response schemas, see [API.md](API.md).
@@ -737,9 +748,12 @@ launcher too, just set them as env vars before running it:
   shared, not kept secret — this is a demo tenant's whole point.
 - `POSPAY_DEMO_TENANT_SESSION_MINUTES` (default `60`) — how long the demo can sit idle
   before it resets.
+- `POSPAY_DEMO_TENANT_RESET_INTERVAL_MINUTES` (default `60`, `0` to turn off) — the demo
+  also resets on this fixed schedule, since a demo that visitors keep using is never idle.
 
-**Resets** happen two ways: automatically, the moment anyone next tries to log into the
-demo tenant after it's sat idle past the session window (before credentials are even
+**Resets** happen three ways: on the fixed schedule above (anyone signed in at that moment
+is sent back to the sign-in page); automatically, the moment anyone next tries to log into
+the demo tenant after it's sat idle past the session window (before credentials are even
 checked, so a prospect never lands mid-reset); or manually, via a "Reset now" button an
 `admin:manage` user sees on `/ui/admin` — useful right before a scheduled demo rather than
 waiting out the idle window. Either way, a reset wipes every DB row belonging to the demo
@@ -748,8 +762,18 @@ artifacts, branding assets) before reseeding from scratch — real content (incl
 whatever an OCR run extracted from an uploaded check image) never outlives one idle
 window. Scoped tightly to whichever tenant is actually flagged `is_demo` in the database —
 looked up fresh on every reset, never caller-supplied, so this can't be pointed at a real
-tenant. More on this from the demo tenant's own perspective in the in-app Admin
-Documentation once you have one running (`/ui/docs/admin`).
+tenant. A reset also puts the organization's own settings (banner and login messages,
+colors, dual control, password rules) back to a new demo's values. More on this from the
+demo tenant's own perspective in the in-app Admin Documentation once you have one running
+(`/ui/docs/admin`).
+
+**What's locked in the demo**: everyone shares the same published credentials, so actions
+that would let one visitor lock out or disrupt the others are refused (web and API alike).
+These are SSO and security-group changes; editing or granting other users' access; the
+shared account's password, security keys, and "sign out other devices"; branding and
+session timeouts; data exports; and ML retraining/activation. The full list lives in one
+place, `web/demo_guard.py`. Everything else, including the whole positive-pay workflow,
+works normally.
 
 **Sharing a link**: `/ui/login/{tenant_slug}` is a tenant-branded login page (any tenant,
 not demo-specific) — pre-fills the slug and shows that tenant's own name/accent color, so
