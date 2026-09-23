@@ -228,3 +228,27 @@ exception handlers that mark the job FAILED rather than hang.
 3. **Tenant-scope the ML training/activation pipeline** (or explicitly restrict it to a
    platform-level role, as the existing code comment suggests) — already flagged by the
    code itself, just not yet acted on.
+
+
+## Update: 2026-09-22 (see EVALUATION.md / FIX_PLAN.md)
+
+**FIXED — customer-scoped users could export the whole bank or other customers.**
+`data_export:run` is deliberately not masked for customer-scoped sessions (customers may
+export their own data), but `web/routers/data_export.py` never checked
+`ctx.customer_id`. Bank-wide export routes now 403 for customer-scoped sessions, and
+per-customer routes 404 unless the path customer is the session's own. Regression tests in
+`tests/test_web/test_web_data_export.py`.
+
+**FIXED — demoting a user didn't take effect until their token expired.**
+`auth/deps.py::decode_and_build_context` resolved permissions from the token's
+`security_group_id` claim. It now uses the membership's current group (and requires it to
+belong to the token's tenant), so a group reassignment applies on the next request, web and
+API alike. Regression tests in `tests/test_web/test_web_users.py`.
+
+**FIXED — unhandled errors surfaced as bare 500s.** App-wide handlers now render a branded
+error page (or JSON under `/api`) without exception details, and uniqueness conflicts
+become a 409. The new-account form validates `customer_id` against the tenant's own
+customers (previously any UUID was accepted).
+
+Still open, tracked in FIX_PLAN.md: shared ML model governance (Phase 5), no server-side
+token revocation (Phase 3), OIDC issuer SSRF (Phase 4), SVG logos (Phase 4).

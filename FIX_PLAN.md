@@ -26,42 +26,47 @@ own. Work top to bottom. Tick boxes as you go so a lost session can resume here.
 
 ## Phase 1 — Critical and high security fixes, small blast radius (1 PR, about 1 day)
 
+Done 2026-09-22 on branch `phase-1-security-fixes`: `898451f` (S0), `a67d085` (S1),
+`eee370a` (F2/U9/S7), plus error-page wording. Full suite: 969 passed, 1 skipped. Not pushed. Notes: forms other than accounts (customers, security
+groups, issued items, ACH transactions) now get the app-wide 409 page on duplicates rather
+than inline form errors. Inline errors for those are a nice-to-have for Phase 7.
+
 ### 1a. S0 — Customer-scoped data export
 Files: `web/routers/data_export.py`, `tests/test_web/test_web_data_export.py`
-- [ ] Bank-wide routes (`/ui/settings/data-export*`): raise `WebForbidden` when
+- [x] Bank-wide routes (`/ui/settings/data-export*`): raise `WebForbidden` when
       `ctx.customer_id is not None`.
-- [ ] Per-customer routes (`/ui/customers/{customer_id}/data-export*`): when
+- [x] Per-customer routes (`/ui/customers/{customer_id}/data-export*`): when
       `ctx.customer_id is not None` and differs from the path `customer_id`, raise
       `WebNotFound` (don't reveal that the other customer exists).
 - [x] Decision (2026-09-22): **customer users may export their own customer's data**, through
       the per-customer route only, as above. `data_export:run` stays unmasked.
-- [ ] Tests: customer-scoped user → 403 on bank-wide list/start/download; 404 on other
+- [x] Tests: customer-scoped user → 403 on bank-wide list/start/download; 404 on other
       customer's list/start/download; 200 on own customer's export (if allowed).
-- [ ] Same audit for the API: confirm no `/api/v1` export route exists (none found).
+- [x] Same audit for the API: confirm no `/api/v1` export route exists (none found).
 
 ### 1b. S1 — Group reassignment takes effect immediately
 Files: `auth/deps.py::decode_and_build_context`, `tests/test_auth/`, `tests/test_web/test_web_users.py`
-- [ ] After loading `membership`, resolve the group from `membership.security_group_id`
+- [x] After loading `membership`, resolve the group from `membership.security_group_id`
       (not the token claim) and put *that* id into `TenantContext.security_group_id`.
       This also fixes the WebAuthn verify/setup routes, which mint tokens from
       `ctx.security_group_id`.
-- [ ] Also verify `group.tenant_id == tenant_id` as a defensive check.
-- [ ] Tests: log in as Admin → `update_membership` to Viewer → next request to
+- [x] Also verify `group.tenant_id == tenant_id` as a defensive check.
+- [x] Tests: log in as Admin → `update_membership` to Viewer → next request to
       `/ui/users` is 403. Same over the API with a bearer token.
 
 ### 1c. F2 / U9 — No more bare 500s
 Files: `main.py`, `web/routers/accounts.py`, `services/account_service.py`, `templates/error.html`
-- [ ] Add a catch-all `@app.exception_handler(Exception)` for `/ui/*` paths that logs the
+- [x] Add a catch-all `@app.exception_handler(Exception)` for `/ui/*` paths that logs the
       traceback and renders `error.html` (500, generic message, no stack trace). Leave
       `/api/*` returning JSON.
-- [ ] Account create: catch `IntegrityError` → re-render the form with "An account with
+- [x] Account create: catch `IntegrityError` → re-render the form with "An account with
       that number / external ID already exists." Do the same for any other create form with
       unique constraints. Grep `UniqueConstraint` in `domain/` and check each form
       (customers, security groups, ACH return reasons, SSO connections, users).
-- [ ] S7 (same file): validate `customer_id` from the form with
+- [x] S7 (same file): validate `customer_id` from the form with
       `customer_service.get_customer(db, ctx.tenant_id, …)`, and show a form error on a bad
       or foreign id. Reject malformed UUIDs cleanly.
-- [ ] Tests: duplicate account → 400/200 with error text, not 500; bogus `customer_id` →
+- [x] Tests: duplicate account → 400/200 with error text, not 500; bogus `customer_id` →
       form error.
 
 ## Phase 2 — Password lifecycle (1 PR, about 1–2 days) — F7
