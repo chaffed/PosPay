@@ -296,7 +296,7 @@ filtered lists, and add "Awaiting my approval", "Oldest open exception age", and
 default (deliberately), so the default admin clicks it and gets 403. Wrap the link in
 `can(ctx, ...)` or explain that the permission has to be granted.
 
-**U9 — FIXED 2026-09-23 (Phase 7) — Low — Error pages are inconsistent.** 403/404 render the branded `error.html`, but
+**U9 — FIXED 2026-09-22 (Phase 1) — Low — Error pages are inconsistent.** 403/404 render the branded `error.html`, but
 unhandled errors show a bare-text 500 (F2).
 
 What's solid (UI): consistent layout and navigation, a skip link, a light/dark/system
