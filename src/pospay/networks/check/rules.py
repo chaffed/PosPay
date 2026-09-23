@@ -17,8 +17,8 @@ def normalize_payee(name: str) -> str:
 
 def evaluate_check_rules(inputs: CheckMatchInputs) -> tuple[list[CheckExceptionType], uuid.UUID | None]:
     """Pure function: no DB session, only pre-loaded facts about the presented item and
-    its candidate issued_item. Order matters — see networks/check module docstring in the
-    architecture plan for the reasoning behind each rule's position and short-circuits."""
+    its candidate issued_item. Order matters — see docs/ARCHITECTURE.md ("Matching rules")
+    for the reasoning behind each rule's position and short-circuits."""
     exceptions: list[CheckExceptionType] = []
 
     if inputs.is_duplicate_paid:

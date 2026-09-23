@@ -7,8 +7,8 @@ networks — see `networks/`) with pluggable OCR and an ML-assisted exception re
 feedback loop.
 
 This README covers local setup and deployment only. For architecture (data model, the
-network-adapter pattern, matching engine rules, ML pipeline design), see the project's
-architecture plan. For the JSON API (`/api/v1/*` — endpoints, auth, permissions,
+network-adapter pattern, matching engine rules, ML pipeline design), see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For the JSON API (`/api/v1/*` — endpoints, auth, permissions,
 schemas), see [API.md](API.md). For implementing a new bank or a new customer —
 prerequisites and step-by-step setup, also available as an in-app guided checklist at
 `/ui/wizard/bank` and `/ui/customers/{id}/wizard` — see [RUNBOOK.md](RUNBOOK.md).
@@ -860,6 +860,14 @@ By default, run **one** app process. `scripts/launcher.py`, the Docker image and
   limit. Divide `POSPAY_RATE_LIMIT_PER_MINUTE` by N, or enforce the real limit at your proxy
   or WAF. A shared limiter (for example, Redis) isn't built in.
 
+- **Files are on local disk.** Check images, tenant logos, bulk-upload originals, data
+  export archives and trained ML models are written under the `*_storage_dir` /
+  `ml_artifact_dir` / `auto_import_dropbox_dir` paths in `config.py`, and only their paths
+  go in the database. Every instance must see the same files, so point all of those at one
+  shared volume. Otherwise an image uploaded through one instance, or a model trained on it,
+  is missing on the others. Data exports and OCR run as in-process background tasks on the
+  instance that took the request; if that instance restarts mid-job, the job doesn't resume.
+
 Everything else a request depends on (sessions, CSRF, WebAuthn challenges, the demo tenant's
 idle-reset clock) lives in the database or in signed cookies, so a request can land on any
 instance. Only the OIDC discovery and signing-key caches are per process, and each instance
@@ -908,6 +916,8 @@ exposed to templates as a `can(ctx, permission)` Jinja global — hiding a butto
 cosmetic, the POST route's own permission check is what actually enforces it.
 
 ## Architecture at a glance
+
+The full picture (and the reasoning behind it) is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 - `db/` — engine/session factory (one code path for all three backends), tenant context
 - `domain/` — SQLAlchemy models (import `pospay.domain` to register every mapper — see

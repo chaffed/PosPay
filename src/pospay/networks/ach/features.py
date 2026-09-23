@@ -11,7 +11,7 @@ from pospay.domain.exception_item import ExceptionItem
 
 def build_ach_features(session: Session, exception_item: ExceptionItem) -> dict[str, Any]:
     """Feature vector for the ACH ML model — deliberately a different shape than the
-    check model's (see ml/ in the architecture plan on why these are separate models
+    check model's (see docs/ARCHITECTURE.md, "ML pipeline", on why these are separate models
     rather than one shared one with zero-filled irrelevant fields)."""
     txn = session.get(AchTransaction, exception_item.source_item_id)
     exception_types = exception_item.exception_types.split(",") if exception_item.exception_types else []

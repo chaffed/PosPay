@@ -71,8 +71,7 @@ def _consume_challenge(session: Session, user_id: uuid.UUID, purpose: WebauthnCh
 
 def begin_registration(session: Session, user: User, tenant_id: uuid.UUID) -> str:
     """WebAuthn credentials are still registered per tenant-membership, not once for the
-    whole identity (see the module docstring below and the plan's WebAuthn trade-off
-    note) — a user with memberships in two tenants registers a key separately in each."""
+    whole identity (see docs/ARCHITECTURE.md, "Authentication and sessions") — a user with memberships in two tenants registers a key separately in each."""
     settings = get_settings()
     existing = WebauthnCredentialRepository(session, tenant_id).list(user_id=user.id)
 

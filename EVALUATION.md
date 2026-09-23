@@ -4,6 +4,12 @@ Started: 2026-09-22. Baseline commit: `db146c0` (plus uncommitted approvals-queu
 Prior review: `SECURITY_REVIEW.md` (2026-07-28) — findings there are not repeated unless
 still open or regressed.
 
+**Status (2026-09-23): every finding below has been fixed, documented, or deliberately
+left as a roadmap item (F3), in FIX_PLAN.md Phases 1–8.** What's still open:
+- no real processor X9.37 file to verify field positions (F4);
+- Postgres-only code (RLS, the scheduler lock) has never run against a live Postgres here;
+- from SECURITY_REVIEW.md, joblib model files are loaded without a signature check (Low).
+
 ## Progress checklist
 
 - [x] 1. Test suite baseline — 956 passed, 1 skipped, **1 failed** (13.5 min)
@@ -87,20 +93,25 @@ expects state binding. Store it in the `sso_state` JWT and compare on callback.
 account numbers/amounts may be served from browser cache (back button after logout,
 shared workstations). Add `Cache-Control: no-store` for `/ui/*` and `/api/*` responses.
 
-**S5 — Info — Rate limiter is in-memory per process** (`web/rate_limit.py`). Fine for a
+**S5 — DOCUMENTED 2026-09-23 (Phase 8) — Info — Rate limiter is in-memory per process** (`web/rate_limit.py`). Fine for a
 single instance; limits multiply with workers/instances. Account lockout (DB-backed)
-covers password brute force.
+covers password brute force. *Phase 8:* README "Running more than one instance" spells
+out that limits multiply by process count, and what to do about it (divide the limit, or
+enforce it at the proxy/WAF).
 
-**S6 — High (carried over, still open) — Any tenant's admin controls the global ML model
+**S6 — FIXED 2026-09-23 (Phase 5) — High — Any tenant's admin controls the global ML model
 that scores every tenant.** `MlModel` has no `tenant_id`; `api/v1/admin.py` (and the web
 admin ML page) gate retrain/activate on per-tenant `admin:manage`, and fraud-training
 examples (`ml_training_example:write`) feed that same shared model. One tenant can
 retrain/roll back/poison the model used for all tenants' exception scoring, and
 `feature_importance()` exposes other tenants' `tenant_id` values (features.py L52/L20).
 Fix: restrict global-model actions to a platform-level role (the platform API key
-concept already exists) and drop `tenant_id` as a raw feature.
+concept already exists) and drop `tenant_id` as a raw feature. *Phase 5:* the shared
+model is run only by the platform operator (`/api/v1/platform/ml/*`); each bank chooses
+the shared model or its own bank-only model; shared training takes a bank's
+fraud-training examples only after operator approval; `tenant_id` is no longer a feature.
 
-**S7 — Low — Web account creation trusts a raw `customer_id` form field.**
+**S7 — FIXED 2026-09-22 (Phase 1) — Low — Web account creation trusts a raw `customer_id` form field.**
 `web/routers/accounts.py::create_account` (L68) does `uuid.UUID(customer_id)` without
 checking the customer belongs to this tenant or is active. A tenant-wide user can
 attach an account to another tenant's customer UUID (orphaned/inconsistent data, not a
@@ -170,26 +181,31 @@ handling in the codebase. Unique constraints exist (e.g. `uq_account_tenant_numb
 `uq_account_tenant_external_id`), so entering a duplicate account number / external id
 in the UI produces a generic 500 instead of a form error. **Verified live:** duplicate account number → bare "Internal Server Error" text page; `customer_id=not-a-uuid` → 500 (`ValueError`). Add a global handler that renders `error.html` for unhandled `/ui/*` exceptions, plus per-form validation.
 
-**F3 — Cloud OCR providers are stubs.** `ocr/textract_provider.py` and
+**F3 — NO CHANGE (roadmap) — Cloud OCR providers are stubs.** `ocr/textract_provider.py` and
 `ocr/azure_di_provider.py` raise `NotImplementedError`; only Tesseract works.
 Correctly guarded (production startup refuses them), so this is a roadmap item, not a
 trap.
 
-**F4 — X9.37 Bundle Control (type 70) totals aren't validated** (cash-letter and file
+**F4 — FIXED 2026-09-23 (Phase 8) — X9.37 Bundle Control (type 70) totals aren't validated** (cash-letter and file
 controls are). Also, X9.37 field positions are self-described as "best-effort" and
 untested against a real processor file. Get a real sample file before a bank relies on
-it.
+it. *Phase 8:* Type 70 is validated against the checks since its Bundle Header (Type 20).
+Still open: no real processor sample file to check field positions against.
 
-**F5 — Referenced "architecture plan" doesn't exist in the repo.** README.md L11 and
+**F5 — FIXED 2026-09-23 (Phase 8) — Referenced "architecture plan" doesn't exist in the repo.** README.md L11 and
 code comments (`web/routers/auth.py` L166, `networks/check/rules.py` L21,
 `networks/ach/features.py` L14, `ocr/tesseract_provider.py` L26) point readers to it
-for rationale. Add it under `docs/` or remove the references.
+for rationale. Add it under `docs/` or remove the references. *Phase 8:* written as
+`docs/ARCHITECTURE.md`; README and every code/test/migration reference now point at it.
 
-**F6 — Background jobs assume a single process.** APScheduler runs in-process
+**F6 — FIXED 2026-09-23 (Phase 8) — Background jobs assume a single process.** APScheduler runs in-process
 (`workers/scheduler.py`) with no DB/advisory lock. The Dockerfile runs one uvicorn
 worker, so it's fine today, but adding `--workers N` or a second Fly machine will run
 retrain/dropbox-import/notification/disposition jobs N times (duplicate notifications
-and imports). Document it or add a leader lock.
+and imports). Document it or add a leader lock. *Phase 8:* on Postgres each job run takes
+a per-job advisory lock (`workers/leader_lock.py`); SQLite/SQL Server stay single-process,
+as documented in README "Running more than one instance" (which also covers shared file
+storage).
 
 **F7 — High — No way to change or reset a password.** — **FIXED 2026-09-22 (FIX_PLAN Phase 2).** Nothing in the codebase ever
 updates `User.hashed_password` after the user is created. Users can't change their own
@@ -222,6 +238,10 @@ the detail page. Minor notes:
   whitespace in the assertion) before committing.
 - It renders one `load_source_item` query per row (N+1). That's bounded by page size, so
   it's acceptable.
+- *Resolved in Phase 0:* the recommended ACH return reason is now stored as a foreign key
+  (`exception_item.recommended_ach_return_reason_id`, with the text match kept only as a
+  fallback for older rows); the Approvals nav item shows a pending count; the test was fixed
+  before the work was committed.
 
 ### UI / UX
 

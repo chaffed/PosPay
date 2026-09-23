@@ -23,7 +23,7 @@ class TesseractOCRProvider:
     postprocessing (find the '$' amount, find text after 'PAY TO THE ORDER OF') rather
     than structured field extraction — this is genuinely a trial/low-volume-grade default,
     not a production accuracy story for handwritten checks. See ocr/base.py and the
-    architecture plan's OCR risk note for why the provider is swappable."""
+    docs/ARCHITECTURE.md ("OCR") for why the provider is swappable."""
 
     name = "tesseract"
 

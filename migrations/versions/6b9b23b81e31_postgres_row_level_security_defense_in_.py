@@ -28,8 +28,8 @@ depends_on: Union[str, Sequence[str], None] = None
 #
 # Deliberately EXCLUDES exception_item and decision: the ML retraining pipeline
 # (ml/train.py, workers/tasks.py) reads decisions and exceptions ACROSS ALL TENANTS by
-# design — that's the "global model, tenant_id as a feature" decision documented in the
-# architecture plan, chosen specifically to avoid a cold-start problem for new tenants.
+# design — the shared model trains on every participating bank's decisions, which is what
+# gives a new bank useful scores from day one (docs/ARCHITECTURE.md, "ML pipeline").
 # A blanket RLS policy on these two tables would silently break that read path the
 # moment this runs against real Postgres. If you need RLS on these tables too, the
 # correct fix is a separate bypass-RLS Postgres role for the ML service's own connection

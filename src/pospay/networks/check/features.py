@@ -15,11 +15,10 @@ from rapidfuzz import fuzz
 
 
 def build_check_features(session: Session, exception_item: ExceptionItem) -> dict[str, Any]:
-    """Feature vector for the check ML model (see ml/ in the architecture plan). The core
-    per-item and OCR-derived fields are built here. Historical/statistical features
-    (issuer_exception_rate_30d, amount_zscore_vs_issuer_history, check_number_gap) are
-    added alongside the Phase 5 training pipeline, which is the first consumer that needs
-    the aggregate-query pattern they require."""
+    """Feature vector for the check ML model (see docs/ARCHITECTURE.md, "ML pipeline"):
+    per-item and OCR-derived fields only. Historical/statistical features
+    (issuer_exception_rate_30d, amount_zscore_vs_issuer_history, check_number_gap) were
+    planned but aren't built yet (listed under "Known gaps" there)."""
     paid_item = session.get(PaidItem, exception_item.source_item_id)
     issued_item = (
         session.get(IssuedItem, exception_item.related_reference_id) if exception_item.related_reference_id else None

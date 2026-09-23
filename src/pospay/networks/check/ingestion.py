@@ -97,7 +97,7 @@ def ingest_paid_items_bulk(
     session: Session, tenant_id: uuid.UUID, submissions: list[PaidItemSubmission], *, scoped_customer_id: uuid.UUID | None = None
 ) -> list[BulkRowResult]:
     """One commit per row so a single bad row (bad FK, constraint violation) doesn't roll
-    back the whole file — matches the plan's bulk-ingestion requirement."""
+    back the whole file (see docs/ARCHITECTURE.md, "Bulk ingestion")."""
     results: list[BulkRowResult] = []
     for index, submission in enumerate(submissions):
         try:

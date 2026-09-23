@@ -199,7 +199,7 @@ def _session_tokens_from_mfa(ctx: TenantContext, user: User):
 # The mfa_token cookie set above is HttpOnly and scoped to this path — the browser JS
 # below (static/js/webauthn.js) never sees it or any other token; it only ever handles
 # the WebAuthn options/credential JSON blobs. Both routes call auth/webauthn_service.py
-# directly (in-process), not the JSON API — see the architecture plan for why.
+# directly (in-process), not the JSON API — see docs/ARCHITECTURE.md, "Web UI vs. JSON API".
 
 
 @router.get("/login/webauthn")

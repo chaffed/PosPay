@@ -551,8 +551,24 @@ last; each entry committed):
   more than one instance", which covers per-process rate limits (S5) and the scheduler rule
   (F6). It also corrects the old claim that demo idle-reset tracking was in-process: it uses
   `last_login_at` in the database. RUNBOOK is a bank-onboarding guide, so it's unchanged.
+- Also added to the README multi-instance section: every file store (check images, logos,
+  uploads, exports, ML artifacts, dropbox) is on local disk and needs a shared volume across
+  instances. OCR and exports are in-process background tasks.
+- F5 done: `docs/ARCHITECTURE.md` covers the big picture, tenancy and isolation layers, the
+  data model (including why `source_item_id` has no FK), the network adapters, check/ACH
+  rule order, exception → decision (maker/checker, auto-disposition), ML (slots, bank
+  choice, champion/challenger), OCR, bulk ingestion, auth/sessions, UI vs. API, the export
+  scoping table, background work, and known gaps. Each claim was checked against the code;
+  first-draft errors about session timeouts, webhooks and the WebAuthn rationale were
+  corrected. README (L11 and "Architecture at a glance") and all 12 code/test/migration
+  "architecture plan" / "the plan's" references now point at it. The check-features
+  docstring claimed historical features arrive "alongside Phase 5"; they were never built,
+  so it now says so, and they're listed under Known gaps.
+- Final review: EVALUATION.md now has an overall status line. S5/S6/S7/F3–F6 headings are
+  marked (S6 and S7 were fixed in Phases 5 and 1 but had never been marked), and the
+  approvals-queue notes are recorded as resolved in Phase 0.
 
-- [ ] **F5:** write `docs/ARCHITECTURE.md` (data model, network-adapter pattern, matching
+- [x] **F5:** write `docs/ARCHITECTURE.md` (data model, network-adapter pattern, matching
       rules, ML pipeline, tenancy layers). Point the README and code comments at it.
 - [x] **F6:** document "single process only" in the README/RUNBOOK, *or* add a leader lock
       (a Postgres advisory lock around each scheduled job; on SQLite, keep single-process).
@@ -560,7 +576,7 @@ last; each entry committed):
       Redis) is optional and only needed for multi-instance deployments.
 - [x] **F4:** validate X9.37 Bundle Control (type 70). Get a real processor sample file and
       add it as a fixture.
-- [ ] **F3:** keep the Textract/Azure providers as roadmap items. No change is needed
+- [x] **F3:** keep the Textract/Azure providers as roadmap items. No change is needed
       (startup already guards against them).
 
 ---

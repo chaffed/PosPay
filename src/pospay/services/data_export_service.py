@@ -92,7 +92,7 @@ def _decision_rows(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUI
 def _users_dicts(session: Session, tenant_id: uuid.UUID, customer_id: uuid.UUID | None) -> list[dict]:
     """Custom composition, not _row_to_dict: pulls in the user's email and the
     membership's resolved security group NAME (never the whole security_group table for
-    a customer-scoped export — see the plan's scoping table) — and never the password
+    a customer-scoped export — see the scoping table in docs/ARCHITECTURE.md, "Data exports") — and never the password
     hash, which isn't even a column on TenantMembership to begin with. The dict is still
     run through _SECRET_COLUMNS below before being kept, purely as a mechanical
     safety net — belt-and-suspenders against a future edit to this function
@@ -138,7 +138,7 @@ _SCOPED_EXPORTERS: list[tuple[str, Any]] = [
     ("sso_group_mappings", _sso_group_mapping_dicts),
 ]
 
-# Tenant-wide exports only — see the plan's scoping table for why each is excluded from
+# Tenant-wide exports only — see docs/ARCHITECTURE.md ("Data exports") for why each is excluded from
 # a customer-scoped export (not cleanly attributable to one customer, or would leak the
 # tenant's own configuration/action history to a single customer's admin).
 _TENANT_WIDE_ONLY_EXPORTERS: list[tuple[str, Any]] = [
