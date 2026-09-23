@@ -664,6 +664,7 @@ erDiagram
 <tr><td>source</td><td>String(20) enum</td><td>no</td><td></td><td><code>LIVE</code> (real activity) or <code>TRAINING_BACKFILL</code> (a known-fraud label submitted directly for model training).</td></tr>
 <tr><td>is_correction</td><td>Boolean</td><td>no</td><td></td><td>True when a training-backfill label corrects an earlier live decision.</td></tr>
 <tr><td>retracted_at / retracted_by_user_id</td><td>Timestamp / UUID</td><td>yes</td><td>FK → user.id</td><td>Set when a training example is retracted; it stops counting toward future training.</td></tr>
+<tr><td>recommended_ach_return_reason_id</td><td>UUID</td><td>yes</td><td>FK → ach_return_reason.id</td><td>The return reason a maker chose when recommending an ACH return; pre-selected for the approver.</td></tr>
 <tr><td>shared_training_approved_at</td><td>Timestamp</td><td>yes</td><td></td><td>For a training example from an organization on the shared model: when the platform operator approved it for training the shared model. Until then it's excluded from the shared model.</td></tr>
 </tbody>
 </table>
