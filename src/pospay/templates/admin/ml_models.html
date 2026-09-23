@@ -3,21 +3,23 @@
 {% block title %}Admin — {{ ctx.tenant_name }}{% endblock %}
 {% block help_title %}About ML models{% endblock %}
 {% block help_body %}
-<p>ML scoring estimates how likely an exception is to be returned, using this
-  organization's own decision history — it's advisory only, never automatic; a human
-  always makes the final pay/return call. Retraining builds a new model version from
-  decisions made so far; only one version per network is "active" (used for scoring)
-  at a time, and activating an older one is always available if a retrain performs
-  worse.</p>
+<p>ML scoring estimates how likely an exception is to be paid or returned. It's advisory:
+  a person always makes the final call, unless a customer has chosen ML-determined default
+  dispositions.</p>
+<p>Your organization chooses its model in <a href="/ui/settings">Settings</a>. The
+  <strong>shared model</strong> learns from every participating bank and is run by the
+  platform operator. A <strong>bank-only model</strong> learns only from your own decisions,
+  and your administrators retrain it here. A retrained bank-only model replaces the active
+  one only if it does at least as well on the same recent decisions and was trained on at
+  least {{ min_bank_decisions }} of your own. You can always activate an older version by hand.</p>
 {% endblock %}
 {% block content %}
 {% if can(ctx, "admin:manage") %}
 {% if is_demo_tenant %}
 <div class="card card-narrow">
   <h1>Demo data</h1>
-  <p>This is the sales demo tenant. It resets to its original seeded state on its own the
-    next time anyone logs in after being idle past its session window — or reset it
-    immediately below.</p>
+  <p>This is the public demo organization. It resets to its original data every hour, and
+    whenever someone signs in after it has been idle. You can also reset it now.</p>
   <form method="post" action="/ui/admin/demo/reset" data-confirm="Reset all demo data now? You will be signed out and need to log back in.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit" class="danger">{{ icon("restart_alt") }}Reset demo data now</button>
@@ -26,18 +28,44 @@
 {% endif %}
 <div class="card">
   <h1>ML Models</h1>
-  <p>Networks registered: {{ networks | join(", ") }}</p>
   <table>
-    <thead><tr><th>Network</th><th>Live decisions</th><th>Fraud training backfill</th></tr></thead>
+    <thead><tr><th>Network</th><th>Your live decisions</th><th>Your fraud training examples</th></tr></thead>
     <tbody>
       {% for network_code, counts in backfill_counts.items() %}
       <tr><td>{{ network_code }}</td><td>{{ counts.live }}</td><td>{{ counts.training_backfill }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="hint">"Fraud training backfill" counts labels submitted from
-    <a href="/ui/ml-training/fraud-examples">Fraud Training Data</a> — both columns feed
-    the same training set a retrain will actually use.</p>
+  <p class="hint">Fraud training examples are submitted from
+    <a href="/ui/ml-training/fraud-examples">Fraud Training Data</a>.
+    {% if not uses_bank_model %}They're used by the shared model only after the platform
+    operator reviews and approves them.{% endif %}</p>
+
+  {% if not uses_bank_model %}
+  <h2>Shared model</h2>
+  <p>Your organization uses the shared model, which the platform operator trains and
+    activates. To use a model trained only on your own decisions, switch to a bank-only model
+    in <a href="/ui/settings">Settings</a>.</p>
+  <table>
+    <thead><tr><th>Network</th><th>Active version</th><th>Active since</th><th>Trained on</th><th>Banks contributing</th></tr></thead>
+    <tbody>
+      {% for summary in shared_summaries %}
+      <tr>
+        <td>{{ summary.network_code }}</td>
+        {% if summary.version %}
+        <td>{{ summary.version }}</td>
+        <td>{{ summary.activated_at.strftime("%Y-%m-%d") if summary.activated_at else "—" }}</td>
+        <td>{{ summary.trained_from_decision_count }} decisions</td>
+        {% else %}
+        <td colspan="3">No shared model yet. Exceptions aren't scored until one is trained.</td>
+        {% endif %}
+        <td>{{ summary.contributing_bank_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <h2>Your bank-only model</h2>
   <form method="post" action="/ui/admin/ml/retrain" class="toolbar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label style="max-width:220px;">Network
@@ -50,7 +78,7 @@
 
   {% if models %}
   <table data-sortable>
-    <thead><tr><th>Network</th><th>Version</th><th>Status</th><th data-type="number">Trained on</th><th>Metrics</th><th></th></tr></thead>
+    <thead><tr><th>Network</th><th>Version</th><th>Status</th><th data-type="number">Trained on</th><th>Metrics</th><th>Why</th><th></th></tr></thead>
     <tbody>
       {% for m in models %}
       <tr>
@@ -59,6 +87,7 @@
         <td><span class="badge {{ 'badge-ok' if m.status.value == 'active' else 'badge-danger' if m.status.value == 'failed' else '' }}">{{ m.status.value }}</span></td>
         <td>{{ m.trained_from_decision_count }} decisions</td>
         <td>{{ format_metrics(m.metrics_json) }}</td>
+        <td class="hint">{{ ((m.metrics_json or {}).get("evaluation") or {}).get("reason", "") }}</td>
         <td>
           {% if m.status.value not in ["active", "failed"] %}
           <form method="post" action="/ui/admin/ml/models/{{ m.id }}/activate" class="inline-form">
@@ -72,7 +101,9 @@
     </tbody>
   </table>
   {% else %}
-  <p>No models trained yet — matching/exceptions still work fully, ML scoring is just not available until enough decisions accumulate.</p>
+  <p>No bank-only model yet. Exceptions aren't scored until one is trained; matching and
+    exceptions work fully without it.</p>
+  {% endif %}
   {% endif %}
 </div>
 {% endif %}

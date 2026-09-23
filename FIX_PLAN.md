@@ -294,6 +294,18 @@ Files: new `web/demo_guard.py` dependency, routers listed below
   count *drops*. `retrain_job` now retrains the shared model whenever a bank has left since it
   was activated, and activates the result regardless of the accuracy comparison
   (`force_activate_reason`), since removing the departed bank's data comes first. 12 new tests.
+- 5.4 + 5.5 DONE (governance): platform keys have scopes (`require_platform_scope`; existing
+  keys = usage only; `scripts/create_metering_api_key.py --scope shared_model`). New
+  `api/v1/platform_ml.py` (operator only): list/retrain/activate the shared model, feature
+  importance, a pending fraud-example review list plus approve (audited in the bank's log), and
+  lifting a bank's 90-day lock (audited). Bank admins (web `/ui/admin` and API `/api/v1/admin/ml/*`)
+  can retrain/activate only their own bank-only model, get 403 for the shared model, and see a
+  counts-only shared summary. Retrain and activate are now audit-logged. **Found and fixed:**
+  `GET /api/v1/admin/ml/models` listed every bank's models, and the admin page's training-data
+  counts were totalled across all banks; both are now limited to the viewer's bank. Four older admin
+  API tests were rewritten for a bank-only bank; 10 new tests.
+- NEXT: 5.6 Settings card (choice, consent, lock date), onboarding consent, demo lock; then
+  5.7 docs + a full run.
 
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps

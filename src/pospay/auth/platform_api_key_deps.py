@@ -17,11 +17,23 @@ from pospay.services import platform_api_key_service
 _api_key_header = APIKeyHeader(name="X-Api-Key", auto_error=True)
 
 
-def require_platform_api_key(
-    api_key: str = Depends(_api_key_header), db: Session = Depends(get_db)
-) -> PlatformApiKey:
-    key = platform_api_key_service.verify(db, api_key)
-    if key is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked API key")
-    db.commit()
-    return key
+def require_platform_scope(scope: str):
+    """A valid, unrevoked platform key that carries `scope` (PlatformApiKey.scopes) —
+    401 for a bad key, 403 for a good key without the scope, so a usage-metering key
+    can never operate the shared model."""
+
+    def _check(api_key: str = Depends(_api_key_header), db: Session = Depends(get_db)) -> PlatformApiKey:
+        key = platform_api_key_service.verify(db, api_key)
+        if key is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or revoked API key")
+        db.commit()
+        if scope not in (key.scopes or []):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, f"This API key doesn't have the {scope!r} scope")
+        return key
+
+    return _check
+
+
+# The usage-metering API's dependency (api/v1/platform_usage.py). Every key created
+# before scopes existed has "usage", so existing integrations keep working.
+require_platform_api_key = require_platform_scope("usage")
