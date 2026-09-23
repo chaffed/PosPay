@@ -168,7 +168,9 @@
     <span class="badge {{ 'badge-ok' if auto_import_enabled else '' }}">{{ 'enabled' if auto_import_enabled else 'disabled' }}</span>
     {% if auto_import_enabled %}— scanning every {{ auto_import_interval_seconds }} seconds{% endif %}
   </p>
-  <p>Drop directory: <code>{{ auto_import_dropbox_dir }}/{{ ctx.tenant_slug }}/...</code></p>
+  {# The server's absolute path isn't shown: it's an internal detail of the deployment. #}
+  <p>Files go in your organization's folder, <code>{{ ctx.tenant_slug }}/</code>, inside the
+    server's auto-import drop folder. Ask your platform operator where that is.</p>
   {% if recent_auto_imports %}
   <table data-sortable>
     <thead><tr><th>Uploaded</th><th>File</th><th>Kind</th><th data-type="number">Succeeded</th><th data-type="number">Failed</th></tr></thead>

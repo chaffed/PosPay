@@ -37,7 +37,9 @@
     </tbody>
   </table>
   <p class="hint">Fraud training examples are submitted from
-    <a href="/ui/ml-training/fraud-examples">Fraud Training Data</a>.
+    {% if can(ctx, "ml_training_example:write") %}<a href="/ui/ml-training/fraud-examples">Fraud Training Data</a>{% else %}Fraud Training
+    Data. That page needs the "Submit or retract known-fraud training examples" permission,
+    which isn't in the Admin group by default; add it in <a href="/ui/security-groups">Security Groups</a>{% endif %}.
     {% if not uses_bank_model %}They're used by the shared model only after the platform
     operator reviews and approves them.{% endif %}</p>
 

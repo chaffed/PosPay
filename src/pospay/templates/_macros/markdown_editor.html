@@ -13,7 +13,7 @@ every button click-through to the textarea too) can reference it properly. #}
     <button type="button" class="md-editor-btn" data-md-action="link" aria-label="Insert link">{{ icon("link") }}</button>
     <button type="button" class="md-editor-btn" data-md-action="list" aria-label="Bulleted list">{{ icon("format_list_bulleted") }}</button>
     <button type="button" class="md-editor-btn" data-md-action="image" aria-label="Insert image">{{ icon("image") }}</button>
-    <input type="file" class="md-editor-file-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+    <input type="file" class="md-editor-file-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden aria-label="Choose an image to insert" tabindex="-1">
   </div>
   <textarea id="{{ name }}-field" name="{{ name }}" class="md-editor-textarea" maxlength="500000" rows="{{ rows }}">{{ value or "" }}</textarea>
   <p class="md-editor-hint">Markdown supported. Images: PNG/JPEG/GIF/WEBP, 150 KB or smaller.</p>

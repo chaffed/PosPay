@@ -459,3 +459,6 @@ pre, code { overflow-wrap: anywhere; }
 .stat-card .stat-action { margin-top: 0.4rem; font-size: 0.8rem; color: var(--accent); font-weight: 600; }
 .stat-card .stat-value-text { font-size: 1.3rem; line-height: 2.2rem; }
 .stat-card-alert { border-color: var(--badge-warn-fg); background: var(--badge-warn-bg); }
+/* The accent-color picker: without a fixed size it stretched full-width and rendered as a
+   thin blank line, so it didn't look like a color control at all. */
+input[type="color"] { width: 3.5rem; height: 2.25rem; padding: 0.15rem; cursor: pointer; }
