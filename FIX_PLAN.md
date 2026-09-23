@@ -250,7 +250,7 @@ Files: new `web/demo_guard.py` dependency, routers listed below
 
 ## Phase 5 — ML model choice per bank (2 PRs, about 4–5 days) — S6
 
-**Status: IN PROGRESS (started 2026-09-23, branch `phase-5-ml-model-choice`).** Progress log
+**Status: DONE 2026-09-23 on branch `phase-5-ml-model-choice`, merged to `main`, not pushed. Full suite: 1,106 passed, 1 skipped.** Progress log
 (newest last; each entry is committed, so resume from the last one):
 - Decisions made at the start (standing "go with the recommendation" rule):
   - Platform operator = a platform API key with a new `shared_model` scope. Keys get
@@ -310,7 +310,17 @@ Files: new `web/demo_guard.py` dependency, routers listed below
   switch-back (consent checkbox), all audit-logged. A link card on Settings. A new bank setup
   checklist step, "Review how fraud scoring uses your data", auto-completes on acknowledgement or a
   switch. Locked in the demo. 7 new web tests.
-- NEXT: 5.7 docs (README, admin ML docs, API.md, SECURITY_REVIEW) + full run + live check.
+- 5.7 DONE: README, API.md (bank admin changes and the new "Platform — shared model" section),
+  admin ML docs, data dictionary, SECURITY_REVIEW (original global-model finding closed). Checked
+  live in a browser: the Settings page, acknowledge, switch, the admin page in both modes, the
+  customer ML page, and the checklist step. **Fixed:** the customer model history printed raw
+  metrics. The full run's one failure was an older checklist test that didn't complete the new
+  required step (updated).
+- Deliberate side effect: existing banks have no consent recorded, so their setup checklist
+  shows the new "Review how fraud scoring uses your data" step as not done until an admin
+  acknowledges it. That is the intended prompt.
+- Deferred: a platform-operator **web** page (needs a platform-level login first; the API
+  covers everything today); blending seed and bank models by data volume.
 
 **Decided (2026-09-22): support both, and let each bank choose.** A bank either joins the
 **shared network model** (pools its decision data with other participating banks) or keeps
@@ -333,31 +343,31 @@ The customer mode `GLOBAL` keeps its DB value but its label changes to "Bank's m
 data migration is needed.
 
 ### PR 5a — Data model and scoring
-- [ ] Migration: `Tenant.ml_model_source` enum `shared|private`, plus
+- [x] Migration: `Tenant.ml_model_source` enum `shared|private`, plus
       `ml_source_changed_at`, `ml_source_changed_by_user_id` (consent record), and
       `ml_private_switch_allowed_at` (see the 90-day lock below).
-- [ ] Migration: `MlModel.tenant_id` nullable FK. `NULL` = shared network model; set =
+- [x] Migration: `MlModel.tenant_id` nullable FK. `NULL` = shared network model; set =
       bank-only model; customer models also get their tenant_id filled in (backfill from
       `customer.tenant_id`). Unique "one active model" logic in `ml/registry.py` becomes
       per `(network_code, tenant_id, customer_id)`.
-- [ ] Defaults (decided 2026-09-22): **every bank starts on `shared`**. Existing banks keep
+- [x] Defaults (decided 2026-09-22): **every bank starts on `shared`**. Existing banks keep
       what they have (today that's shared for all of them), and new banks get the shared
       model until they choose to switch.
-- [ ] **90-day lock for new banks** (decided): at tenant creation, set
+- [x] **90-day lock for new banks** (decided): at tenant creation, set
       `ml_private_switch_allowed_at = created_at + 90 days`. Existing banks get `NULL` (no
       lock) in the migration. A bank can't switch to bank-only before that date; the
       Settings card shows "Available on <date>". A platform-operator override (audited) is
       recommended for exceptional cases. Switching back to shared is never locked.
-- [ ] **Consent at onboarding:** since new banks now join the pool by default, show and
+- [x] **Consent at onboarding:** since new banks now join the pool by default, show and
       record the data-pooling disclosure during bank setup (tenant creation /
       `/ui/wizard/bank` step), not only on the Settings card.
-- [ ] **Seed-on-switch** (decided): switching to bank-only copies the currently active
+- [x] **Seed-on-switch** (decided): switching to bank-only copies the currently active
       shared model (artifact file + metrics) into a new `MlModel` row owned by the bank
       (`tenant_id` set, `version` like `seed-from-shared-v7`, `metrics_json.seeded_from`
       = shared model id) and activates it immediately, so scoring never has a gap. The copy
       is a frozen snapshot: it doesn't receive later shared-model updates. Each later switch
       to bank-only seeds a fresh copy, and older bank models stay in history for rollback.
-- [ ] **Champion/challenger** ("continue from there"): logistic regression can't keep
+- [x] **Champion/challenger** ("continue from there"): logistic regression can't keep
       learning from a copied model without the original (other banks') data, so bank
       retrains train on the bank's own decisions only, and a new model is promoted only
       if (a) it has at least `ml_bank_model_min_decisions` (new config, default 200) and
@@ -365,37 +375,37 @@ data migration is needed.
       recall on returns). Otherwise the model is recorded as `trained, not promoted` with the
       comparison shown on the admin page, and bank admins can still promote manually.
       A later option is blending the seed and bank models, weighted by the bank's data volume.
-- [ ] `ml/registry.py::get_active_model_row(session, network, *, tenant_id=None, customer_id=None)`
+- [x] `ml/registry.py::get_active_model_row(session, network, *, tenant_id=None, customer_id=None)`
       and `activate_model(..., expected_tenant_id=, expected_customer_id=)` — the ownership
       check is extended to the tenant.
-- [ ] `ml/train.py::_load_labeled_decisions`:
+- [x] `ml/train.py::_load_labeled_decisions`:
       - shared model → only decisions from tenants where `ml_model_source == shared`
         (joined through `ExceptionItem.tenant_id` → `Tenant`);
       - bank model → only that tenant's decisions;
       - customer model → unchanged.
       Retrain cooldown key becomes `(network, tenant_id, customer_id)`.
-- [ ] `ml/predict.py`: implement the precedence above.
-- [ ] Remove the raw `tenant_id` feature (`networks/check/features.py` L52,
+- [x] `ml/predict.py`: implement the precedence above.
+- [x] Remove the raw `tenant_id` feature (`networks/check/features.py` L52,
       `networks/ach/features.py` L20). The bank-only model makes per-bank behavior
       unnecessary as a feature. Release note: the shared model needs a retrain.
-- [ ] `workers/tasks.py::retrain_job`: loop shared model → each private tenant's bank model
+- [x] `workers/tasks.py::retrain_job`: loop shared model → each private tenant's bank model
       → customer models (existing), using the same `_train_and_log` failure isolation.
-- [ ] Fraud-training examples (`ml_training_example:write`): from a private bank, they feed
+- [x] Fraud-training examples (`ml_training_example:write`): from a private bank, they feed
       only its bank model. From a shared bank, they feed the shared model only once the platform
       operator approves them (`approved_for_shared` flag + review list), to block poisoning.
-- [ ] Tests: a private bank's decisions never appear in the shared training set; the
+- [x] Tests: a private bank's decisions never appear in the shared training set; the
       precedence table (customer → bank → shared → none) for every combination; the
       `tenant_id` feature is gone; activation ownership checks.
 
 ### PR 5b — Governance, settings UI, platform operator
-- [ ] **Platform operator** for the shared model: retrain/activate/feature-importance
-      move behind platform auth (extend `PlatformApiKey` / `platform_api_key_deps.py`, plus
-      a platform-admin web page). A tenant admin only sees read-only "Shared model vN,
+- [x] **Platform operator** for the shared model: retrain/activate/feature-importance
+      move behind platform auth (extend `PlatformApiKey` / `platform_api_key_deps.py`). The
+      platform-admin web page is **deferred** (API only, see the log above). A tenant admin only sees read-only "Shared model vN,
       active since …, trained on M decisions from K banks" (counts only, never other bank
       names).
-- [ ] **Bank admin** (`admin:manage`) gets full retrain/activate/rollback for its own
+- [x] **Bank admin** (`admin:manage`) gets full retrain/activate/rollback for its own
       bank-only model on `/ui/admin`, same as the existing per-customer page.
-- [ ] Settings → "Fraud scoring model" card (`tenant:manage`):
+- [x] Settings → "Fraud scoring model" card (`tenant:manage`):
       - radio: *Shared network model* / *Bank-only model*, each with a plain-language
         description of the trade-off (the shared model starts useful sooner; bank-only keeps
         data in-house);
@@ -403,17 +413,17 @@ data migration is needed.
         (a config-supplied setting, like the WSUD legal text, and startup refuses the
         placeholder in production);
       - the change is audit-logged (`tenant.ml_source_change`) and records who/when.
-- [ ] **Switching behavior** (shown in the UI before confirming):
+- [x] **Switching behavior** (shown in the UI before confirming):
       - shared → private (after the 90-day lock): the bank is immediately scored by its
         seeded copy of the shared model. Its data is excluded from the *next* shared
         retrain, and the platform operator is notified to retrain.
       - private → shared: scored by the shared model immediately; data joins the next
         shared retrain. The old bank-only models stay in history (can switch back).
-- [ ] Customer ML page: relabel the `GLOBAL` mode to "Bank's model" and show which
+- [x] Customer ML page: relabel the `GLOBAL` mode to "Bank's model" and show which
       model a customer is actually scored by right now.
-- [ ] Demo tenant (Phase 4c): lock this setting.
-- [ ] Docs: `docs/admin/ml-admin.html` + README; close the IOU in `SECURITY_REVIEW.md`.
-- [ ] Tests: switch blocked before day 90 and allowed after (freeze time); existing
+- [x] Demo tenant (Phase 4c): lock this setting.
+- [x] Docs: `docs/admin/ml-admin.html` + README; close the IOU in `SECURITY_REVIEW.md`.
+- [x] Tests: switch blocked before day 90 and allowed after (freeze time); existing
       banks are never locked; the seeded model's scores equal the shared model's on the same
       input; a challenger with too little data or a worse AUC is not promoted;
       tenant admin → 403 on shared retrain/activate; bank admin can
@@ -504,7 +514,7 @@ Files: `templates/exceptions/detail.html`, `templates/exceptions/list.html`,
 | 2 | Password lifecycle | M | High; Phase 3's revocation builds on it |
 | 3 | Sessions | M | Biggest daily-use pain; completes S2 |
 | 4 | SSRF, uploads, demo | M | Public demo is live exposure |
-| 5 | ML model choice per bank | M–L | All decisions made |
+| 5 | ML model choice per bank | M–L | Done 2026-09-23 |
 | 6 | Exception review UX | M–L | Core workflow quality |
 | 7 | Layout polish | S | Mechanical |
 | 8 | Docs/ops | S | Before any real multi-instance deployment |

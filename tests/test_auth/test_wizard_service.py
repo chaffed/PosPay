@@ -91,6 +91,11 @@ def test_bank_wizard_complete_ignores_optional_steps(db_session):
     user_service.create_user_with_membership(db_session, tenant.id, email="second@wizard-optional.example.com", password=TenantFactory.PASSWORD, security_group_id=group.id)
     for key in ("branding", "dual_control", "security_groups"):
         wizard_service.acknowledge_step(db_session, tenant.id, None, key, admin.id)
+    # The required "fraud_model" step completes once the data-pooling disclosure is
+    # acknowledged (services/tenant_ml_service.py).
+    from pospay.services import tenant_ml_service
+
+    tenant_ml_service.record_shared_consent(db_session, tenant.id, actor_user_id=admin.id)
     db_session.commit()
 
     # sso and first_customer (both optional) are still incomplete...
