@@ -220,6 +220,12 @@ class Settings(BaseSettings):
     # needs a real random value in production, enforced below.
     sso_encryption_key: str = "dev-secret-change-me-32-bytes-minimum-for-sso"
     oidc_http_timeout_seconds: float = 10.0
+    # Lets SSO connections point at http:// and private/loopback addresses (a local test
+    # identity provider such as a Keycloak container on localhost). Off by default, and
+    # refused outright in production by assert_production_safe below — with it on, anyone
+    # who can edit an SSO connection can make this server call into its own network. See
+    # auth/outbound_http.py.
+    oidc_allow_private_hosts: bool = False
     # Override for the redirect_uri host when a deployment sits behind a proxy that
     # doesn't forward the original scheme/host correctly — same class of caveat as
     # webauthn_origin. None (default) derives it from the live request instead.
@@ -279,6 +285,14 @@ def assert_production_safe(settings: Settings) -> None:
             "Written Statement of Unauthorized Debit consent/attestation text via "
             "POSPAY_WSUD_CONSENT_DISCLOSURE_TEXT / POSPAY_WSUD_ATTESTATION_TEXT before "
             "relying on this for a real e-signature."
+        )
+
+    if settings.oidc_allow_private_hosts:
+        raise RuntimeError(
+            "Refusing to start with POSPAY_ENVIRONMENT=production while "
+            "POSPAY_OIDC_ALLOW_PRIVATE_HOSTS is on: it lets anyone who can edit an SSO "
+            "connection make this server send requests to internal addresses. It's only "
+            "for local testing against an identity provider on localhost."
         )
 
     # Local import to avoid a cycle: ocr/factory.py (which does real provider

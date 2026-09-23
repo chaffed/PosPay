@@ -176,18 +176,26 @@ Files: `web/security.py`, `web/deps.py`, new `web/routers/session.py`, `auth/sec
 newest entry is last. Each entry is committed, so resume from the last one:
 - 4d started first (smallest). Then 4a → 4b → 4c.
 - 4d DONE: compose Postgres bound to loopback.
+- 4a DONE: new `auth/outbound_http.py` (URL check + a connect-time public-IP-only httpx
+  transport that pins the vetted address, so DNS rebinding doesn't work). Used for OIDC
+  discovery, JWKS, and token exchange, plus every endpoint the discovery document names.
+  Save-time check on SSO forms (create and edit; the edit routes used to turn any
+  ValueError into a 404). `oidc_allow_private_hosts` setting for local test IdPs,
+  refused in production. OAuth `state` is bound in the signed cookie and checked on
+  callback (S3). Login page errors are generic, with details in the server log. SSO tests now
+  echo the real state. 90 SSO/auth tests pass.
 
 ### 4a. S9 — SSRF-safe OIDC
 Files: `auth/oidc_service.py`, `services/sso_service.py`, `config.py`
-- [ ] On save: require `https://` issuers. Reject IP-literal/`localhost` hosts.
-- [ ] On every fetch (discovery, JWKS, token): resolve the host and reject private,
+- [x] On save: require `https://` issuers. Reject IP-literal/`localhost` hosts.
+- [x] On every fetch (discovery, JWKS, token): resolve the host and reject private,
       loopback, link-local, and multicast addresses. Disable redirects or re-validate
       each hop. A small `safe_http_client()` helper covers all three calls.
-- [ ] `config.oidc_allow_private_hosts: bool = False` (allowed only when
+- [x] `config.oidc_allow_private_hosts: bool = False` (allowed only when
       `environment=development`) so local test IdPs still work.
-- [ ] Callback error page: show a generic "Single sign-on failed" and log the detail
+- [x] Callback error page: show a generic "Single sign-on failed" and log the detail
       server-side.
-- [ ] **S3:** put the `state` value into the signed `sso_state` cookie and compare it on
+- [x] **S3:** put the `state` value into the signed `sso_state` cookie and compare it on
       callback.
 
 ### 4b. S8 — Uploaded content served safely

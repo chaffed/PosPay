@@ -11,6 +11,7 @@ from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import KeySet
 
 from pospay.auth.crypto import decrypt_secret
+from pospay.auth.outbound_http import UnsafeUrlError, check_url, public_only_client, public_only_transport
 from pospay.config import get_settings
 from pospay.domain.sso_connection import SsoConnection
 
@@ -39,7 +40,28 @@ class OidcClaims:
 
 
 def _http_client() -> httpx.Client:
-    return httpx.Client(timeout=get_settings().oidc_http_timeout_seconds)
+    # Only ever reaches public addresses, never follows redirects — see
+    # auth/outbound_http.py for why an admin-typed issuer can't be fetched naively.
+    return public_only_client(timeout=get_settings().oidc_http_timeout_seconds)
+
+
+def _discovery(connection: SsoConnection) -> dict[str, Any]:
+    """The provider's discovery document, with every endpoint it names checked too: a
+    malicious or compromised issuer could otherwise point jwks_uri/token_endpoint at an
+    internal address, or authorization_endpoint at a non-https URL. Network failures and
+    unsafe URLs both become OidcError, so the login page shows a clean error, not a 500."""
+    try:
+        check_url(connection.issuer, what="issuer URL")
+        document = _get_discovery_document(connection.issuer)
+        for key in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+            if not isinstance(document.get(key), str):
+                raise OidcError(f"The provider's discovery document has no {key}")
+            check_url(document[key], what=key)
+    except UnsafeUrlError as exc:
+        raise OidcError(str(exc)) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        raise OidcError(f"Couldn't read the provider's discovery document: {exc}") from exc
+    return document
 
 
 def _get_discovery_document(issuer: str) -> dict[str, Any]:
@@ -76,7 +98,7 @@ def reset_oidc_cache() -> None:
 
 
 def build_authorization_url(connection: SsoConnection, *, redirect_uri: str, state: str, nonce: str) -> str:
-    discovery = _get_discovery_document(connection.issuer)
+    discovery = _discovery(connection)
     client = OAuth2Client(client_id=connection.client_id, redirect_uri=redirect_uri, scope="openid email profile")
     url, _ = client.create_authorization_url(discovery["authorization_endpoint"], state=state, nonce=nonce)
     return url
@@ -95,13 +117,15 @@ def exchange_code_for_claims(connection: SsoConnection, *, code: str, redirect_u
     back to `preferred_username` since Azure AD's v2 endpoint doesn't always populate
     `email` without extra app-registration configuration — a real interop caveat, not an
     oversight."""
-    discovery = _get_discovery_document(connection.issuer)
+    discovery = _discovery(connection)
     client_secret = decrypt_secret(connection.client_secret_encrypted)
     client = OAuth2Client(
         client_id=connection.client_id,
         client_secret=client_secret,
         token_endpoint_auth_method="client_secret_post",
         redirect_uri=redirect_uri,
+        transport=public_only_transport(),
+        timeout=get_settings().oidc_http_timeout_seconds,
     )
     try:
         token = client.fetch_token(discovery["token_endpoint"], code=code)
@@ -112,7 +136,10 @@ def exchange_code_for_claims(connection: SsoConnection, *, code: str, redirect_u
     if not id_token:
         raise OidcError("Identity provider did not return an id_token")
 
-    jwks = _get_jwks(discovery["jwks_uri"])
+    try:
+        jwks = _get_jwks(discovery["jwks_uri"])
+    except (httpx.HTTPError, ValueError) as exc:
+        raise OidcError(f"Couldn't read the provider's signing keys: {exc}") from exc
     try:
         decoded = joserfc_jwt.decode(id_token, jwks, algorithms=["RS256"])
     except Exception as exc:

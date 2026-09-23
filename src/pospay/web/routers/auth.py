@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Chaffed
 
+import logging
 import secrets
 import uuid
 from urllib.parse import quote
@@ -57,10 +58,14 @@ from pospay.web.security import (
 )
 
 router = APIRouter(prefix="/ui", tags=["web-auth"])
+logger = logging.getLogger(__name__)
 
 _NOT_AUTHORIZED_MESSAGE = "You're not authorized for PosPay. Ask your administrator to add you to the required group."
 _NOT_PROVISIONED_MESSAGE = "No PosPay account exists for you yet. Ask your administrator to create one."
 _SSO_REQUIRED_MESSAGE = "This organization requires single sign-on — use the button above."
+_SSO_FAILED_MESSAGE = (
+    "Single sign-on couldn't be completed. Please try again, and contact your administrator if it keeps happening."
+)
 
 
 def _locked_message() -> str:
@@ -343,11 +348,16 @@ def sso_start(
 
     next_path = safe_next_path(next)
     nonce = secrets.token_urlsafe(24)
+    state = secrets.token_urlsafe(24)
     redirect_uri = _redirect_uri(request, connection.id)
-    authorization_url = build_authorization_url(
-        connection, redirect_uri=redirect_uri, state=secrets.token_urlsafe(24), nonce=nonce
+    try:
+        authorization_url = build_authorization_url(connection, redirect_uri=redirect_uri, state=state, nonce=nonce)
+    except OidcError as exc:
+        logger.warning("SSO start failed for connection %s: %s", connection.id, exc)
+        return render_template(request, "auth/login.html", status_code=502, error=_SSO_FAILED_MESSAGE)
+    state_token = create_sso_state_token(
+        connection_id=connection.id, tenant_id=tenant_id, nonce=nonce, next_path=next_path, state=state
     )
-    state_token = create_sso_state_token(connection_id=connection.id, tenant_id=tenant_id, nonce=nonce, next_path=next_path)
     response = RedirectResponse(authorization_url, status_code=303)
     set_sso_state_cookie(response, state_token)
     return response
@@ -377,7 +387,9 @@ def sso_callback(
     except jwt.PyJWTError:
         return _error_page("Your sign-in attempt expired — please try again.")
 
-    if state_claims["connection_id"] != str(connection_id):
+    if state_claims["connection_id"] != str(connection_id) or not secrets.compare_digest(
+        state_claims.get("state", ""), state
+    ):
         return _error_page("Single sign-on state mismatch — please try again.")
 
     tenant_id = uuid.UUID(state_claims["tenant_id"])
@@ -392,7 +404,10 @@ def sso_callback(
             connection, code=code, redirect_uri=redirect_uri, expected_nonce=state_claims["nonce"]
         )
     except OidcError as exc:
-        return _error_page(f"Single sign-on failed: {exc}")
+        # Details go to the server log, not the login page: they can describe the
+        # provider's (or the network's) internals.
+        logger.warning("SSO callback failed for connection %s: %s", connection.id, exc)
+        return _error_page(_SSO_FAILED_MESSAGE)
 
     result = sso_service.complete_sso_login(db, tenant_id, connection, claims)
     if result.outcome == "not_authorized":

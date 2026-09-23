@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from pospay.auth.outbound_http import UnsafeUrlError
 from pospay.db.session import get_db
 from pospay.db.tenancy import TenantContext
 from pospay.domain.sso_connection import SsoProvider
@@ -147,10 +148,12 @@ def update_bank_connection(
 ) -> HTMLResponse:
     data = _connection_input_from_form(provider, display_name, issuer, client_id, client_secret, groups_claim_name, auto_provision, None)
     try:
-        # customer_id is None here, so the only possible ValueError from
-        # update_connection is "Connection not found" — never the customer-lookup one.
         sso_service.update_connection(db, ctx.tenant_id, connection_id, data)
+    except UnsafeUrlError as exc:
+        db.rollback()
+        return RedirectResponse(f"/ui/admin/sso/{connection_id}/edit?error=" + quote(str(exc)), status_code=303)
     except ValueError:
+        # customer_id is None here, so any other ValueError is "Connection not found".
         db.rollback()
         raise WebNotFound() from None
     audit_log_service.record_action(
@@ -341,7 +344,13 @@ def update_customer_connection(
     if existing is None or existing.customer_id != customer_id:
         raise WebNotFound()
     data = _connection_input_from_form(provider, display_name, issuer, client_id, client_secret, groups_claim_name, auto_provision, customer_id)
-    sso_service.update_connection(db, ctx.tenant_id, connection_id, data)
+    try:
+        sso_service.update_connection(db, ctx.tenant_id, connection_id, data)
+    except UnsafeUrlError as exc:
+        db.rollback()
+        return RedirectResponse(
+            f"/ui/customers/{customer_id}/sso/{connection_id}/edit?error=" + quote(str(exc)), status_code=303
+        )
     audit_log_service.record_action(
         db, ctx.tenant_id, actor_user_id=ctx.user_id, channel="web", action="sso_connection.update",
         summary=f"Updated SSO connection for customer {customer.name}", resource_type="sso_connection", resource_id=connection_id,

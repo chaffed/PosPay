@@ -51,6 +51,12 @@ def _start_sso(client, connection, tenant_id, monkeypatch, next_path="/ui/"):
     return state_claims["nonce"]
 
 
+def _state(client) -> str:
+    """The OAuth `state` /start sent to the identity provider, which a real provider echoes
+    back on the callback (the server checks it matches its signed sso_state cookie)."""
+    return decode_sso_state_token(client.cookies.get("sso_state"))["state"]
+
+
 def test_branded_login_page_shows_sso_button_once_mapped(client, db_session, tenant_factory):
     tenant, _account, _users = tenant_factory.make(slug="web-sso-button")
     connection, _group = _make_mapped_connection(db_session, tenant)
@@ -73,7 +79,7 @@ def test_full_sso_login_flow_auto_provisions_new_user(client, db_session, tenant
     patch_provider(monkeypatch, provider, id_token)
 
     resp = client.get(
-        f"/ui/login/sso/{connection.id}/callback", params={"code": "fake-code", "state": "s"}, follow_redirects=False
+        f"/ui/login/sso/{connection.id}/callback", params={"code": "fake-code", "state": _state(client)}, follow_redirects=False
     )
 
     assert resp.status_code == 303, resp.text
@@ -99,7 +105,7 @@ def test_sso_login_not_authorized_shows_error_and_sets_no_cookies(client, db_ses
     id_token = provider.sign_id_token(sub="sub-1", email="stranger@example.com", groups=["not-mapped"], nonce=nonce)
     patch_provider(monkeypatch, provider, id_token)
 
-    resp = client.get(f"/ui/login/sso/{connection.id}/callback", params={"code": "c", "state": "s"})
+    resp = client.get(f"/ui/login/sso/{connection.id}/callback", params={"code": "c", "state": _state(client)})
 
     assert resp.status_code == 401
     assert "not authorized" in resp.text.lower()
@@ -115,7 +121,7 @@ def test_sso_login_not_provisioned_shows_error(client, db_session, tenant_factor
     id_token = provider.sign_id_token(sub="sub-1", email="newperson@example.com", groups=["pospay-users"], nonce=nonce)
     patch_provider(monkeypatch, provider, id_token)
 
-    resp = client.get(f"/ui/login/sso/{connection.id}/callback", params={"code": "c", "state": "s"})
+    resp = client.get(f"/ui/login/sso/{connection.id}/callback", params={"code": "c", "state": _state(client)})
 
     assert resp.status_code == 401
     assert "no pospay account" in resp.text.lower()
@@ -318,3 +324,70 @@ def test_customer_sso_edit_404s_for_connection_belonging_to_a_different_customer
     resp = client.get(f"/ui/customers/{customer_b.id}/sso/{connection_a.id}/edit", follow_redirects=False)
 
     assert resp.status_code == 404
+
+
+def test_sso_callback_with_wrong_state_is_rejected(client, db_session, tenant_factory, monkeypatch):
+    """The OAuth state binds the callback to the browser that started the login."""
+    tenant, _account, _users = tenant_factory.make(slug="web-sso-bad-state")
+    connection, _group = _make_mapped_connection(db_session, tenant)
+    nonce = _start_sso(client, connection, tenant.id, monkeypatch)
+    provider = FakeOidcProvider(issuer=connection.issuer, client_id=connection.client_id)
+    id_token = provider.sign_id_token(sub="sub-1", email="newperson@example.com", groups=["pospay-users"], nonce=nonce)
+    patch_provider(monkeypatch, provider, id_token)
+
+    resp = client.get(f"/ui/login/sso/{connection.id}/callback", params={"code": "c", "state": "not-the-real-state"})
+
+    assert resp.status_code == 401
+    assert "state mismatch" in resp.text
+    assert client.cookies.get("access_token") is None
+
+
+def test_sso_start_with_unreachable_provider_shows_clean_error(client, db_session, tenant_factory, monkeypatch):
+    import httpx
+
+    import pospay.auth.oidc_service as oidc_service
+
+    tenant, _account, _users = tenant_factory.make(slug="web-sso-unreachable")
+    connection, _group = _make_mapped_connection(db_session, tenant)
+
+    def _unreachable(issuer):
+        raise httpx.ConnectError("Refusing to connect to idp: it resolves to a non-public address 10.0.0.5")
+
+    monkeypatch.setattr(oidc_service, "_get_discovery_document", _unreachable)
+
+    resp = client.get(f"/ui/login/sso/{connection.id}/start", params={"tenant_id": str(tenant.id)}, follow_redirects=False)
+
+    assert resp.status_code == 502
+    assert "Single sign-on couldn" in resp.text
+    assert "10.0.0.5" not in resp.text  # network details stay in the server log
+
+
+def _sso_form(client, issuer):
+    return {
+        "provider": list(SsoProvider)[0].value, "display_name": "Evil IdP", "issuer": issuer, "client_id": "cid",
+        "client_secret": "secret", "groups_claim_name": "groups", "csrf_token": client.cookies.get("csrf_token"),
+    }
+
+
+def test_creating_sso_connection_with_internal_issuer_shows_form_error(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-sso-ssrf-create")
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post("/ui/admin/sso", data=_sso_form(client, "https://169.254.169.254"), follow_redirects=False)
+
+    assert resp.status_code == 422
+    assert "public address" in resp.text
+    assert sso_service.list_connections(db_session, tenant.id) == []
+
+
+def test_editing_sso_connection_to_internal_issuer_shows_form_error(client, db_session, tenant_factory):
+    tenant, _account, users = tenant_factory.make(slug="web-sso-ssrf-edit")
+    connection, _group = _make_mapped_connection(db_session, tenant)
+    _login(client, tenant.slug, users["admin"].email)
+
+    resp = client.post(f"/ui/admin/sso/{connection.id}", data=_sso_form(client, "http://10.0.0.5:8080"), follow_redirects=False)
+
+    assert resp.status_code == 303
+    assert f"/ui/admin/sso/{connection.id}/edit?error=" in resp.headers["location"]
+    db_session.expire_all()
+    assert sso_service.get_connection(db_session, tenant.id, connection.id).issuer == "https://idp.example.com"

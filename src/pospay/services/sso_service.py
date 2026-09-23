@@ -17,6 +17,7 @@ from pospay.domain.tenant_membership import TenantMembership
 from pospay.domain.user import User
 from pospay.repositories.sso_connection_repo import SsoConnectionRepository
 from pospay.repositories.sso_group_mapping_repo import SsoGroupMappingRepository
+from pospay.auth.outbound_http import check_url
 from pospay.repositories.tenant_membership_repo import TenantMembershipRepository
 from pospay.repositories.user_repo import UserRepository
 from pospay.services import customer_service, security_group_service, user_service
@@ -43,7 +44,10 @@ def _apply_input(session: Session, tenant_id: uuid.UUID, connection: SsoConnecti
     connection.customer_id = data.customer_id
     connection.provider = data.provider
     connection.display_name = data.display_name
-    connection.issuer = data.issuer.rstrip("/")
+    # Rejects http://, localhost, and private-IP issuers up front with a clear form
+    # error (UnsafeUrlError is a ValueError) — auth/outbound_http.py re-checks, including
+    # DNS, every time the server actually connects.
+    connection.issuer = check_url(data.issuer.strip().rstrip("/"), what="issuer URL")
     connection.client_id = data.client_id
     connection.groups_claim_name = data.groups_claim_name
     connection.auto_provision = data.auto_provision

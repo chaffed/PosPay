@@ -169,7 +169,13 @@ _SSO_STATE_EXPIRE_MINUTES = 10
 
 
 def create_sso_state_token(
-    *, connection_id: uuid.UUID, tenant_id: uuid.UUID, nonce: str, next_path: str, settings: Settings | None = None
+    *,
+    connection_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    nonce: str,
+    next_path: str,
+    state: str,
+    settings: Settings | None = None,
 ) -> str:
     """Carries the SSO login-in-progress state across the redirect to the IdP and back —
     this app has no server-side session store, so (like mfa_pending) it round-trips
@@ -185,6 +191,9 @@ def create_sso_state_token(
         "connection_id": str(connection_id),
         "tenant_id": str(tenant_id),
         "nonce": nonce,
+        # The OAuth `state` sent to the identity provider; the callback must get the same
+        # value back (binds the callback to the browser that started the login).
+        "state": state,
         "next_path": next_path,
         "type": "sso_state",
         "iat": now,
